@@ -1,7 +1,7 @@
 # Meitheal
 
 <p align="center">
-  <img src="../images/meitheal-logo-icon.svg" alt="Meitheal" width="128" height="128" />
+  <img src="images/meitheal-logo-icon.svg" alt="Meitheal" width="128" height="128" />
 </p>
 
 Meitheal is a Kubernetes-native control plane for agentic workloads.
@@ -16,7 +16,7 @@ Meitheal lives in its own API group (`meitheal.dev`) and its own Helm
 chart. Agents use models served by LLMKube InferenceServices or by any
 OpenAI-compatible endpoint. Meitheal started as Foreman inside LLMKube
 and moved to this repository with its history; the
-[migration steps](../README.md#migrating-from-foreman) cover an
+[migration guide](migrating-from-foreman.md) covers an
 existing Foreman install.
 
 This page is the entry point. Deep references are linked at the
@@ -351,7 +351,7 @@ progress while keeping `source.onmessage` for completed turns.
 
 ## Where to file issues
 
-- **Repository:** [github.com/defilantech/LLMKube](https://github.com/defilantech/LLMKube)
+- **Repository:** [github.com/defilantech/meitheal](https://github.com/defilantech/meitheal/issues)
 - **Discord:** [discord.gg/Ktz85RFHDv](https://discord.gg/Ktz85RFHDv)
 - **Issue templates:** `[BUG]` or `[FEATURE]` prefix; the
   templates under `.github/ISSUE_TEMPLATE/` are mandatory for

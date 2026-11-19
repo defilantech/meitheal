@@ -55,43 +55,15 @@ model coder and the node runbooks.
 ## Migrating from Foreman
 
 The new API group means new CRDs, so Meitheal installs beside an existing
-Foreman release instead of upgrading it. The `foreman` chart templates its
-six CRDs without `helm.sh/resource-policy: keep`, so `helm uninstall` of that
-release deletes the CRDs and every Agent, AgenticTask, AgentRelease,
-FleetNode, ModelProfile and Workload with them. Move in this order:
-
-1. Annotate the six `foreman.llmkube.dev` CRDs so Helm keeps them:
-
-   ```bash
-   for crd in agents agentictasks agentreleases fleetnodes modelprofiles workloads; do
-     kubectl annotate crd "${crd}.foreman.llmkube.dev" helm.sh/resource-policy=keep
-   done
-   ```
-
-2. Install the `meitheal` chart as a new release (see [Install](#install)).
-3. Export the durable resources (Agent, AgentRelease, FleetNode,
-   ModelProfile), change their `apiVersion` to `meitheal.dev/v1alpha1`, and
-   apply them.
-4. Let in-flight AgenticTasks and Workloads finish.
-5. Uninstall the `foreman` release, then delete the old CRDs.
-
-Other renames to account for:
-
-| Foreman | Meitheal |
-| ------- | -------- |
-| API group and label prefix `foreman.llmkube.dev` | `meitheal.dev` |
-| Images `ghcr.io/defilantech/llmkube-foreman-{operator,agent,agent-coder}` | `ghcr.io/defilantech/meitheal-{operator,agent,agent-coder}` |
-| Chart `oci://ghcr.io/defilantech/charts/foreman` | `oci://ghcr.io/defilantech/charts/meitheal` (versions start at 0.1.0) |
-| CLI `llmkube foreman <command>`, `llmkube audit export` | `meitheal <command>`, `meitheal audit export` |
-| Metrics `foreman_*` | `meitheal_*` |
-| macOS signing identifier `dev.llmkube.foreman-agent`, launchd label `com.llmkube.foreman-agent` | `dev.meitheal.agent` for both |
-| Agent install root `~/Library/Application Support/llmkube/foreman-agent` | `~/Library/Application Support/meitheal/meitheal-agent` |
-| Branches `foreman/<workload>/issue-<N>` | `meitheal/<workload>/issue-<N>` |
-
-A macOS agent has to be reinstalled under the new label: run
-`make uninstall-foreman-agent` from an LLMKube checkout that still has it,
-then `make install-agent` from this repository. Dashboards or alerts outside
-the chart that query `foreman_*` metrics need the new names.
+Foreman release instead of upgrading it, and the resources you keep are
+copied across. The order matters: the `foreman` chart templates its six CRDs
+without `helm.sh/resource-policy: keep`, so `helm uninstall` of that release
+deletes the CRDs and every Agent, AgenticTask, AgentRelease, FleetNode,
+ModelProfile and Workload with them, and annotating the live CRDs does not
+stop it. Follow the [migration guide](docs/migrating-from-foreman.md): it
+takes the CRDs out of the Foreman release first, then maps every renamed
+image, chart, CLI command, metric and agent identifier and walks through the
+move step by step.
 
 ## Contributing
 
