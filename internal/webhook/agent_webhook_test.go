@@ -26,9 +26,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	executoragent "github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/tools/catalog"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	executoragent "github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/tools/catalog"
 )
 
 // validAgent builds a baseline LLM-driven Agent that passes validation;

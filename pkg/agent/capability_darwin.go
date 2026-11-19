@@ -21,8 +21,8 @@ package agent
 import (
 	"math"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
 	llmkubeagent "github.com/defilantech/llmkube/pkg/agent"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // darwinCapability advertises the host as a Metal worker. Total / available

@@ -28,7 +28,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // +kubebuilder:webhook:path=/validate-foreman-llmkube-dev-v1alpha1-agentictask,mutating=false,failurePolicy=fail,sideEffects=None,groups=foreman.llmkube.dev,resources=agentictasks,verbs=create,versions=v1alpha1,name=vagentictask.foreman.llmkube.dev,admissionReviewVersions=v1

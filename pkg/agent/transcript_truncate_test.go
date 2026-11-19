@@ -30,8 +30,8 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // truncScheme is a package-internal scheme: the shared newScheme helper lives

@@ -23,7 +23,7 @@ import (
 	"os/exec"
 	"strings"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // usesGenericGate reports whether a task's GateProfile should run the

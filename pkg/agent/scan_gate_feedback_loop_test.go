@@ -29,9 +29,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	foremanagent "github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/repo"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
 
 // The post-push container-image scan gate feedback loop (#1798) exercises

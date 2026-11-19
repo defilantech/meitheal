@@ -25,8 +25,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // transcriptRefExtra returns the Result.Extra map a real run produces for a

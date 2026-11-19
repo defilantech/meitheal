@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // readEvent reads one SSE "data:" frame and decodes it. Decoding rather than

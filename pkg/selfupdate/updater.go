@@ -51,7 +51,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	"github.com/defilantech/llmkube/pkg/datadir"
+	"github.com/defilantech/meitheal/pkg/datadir"
 )
 
 // Updater performs self-update of a managed binary. Zero value is not

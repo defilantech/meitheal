@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // translateRequest maps an oai.ChatRequest to the Anthropic Messages

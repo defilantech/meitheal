@@ -31,8 +31,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	foremanagent "github.com/defilantech/llmkube/pkg/foreman/agent"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	foremanagent "github.com/defilantech/meitheal/pkg/agent"
 )
 
 // realEnvelopeTask marshals an actual agent.Result into an AgenticTask the

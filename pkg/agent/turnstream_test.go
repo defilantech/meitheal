@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // TestTurnStream_ReplayThenTail is the property that makes a live viewer

@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"time"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // SchemaVersion identifies the on-disk shape of an audit Record.

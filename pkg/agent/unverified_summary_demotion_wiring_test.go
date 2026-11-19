@@ -25,9 +25,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	foremanagent "github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/reviewer"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/reviewer"
 )
 
 // Production-path test for the #1454 unverified-summary rail. runLLMPath runs

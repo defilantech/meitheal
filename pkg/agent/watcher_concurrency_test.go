@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // #1559: a Job-mode task's work runs in an ephemeral Job pod, so it must not

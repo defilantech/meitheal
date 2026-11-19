@@ -29,8 +29,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // fakeMCPTool is a minimal Tool double standing in for a dynamically

@@ -23,9 +23,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/tools"
+	"github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/tools"
 )
 
 // truncationMarker is appended to a tool result when callTool's text is

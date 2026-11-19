@@ -21,7 +21,7 @@ package agent
 import (
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // The non-darwin capability provider is a stub: it advertises whatever

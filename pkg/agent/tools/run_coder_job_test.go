@@ -33,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanagent "github.com/defilantech/llmkube/pkg/foreman/agent"
+	foremanagent "github.com/defilantech/meitheal/pkg/agent"
 )
 
 // mustQuantity parses a resource quantity for tests, panicking on a bad

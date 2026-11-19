@@ -25,8 +25,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // defaultReadMaxBytes caps a single read_file call so a confused model

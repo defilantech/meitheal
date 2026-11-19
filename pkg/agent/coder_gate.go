@@ -25,9 +25,9 @@ import (
 	"sort"
 	"strings"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/grounding"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/repomap"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	"github.com/defilantech/meitheal/pkg/agent/grounding"
+	"github.com/defilantech/meitheal/pkg/agent/repomap"
 )
 
 // envtestPackagePrefixes are workspace-relative package path prefixes whose

@@ -28,8 +28,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	llmkubemetrics "github.com/defilantech/llmkube/internal/metrics"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	llmkubemetrics "github.com/defilantech/meitheal/internal/metrics"
 )
 
 // TestTaskOutcomeLabels verifies the bounded label extraction the operator uses

@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // scriptedResponse is one canned HTTP response. status 0 means 200.

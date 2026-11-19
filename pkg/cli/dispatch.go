@@ -36,8 +36,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/yaml"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubissue"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	"github.com/defilantech/meitheal/pkg/agent/githubissue"
 )
 
 // Labels stamped on every task a single dispatch invocation creates, so the

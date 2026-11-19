@@ -45,7 +45,7 @@ import (
 	"sort"
 	"strings"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // deletedIssueRefRe matches a full owner/repo#N reference first (so the full

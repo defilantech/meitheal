@@ -4,7 +4,7 @@ import (
 	"path"
 	"strings"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // TestLayout describes a repository's test-layout convention: where test

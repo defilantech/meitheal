@@ -24,8 +24,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // StrReplaceTool performs an exact-match string replacement in a file.

@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubpr"
+	"github.com/defilantech/meitheal/pkg/agent/githubpr"
 )
 
 // fakeEnsurer is a minimal githubpr.Ensurer implementation for tests.

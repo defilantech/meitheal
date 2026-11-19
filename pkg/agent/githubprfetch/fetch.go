@@ -42,7 +42,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/codehost"
+	"github.com/defilantech/meitheal/pkg/agent/codehost"
 )
 
 // DefaultBodyCap bounds the PR body size we paste into the user prompt.

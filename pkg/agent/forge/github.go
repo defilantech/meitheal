@@ -20,11 +20,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/codehost"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubissue"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubpr"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubprfetch"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/worktracker"
+	"github.com/defilantech/meitheal/pkg/agent/codehost"
+	"github.com/defilantech/meitheal/pkg/agent/githubissue"
+	"github.com/defilantech/meitheal/pkg/agent/githubpr"
+	"github.com/defilantech/meitheal/pkg/agent/githubprfetch"
+	"github.com/defilantech/meitheal/pkg/agent/worktracker"
 )
 
 func init() { Register("github", newGitHub) }

@@ -27,7 +27,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubpr"
+	"github.com/defilantech/meitheal/pkg/agent/githubpr"
 )
 
 // RepoSlugPattern matches a repo slug with one or more path segments

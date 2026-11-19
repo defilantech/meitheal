@@ -1,6 +1,6 @@
-// sync-reviewer-prompts reads config/foreman/system-prompts/reviewer.md and
+// sync-reviewer-prompts reads config/system-prompts/reviewer.md and
 // writes its contents into spec.systemPrompt of every reviewer Agent manifest
-// under config/foreman/agents/*-reviewer.yaml.
+// under config/agents/*-reviewer.yaml.
 //
 // Usage:
 //
@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	promptPath   = "config/foreman/system-prompts/reviewer.md"
-	agentsDir    = "config/foreman/agents"
+	promptPath   = "config/system-prompts/reviewer.md"
+	agentsDir    = "config/agents"
 	reviewerGlob = "*-reviewer.yaml"
 )
 

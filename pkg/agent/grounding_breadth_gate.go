@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/grounding"
+	"github.com/defilantech/meitheal/pkg/agent/grounding"
 )
 
 // checkGroundingBreadth is the advisory-tier companion to checkReferenceGrounding.

@@ -23,7 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/tools"
+	"github.com/defilantech/meitheal/pkg/agent/tools"
 )
 
 // Connect is the single entry point the wiring layer calls to turn a list

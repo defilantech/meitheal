@@ -21,7 +21,7 @@ import (
 	"os"
 	"strings"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // gateTier classifies a gate check by how its failure is handled.

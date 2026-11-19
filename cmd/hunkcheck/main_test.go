@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
+	"github.com/defilantech/meitheal/pkg/agent"
 )
 
 // TestRun verifies the runner the core drives: it shells out to a command in

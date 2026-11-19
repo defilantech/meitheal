@@ -25,7 +25,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/tools/catalog"
+	"github.com/defilantech/meitheal/pkg/agent/tools/catalog"
 )
 
 // TestBuildAll_ThreadsGateActiveDeadlineSeconds is the regression test for

@@ -26,7 +26,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
+	"github.com/defilantech/meitheal/pkg/agent"
 )
 
 // fakeCaller is a test double for the caller interface. It lets

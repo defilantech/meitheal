@@ -23,7 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/tools"
+	"github.com/defilantech/meitheal/pkg/agent/tools"
 )
 
 // TestConnect_SkipsUnreachableServer exercises the core skip-on-failure

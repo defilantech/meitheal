@@ -24,7 +24,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/audit"
+	"github.com/defilantech/meitheal/pkg/audit"
 )
 
 func testRecord() audit.Record {

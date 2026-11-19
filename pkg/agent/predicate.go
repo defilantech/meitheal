@@ -17,7 +17,7 @@ limitations under the License.
 package agent
 
 import (
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // IsDeterministicAgent reports whether the Agent runs the model-free

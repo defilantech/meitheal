@@ -28,9 +28,9 @@ import (
 
 	"github.com/go-logr/logr"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
-	foremantools "github.com/defilantech/llmkube/pkg/foreman/agent/tools"
+	"github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
+	foremantools "github.com/defilantech/meitheal/pkg/agent/tools"
 )
 
 // fakeAssembleTool is a minimal foremantools.Tool double used to exercise

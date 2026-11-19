@@ -19,7 +19,7 @@ package agent
 import (
 	"context"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // Executor runs an AgenticTask and produces a structured Result. v0.1

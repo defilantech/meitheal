@@ -25,7 +25,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubprfetch"
+	"github.com/defilantech/meitheal/pkg/agent/githubprfetch"
 )
 
 // fakePRFetcher lets a test inject a canned outcome without spinning up

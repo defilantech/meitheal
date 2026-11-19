@@ -1,0 +1,14 @@
+# Dockerfile for GoReleaser builds
+# dockers_v2 stages the pre-built binary per platform under
+# $TARGETPLATFORM in the build context; package it into a distroless image.
+
+FROM gcr.io/distroless/static:nonroot
+ARG TARGETPLATFORM
+WORKDIR /
+COPY $TARGETPLATFORM/manager .
+# Third-party license and NOTICE files (#2564).
+COPY LICENSE /licenses/LICENSE
+COPY third_party_licenses /licenses/third_party_licenses
+USER 65532:65532
+
+ENTRYPOINT ["/manager"]

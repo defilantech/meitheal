@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // makeCall is a test helper for one tool_call with deterministic

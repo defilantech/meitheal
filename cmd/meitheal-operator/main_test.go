@@ -26,7 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
-	llmkubemetrics "github.com/defilantech/llmkube/internal/metrics"
+	llmkubemetrics "github.com/defilantech/meitheal/internal/metrics"
 )
 
 // TestAgenticTaskReconciler_CarriesArchiveDir pins the one assignment that

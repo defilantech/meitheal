@@ -26,7 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/defilantech/llmkube/pkg/foreman/audit"
+	"github.com/defilantech/meitheal/pkg/audit"
 )
 
 // BundleSchemaVersion identifies the on-disk bundle layout. Bump it only for

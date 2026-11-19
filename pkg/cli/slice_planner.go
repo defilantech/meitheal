@@ -30,7 +30,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubissue"
+	"github.com/defilantech/meitheal/pkg/agent/githubissue"
 )
 
 // plannerPrompt is the one-shot pinning planner. It decomposes an issue into

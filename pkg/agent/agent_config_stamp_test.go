@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // A verdict minted by an under-configured agent must carry that fact in its

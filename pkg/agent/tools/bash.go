@@ -28,8 +28,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // Defaults are conservative enough for a hostile model and generous

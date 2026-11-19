@@ -18,7 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/defilantech/llmkube/pkg/foreman/audit"
+	"github.com/defilantech/meitheal/pkg/audit"
 )
 
 func auditCM(name, recordedAt, repo, verdict string) *corev1.ConfigMap {

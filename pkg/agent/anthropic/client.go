@@ -31,7 +31,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // Client is a minimal client for the Anthropic Messages API.

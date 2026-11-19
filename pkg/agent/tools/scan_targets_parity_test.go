@@ -35,10 +35,13 @@ import (
 // edit to either side that diverges fails here with a message naming
 // both files.
 //
-// The path is relative to this package's dir: pkg/foreman/agent/tools ->
-// repo root is four levels up (the gate CI-sync test uses the same depth
-// for .github/workflows).
-const scanScriptPath = "../../../../hack/scan-images.sh"
+// The script and the release Dockerfiles live in the target repository
+// (LLMKube), not here. testdata/llmkube holds a copy of them taken from the
+// LLMKube release this module pins in go.mod; refresh the copy and
+// builtInScanTargets together when that pin moves.
+const scanTargetRepo = "testdata/llmkube"
+
+const scanScriptPath = scanTargetRepo + "/hack/scan-images.sh"
 
 func readScanScript(t *testing.T) string {
 	t.Helper()
@@ -433,7 +436,7 @@ func writeScanStub(t *testing.T, dir, name, body string) {
 // stages at $TARGETPLATFORM/.
 func dockerfileCopySources(t *testing.T, dockerfile string) []string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("../../../..", dockerfile))
+	raw, err := os.ReadFile(filepath.Join(scanTargetRepo, dockerfile))
 	if err != nil {
 		t.Fatalf("read %s: %v", dockerfile, err)
 	}

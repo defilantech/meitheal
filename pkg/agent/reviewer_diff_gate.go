@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // reviewer_diff_gate.go is a pure-function rail that detects whether a

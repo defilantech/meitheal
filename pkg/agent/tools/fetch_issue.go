@@ -24,10 +24,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubissue"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/worktracker"
+	"github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/githubissue"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/worktracker"
 )
 
 // TokenSource resolves a GitHub PAT at FetchIssueTool.Execute time.

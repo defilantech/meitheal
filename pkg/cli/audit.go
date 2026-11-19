@@ -21,7 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	"github.com/defilantech/llmkube/pkg/foreman/audit"
+	"github.com/defilantech/meitheal/pkg/audit"
 )
 
 // NewAuditCommand is the `llmkube audit` group: export the durable Foreman

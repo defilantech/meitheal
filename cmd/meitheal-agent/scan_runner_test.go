@@ -13,8 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	foremantools "github.com/defilantech/llmkube/pkg/foreman/agent/tools"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	foremantools "github.com/defilantech/meitheal/pkg/agent/tools"
 )
 
 func TestMapScanVerdict(t *testing.T) {

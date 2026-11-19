@@ -1,6 +1,6 @@
 package agent
 
-import "github.com/defilantech/llmkube/pkg/foreman/agent/reviewer"
+import "github.com/defilantech/meitheal/pkg/agent/reviewer"
 
 // Rail-skip observability (#1605).
 //

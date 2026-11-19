@@ -21,8 +21,8 @@ import (
 	"errors"
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/changepolicy"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	"github.com/defilantech/meitheal/pkg/agent/changepolicy"
 )
 
 func TestApplyVerdictPolicy(t *testing.T) {

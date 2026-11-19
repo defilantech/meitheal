@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/grounding"
+	"github.com/defilantech/meitheal/pkg/agent/grounding"
 )
 
 // unsourcedBenchmarkPatch is a working-tree diff (the shape grounding.

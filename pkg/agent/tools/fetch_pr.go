@@ -22,10 +22,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/codehost"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubprfetch"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/codehost"
+	"github.com/defilantech/meitheal/pkg/agent/githubprfetch"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // FetchPullRequestTool is the coder's read-only path to a GitHub pull

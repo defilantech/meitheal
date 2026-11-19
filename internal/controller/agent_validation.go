@@ -17,7 +17,7 @@ limitations under the License.
 package controller
 
 import (
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // Validated-condition plumbing (#1609). The judgment itself lives on

@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubissue"
+	"github.com/defilantech/meitheal/pkg/agent/githubissue"
 )
 
 // fakeFetcher implements githubissue.Fetcher for testing.

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/codehost"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/worktracker"
+	"github.com/defilantech/meitheal/pkg/agent/codehost"
+	"github.com/defilantech/meitheal/pkg/agent/worktracker"
 )
 
 // These pin the two tool-side bypasses from #1298. Each fails against the

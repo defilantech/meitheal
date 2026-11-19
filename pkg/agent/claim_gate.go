@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/grounding"
+	"github.com/defilantech/meitheal/pkg/agent/grounding"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 

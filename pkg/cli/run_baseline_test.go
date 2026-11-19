@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/defilantech/llmkube/pkg/foreman/audit"
+	"github.com/defilantech/meitheal/pkg/audit"
 )
 
 // baselineCMIn builds an audit-record ConfigMap in the given namespace, shaped

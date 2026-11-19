@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubissue"
+	"github.com/defilantech/meitheal/pkg/agent/githubissue"
 )
 
 // fakeFetcher lets a test inject a canned outcome without spinning up

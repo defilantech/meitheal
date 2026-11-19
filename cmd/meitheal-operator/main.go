@@ -42,11 +42,11 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	foremancontroller "github.com/defilantech/llmkube/internal/foreman/controller"
-	foremanwebhook "github.com/defilantech/llmkube/internal/foreman/webhook"
-	llmkubemetrics "github.com/defilantech/llmkube/internal/metrics"
-	"github.com/defilantech/llmkube/pkg/foreman/audit"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	foremancontroller "github.com/defilantech/meitheal/internal/controller"
+	llmkubemetrics "github.com/defilantech/meitheal/internal/metrics"
+	foremanwebhook "github.com/defilantech/meitheal/internal/webhook"
+	"github.com/defilantech/meitheal/pkg/audit"
 )
 
 // defaultWebhookCertDir is the controller-runtime default serving-cert

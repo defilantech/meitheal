@@ -38,10 +38,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	llmkubemetrics "github.com/defilantech/llmkube/internal/metrics"
-	"github.com/defilantech/llmkube/pkg/foreman/archive"
-	"github.com/defilantech/llmkube/pkg/foreman/audit"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	llmkubemetrics "github.com/defilantech/meitheal/internal/metrics"
+	"github.com/defilantech/meitheal/pkg/archive"
+	"github.com/defilantech/meitheal/pkg/audit"
 )
 
 // claimExpiriesAnnotation tracks how many times this task has been released

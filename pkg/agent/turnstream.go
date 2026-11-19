@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // TurnEvent is one completed turn, as it happened.

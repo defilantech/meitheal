@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // TestProgressMonitor_896_PostEditStreakNudgesNotTerminates is the #896

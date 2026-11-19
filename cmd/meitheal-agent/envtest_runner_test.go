@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremantools "github.com/defilantech/llmkube/pkg/foreman/agent/tools"
+	foremantools "github.com/defilantech/meitheal/pkg/agent/tools"
 )
 
 func TestMapGateVerdict(t *testing.T) {

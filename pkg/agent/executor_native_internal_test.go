@@ -42,12 +42,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
 	inferencev1alpha1 "github.com/defilantech/llmkube/api/v1alpha1"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubissue"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/repo"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/worktracker"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	"github.com/defilantech/meitheal/pkg/agent/githubissue"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/repo"
+	"github.com/defilantech/meitheal/pkg/agent/worktracker"
 )
 
 // TestBranchNameForTask covers the precedence rule between explicit

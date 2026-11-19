@@ -20,7 +20,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/tools/catalog"
+	"github.com/defilantech/meitheal/pkg/agent/tools/catalog"
 )
 
 // TestCatalogNamesMatchConstructors is the drift guard for the leaf

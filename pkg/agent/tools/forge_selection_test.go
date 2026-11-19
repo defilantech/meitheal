@@ -28,8 +28,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/codehost"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubprfetch"
+	"github.com/defilantech/meitheal/pkg/agent/codehost"
+	"github.com/defilantech/meitheal/pkg/agent/githubprfetch"
 )
 
 // The watcher's forge settings reach the coder Job's run-task, so the Job

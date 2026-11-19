@@ -23,7 +23,7 @@ package agent
 import (
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // assertNoOrphanedToolMessages fails if any RoleTool message in wire has

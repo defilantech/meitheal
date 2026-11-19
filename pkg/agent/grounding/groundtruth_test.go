@@ -30,27 +30,24 @@ func TestLoadGroundTruth_MetricsAndCLI(t *testing.T) {
 	}
 }
 
-// repoRoot resolves the repository root from this package dir
-// (pkg/foreman/agent/grounding -> four levels up).
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	wd, err := os.Getwd()
+// The metric scan is repo-wide, not limited to internal/metrics: a metric a
+// package defines elsewhere (LLMKube's Metal agent keeps its own in
+// pkg/agent) must be in the ground truth, else the gate would false-positive
+// the docs that name it.
+func TestLoadGroundTruth_MetricsRepoWide(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "internal/metrics/metrics.go"),
+		"package metrics\n\nvar a = prometheus.NewCounter(prometheus.CounterOpts{Name: \"llmkube_reconcile_total\"})\n")
+	writeFile(t, filepath.Join(root, "pkg/agent/metrics.go"),
+		"package agent\n\nvar b = prometheus.NewGauge(prometheus.GaugeOpts{Name: \"llmkube_metal_agent_apple_power_gpu_watts\"})\n")
+	gt, err := LoadGroundTruth("", root, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return filepath.Clean(filepath.Join(wd, "..", "..", "..", ".."))
-}
-
-func TestLoadGroundTruth_RealRepoMetricsRepoWide(t *testing.T) {
-	root := repoRoot(t)
-	gt, err := LoadGroundTruth(filepath.Join(root, "config/crd/bases"), root, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// A real metal-agent metric defined in pkg/agent (NOT internal/metrics) must
-	// be in the ground truth, else the gate would false-positive real Metal docs.
-	if !gt.Metrics["llmkube_metal_agent_apple_power_gpu_watts"] {
-		t.Errorf("repo-wide metric scan missed llmkube_metal_agent_apple_power_gpu_watts; have %d metrics", len(gt.Metrics))
+	for _, name := range []string{"llmkube_reconcile_total", "llmkube_metal_agent_apple_power_gpu_watts"} {
+		if !gt.Metrics[name] {
+			t.Errorf("repo-wide metric scan missed %s; have %v", name, gt.Metrics)
+		}
 	}
 }
 

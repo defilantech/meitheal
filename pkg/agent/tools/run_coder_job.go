@@ -35,7 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
+	"github.com/defilantech/meitheal/pkg/agent"
 )
 
 // coderJobTemplate is the YAML template run_coder_job renders for each

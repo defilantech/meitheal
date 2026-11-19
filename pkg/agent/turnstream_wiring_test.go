@@ -29,10 +29,10 @@ import (
 
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	foremanagent "github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/repo"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
 
 // These tests drive a REAL end-to-end coder pass (the same harness the envtest

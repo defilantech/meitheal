@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubissue"
+	"github.com/defilantech/meitheal/pkg/agent/githubissue"
 )
 
 // WorkItem represents a single unit of work, such as a GitHub issue.

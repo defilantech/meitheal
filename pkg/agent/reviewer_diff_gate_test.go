@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // bashCallArgs builds the JSON arguments an assistant tool_call carries for a

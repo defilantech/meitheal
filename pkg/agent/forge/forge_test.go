@@ -24,9 +24,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/codehost"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubpr"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubprfetch"
+	"github.com/defilantech/meitheal/pkg/agent/codehost"
+	"github.com/defilantech/meitheal/pkg/agent/githubpr"
+	"github.com/defilantech/meitheal/pkg/agent/githubprfetch"
 )
 
 func TestInfer(t *testing.T) {

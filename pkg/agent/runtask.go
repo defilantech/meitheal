@@ -27,14 +27,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/changepolicy"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/codehost"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubissue"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubpr"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/repo"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/worktracker"
-	"github.com/defilantech/llmkube/pkg/foreman/audit"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	"github.com/defilantech/meitheal/pkg/agent/changepolicy"
+	"github.com/defilantech/meitheal/pkg/agent/codehost"
+	"github.com/defilantech/meitheal/pkg/agent/githubissue"
+	"github.com/defilantech/meitheal/pkg/agent/githubpr"
+	"github.com/defilantech/meitheal/pkg/agent/repo"
+	"github.com/defilantech/meitheal/pkg/agent/worktracker"
+	"github.com/defilantech/meitheal/pkg/audit"
 )
 
 // RunTask is the standalone single-task runner: it executes ONE

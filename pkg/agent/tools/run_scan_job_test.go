@@ -30,7 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
+	"github.com/defilantech/meitheal/pkg/agent"
 )
 
 // The scan-tool tests reuse the gate harness verbatim where it fits:

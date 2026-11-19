@@ -33,8 +33,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	llmkubemetrics "github.com/defilantech/llmkube/internal/metrics"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	llmkubemetrics "github.com/defilantech/meitheal/internal/metrics"
 )
 
 // WorkloadReconciler turns a Workload into a set of AgenticTask objects

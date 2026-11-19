@@ -33,10 +33,10 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/llmkube/api/foreman/v1alpha1"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/codehost"
-	foremantools "github.com/defilantech/llmkube/pkg/foreman/agent/tools"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/worktracker"
+	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	"github.com/defilantech/meitheal/pkg/agent/codehost"
+	foremantools "github.com/defilantech/meitheal/pkg/agent/tools"
+	"github.com/defilantech/meitheal/pkg/agent/worktracker"
 )
 
 type recordingWorkItems struct{ asked []string }

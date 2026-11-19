@@ -27,9 +27,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/codehost"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/githubprfetch"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/worktracker"
+	"github.com/defilantech/meitheal/pkg/agent/codehost"
+	"github.com/defilantech/meitheal/pkg/agent/githubprfetch"
+	"github.com/defilantech/meitheal/pkg/agent/worktracker"
 )
 
 // DefaultName is the provider used when nothing selects one, so an install

@@ -39,7 +39,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
+	"github.com/defilantech/meitheal/pkg/agent"
 )
 
 // hunkAdvisory is the GATE-WARN line the bash gate Job prints for each

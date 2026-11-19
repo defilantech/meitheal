@@ -35,10 +35,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/codehost"
+	"github.com/defilantech/meitheal/pkg/agent/codehost"
 )
 
 // gateJobTemplate is the YAML template the tool renders for each call.

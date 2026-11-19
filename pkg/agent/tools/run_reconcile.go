@@ -23,10 +23,10 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/repo"
-	"github.com/defilantech/llmkube/pkg/foreman/slicer"
+	"github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/repo"
+	"github.com/defilantech/meitheal/pkg/slicer"
 )
 
 // RunReconcileTool checks a sliced Workload's integrated union against the slice

@@ -28,8 +28,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // ErrToolNotInWhitelist is returned by Dispatch when the model calls

@@ -25,7 +25,7 @@ import (
 )
 
 // workflowDir is the CI definition this gate is meant to mirror.
-const workflowDir = "../../../../.github/workflows"
+const workflowDir = "../../../.github/workflows"
 
 // workflowGlob is deliberately *.y*ml and not the tidier *.yml. GitHub
 // honours .yaml and .yml equally, so a workflow named .yaml runs its

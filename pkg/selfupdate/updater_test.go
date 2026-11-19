@@ -32,7 +32,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	"github.com/defilantech/llmkube/pkg/selfupdate"
+	"github.com/defilantech/meitheal/pkg/selfupdate"
 )
 
 // testBlob is a deterministic fake binary payload.

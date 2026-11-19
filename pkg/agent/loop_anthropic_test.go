@@ -28,8 +28,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/defilantech/llmkube/pkg/foreman/agent/anthropic"
-	"github.com/defilantech/llmkube/pkg/foreman/agent/oai"
+	"github.com/defilantech/meitheal/pkg/agent/anthropic"
+	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
 // The loop is provider-agnostic: it drives a ChatCompleter, and
