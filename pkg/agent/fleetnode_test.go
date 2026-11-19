@@ -592,7 +592,7 @@ func TestRegistrar_PatchHeartbeat_StampsKubernetesNode(t *testing.T) {
 			Roles:    []string{"coder"},
 		},
 		Provider:       &fixedCapability{},
-		KubernetesNode: "ahazidgx1",
+		KubernetesNode: "gpu-node-1",
 	}
 	if err := r.Upsert(context.Background()); err != nil {
 		t.Fatalf("Upsert: %v", err)
@@ -604,8 +604,8 @@ func TestRegistrar_PatchHeartbeat_StampsKubernetesNode(t *testing.T) {
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "coder-agent-abc12"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Status.KubernetesNode != "ahazidgx1" {
-		t.Errorf("Status.KubernetesNode = %q, want %q", got.Status.KubernetesNode, "ahazidgx1")
+	if got.Status.KubernetesNode != "gpu-node-1" {
+		t.Errorf("Status.KubernetesNode = %q, want %q", got.Status.KubernetesNode, "gpu-node-1")
 	}
 }
 
@@ -659,7 +659,7 @@ func TestRegistrar_PatchHeartbeat_KeepsExistingKubernetesNodeWhenUnset(t *testin
 		NodeName:       "coder-agent-abc12",
 		Spec:           spec,
 		Provider:       &fixedCapability{},
-		KubernetesNode: "ahazidgx1",
+		KubernetesNode: "gpu-node-1",
 	}
 	if err := stamped.Upsert(context.Background()); err != nil {
 		t.Fatalf("Upsert: %v", err)
@@ -683,9 +683,9 @@ func TestRegistrar_PatchHeartbeat_KeepsExistingKubernetesNodeWhenUnset(t *testin
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "coder-agent-abc12"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Status.KubernetesNode != "ahazidgx1" {
+	if got.Status.KubernetesNode != "gpu-node-1" {
 		t.Errorf("Status.KubernetesNode = %q, want %q (empty Registrar must not clear a stamped value)",
-			got.Status.KubernetesNode, "ahazidgx1")
+			got.Status.KubernetesNode, "gpu-node-1")
 	}
 }
 

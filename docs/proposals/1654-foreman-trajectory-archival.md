@@ -424,6 +424,6 @@ not the code under test works.
   shipper would need to run per-node.
 - A shipper and its destination are lab setup, not part of this proposal.
   Neither exists today.
-- `ahazidgx2` reporting four allocatable GPUs is time-slicing rather than four
+- a GB10 node reporting four allocatable GPUs is time-slicing rather than four
   physical devices, since GB10 has no MIG. This does not affect archival and is
   noted only because later training proposals depend on it.
