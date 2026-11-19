@@ -43,7 +43,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	inferencev1alpha1 "github.com/defilantech/llmkube/api/v1alpha1"
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/githubissue"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
@@ -57,16 +57,16 @@ import (
 func TestBranchNameForTask(t *testing.T) {
 	cases := []struct {
 		name string
-		task *foremanv1alpha1.AgenticTask
+		task *meithealv1alpha1.AgenticTask
 		want string
 	}{
 		{
 			name: "payload.branch wins over issue-fix derivation",
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "code-510"},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-					Payload: foremanv1alpha1.AgenticTaskPayload{
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+					Payload: meithealv1alpha1.AgenticTaskPayload{
 						Issue:  510,
 						Branch: "release-1.2-cherry-pick-of-510",
 					},
@@ -76,93 +76,93 @@ func TestBranchNameForTask(t *testing.T) {
 		},
 		{
 			name: "payload.branch on verify (the gate hand-off shape)",
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "gate-510"},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind: foremanv1alpha1.AgenticTaskKindVerify,
-					Payload: foremanv1alpha1.AgenticTaskPayload{
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind: meithealv1alpha1.AgenticTaskKindVerify,
+					Payload: meithealv1alpha1.AgenticTaskPayload{
 						Issue:  510,
-						Branch: "foreman/issue-510",
+						Branch: "meitheal/issue-510",
 					},
 				},
 			},
-			want: "foreman/issue-510",
+			want: "meitheal/issue-510",
 		},
 		{
 			name: "issue-fix without payload.branch falls back to issue derivation",
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "code-503"},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind:    foremanv1alpha1.AgenticTaskKindIssueFix,
-					Payload: foremanv1alpha1.AgenticTaskPayload{Issue: 503},
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind:    meithealv1alpha1.AgenticTaskKindIssueFix,
+					Payload: meithealv1alpha1.AgenticTaskPayload{Issue: 503},
 				},
 			},
-			want: "foreman/issue-503",
+			want: "meitheal/issue-503",
 		},
 		{
 			name: "non-issue-fix without payload.branch falls back to task name",
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "verify-only"},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind: foremanv1alpha1.AgenticTaskKindVerify,
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind: meithealv1alpha1.AgenticTaskKindVerify,
 				},
 			},
-			want: "foreman/verify-only",
+			want: "meitheal/verify-only",
 		},
 		{
 			// #573: issue-fix with a Workload owner-ref produces a
 			// workload-prefixed branch so reruns on the same issue do
 			// not collide.
 			name: "issue-fix with workload owner produces workload-prefixed branch",
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "code-510",
 					OwnerReferences: []metav1.OwnerReference{
 						{
-							APIVersion: foremanv1alpha1.GroupVersion.String(),
+							APIVersion: meithealv1alpha1.GroupVersion.String(),
 							Kind:       "Workload",
 							Name:       "v03-validation-batch-rerun-6",
 						},
 					},
 				},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind:    foremanv1alpha1.AgenticTaskKindIssueFix,
-					Payload: foremanv1alpha1.AgenticTaskPayload{Issue: 510},
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind:    meithealv1alpha1.AgenticTaskKindIssueFix,
+					Payload: meithealv1alpha1.AgenticTaskPayload{Issue: 510},
 				},
 			},
-			want: "foreman/v03-validation-batch-rerun-6/issue-510",
+			want: "meitheal/v03-validation-batch-rerun-6/issue-510",
 		},
 		{
 			// Backward-compat: hand-applied issue-fix task without a
-			// Workload owner still gets the legacy foreman/issue-N path.
+			// Workload owner still gets the legacy meitheal/issue-N path.
 			name: "issue-fix without workload owner uses legacy form",
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "code-503"},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind:    foremanv1alpha1.AgenticTaskKindIssueFix,
-					Payload: foremanv1alpha1.AgenticTaskPayload{Issue: 503},
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind:    meithealv1alpha1.AgenticTaskKindIssueFix,
+					Payload: meithealv1alpha1.AgenticTaskPayload{Issue: 503},
 				},
 			},
-			want: "foreman/issue-503",
+			want: "meitheal/issue-503",
 		},
 		{
 			// A non-Workload owner-ref must not be mistaken for a
 			// Workload (cluster-roles can chain-own resources via
 			// arbitrary kinds; we only want our own kind).
 			name: "non-workload owner-ref does not affect branch name",
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "code-507",
 					OwnerReferences: []metav1.OwnerReference{
 						{APIVersion: "v1", Kind: "ConfigMap", Name: "irrelevant"},
 					},
 				},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind:    foremanv1alpha1.AgenticTaskKindIssueFix,
-					Payload: foremanv1alpha1.AgenticTaskPayload{Issue: 507},
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind:    meithealv1alpha1.AgenticTaskKindIssueFix,
+					Payload: meithealv1alpha1.AgenticTaskPayload{Issue: 507},
 				},
 			},
-			want: "foreman/issue-507",
+			want: "meitheal/issue-507",
 		},
 	}
 	for _, tc := range cases {
@@ -180,26 +180,26 @@ func TestBranchNameForTask(t *testing.T) {
 // test catches drift between the executor's argument synthesis and
 // run_gate_job's runGateJobArgs decoding.
 func TestBuildDeterministicArgs(t *testing.T) {
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "gate-510", Namespace: "default"},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindVerify,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindVerify,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  510,
-				Branch: "foreman/issue-510",
+				Branch: "meitheal/issue-510",
 			},
 		},
 	}
 
 	t.Run("cloneURL set", func(t *testing.T) {
-		raw := buildDeterministicArgs(task, "foreman/issue-510", "https://github.com/Defilan/LLMKube.git", upstreamURLForRepo(task.Spec.Payload.Repo))
+		raw := buildDeterministicArgs(task, "meitheal/issue-510", "https://github.com/Defilan/LLMKube.git", upstreamURLForRepo(task.Spec.Payload.Repo))
 		var got map[string]any
 		if err := json.Unmarshal(raw, &got); err != nil {
 			t.Fatalf("decode args: %v", err)
 		}
-		if got["branch"] != "foreman/issue-510" {
-			t.Errorf("branch: want foreman/issue-510 got %v", got["branch"])
+		if got["branch"] != "meitheal/issue-510" {
+			t.Errorf("branch: want meitheal/issue-510 got %v", got["branch"])
 		}
 		if got["repo"] != "defilantech/LLMKube" {
 			t.Errorf("repo: want defilantech/LLMKube got %v", got["repo"])
@@ -223,7 +223,7 @@ func TestBuildDeterministicArgs(t *testing.T) {
 	})
 
 	t.Run("cloneURL empty preserves M4 default", func(t *testing.T) {
-		raw := buildDeterministicArgs(task, "foreman/issue-510", "", upstreamURLForRepo(task.Spec.Payload.Repo))
+		raw := buildDeterministicArgs(task, "meitheal/issue-510", "", upstreamURLForRepo(task.Spec.Payload.Repo))
 		var got map[string]any
 		if err := json.Unmarshal(raw, &got); err != nil {
 			t.Fatalf("decode args: %v", err)
@@ -234,7 +234,7 @@ func TestBuildDeterministicArgs(t *testing.T) {
 	})
 
 	t.Run("nil GateProfile resolves to golang image", func(t *testing.T) {
-		raw := buildDeterministicArgs(task, "foreman/issue-510", "", upstreamURLForRepo(task.Spec.Payload.Repo))
+		raw := buildDeterministicArgs(task, "meitheal/issue-510", "", upstreamURLForRepo(task.Spec.Payload.Repo))
 		var got map[string]any
 		if err := json.Unmarshal(raw, &got); err != nil {
 			t.Fatalf("decode args: %v", err)
@@ -248,20 +248,20 @@ func TestBuildDeterministicArgs(t *testing.T) {
 	})
 
 	t.Run("python GateProfile resolves to python image", func(t *testing.T) {
-		pyTask := &foremanv1alpha1.AgenticTask{
+		pyTask := &meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{Name: "gate-py", Namespace: "default"},
-			Spec: foremanv1alpha1.AgenticTaskSpec{
-				Kind: foremanv1alpha1.AgenticTaskKindVerify,
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+			Spec: meithealv1alpha1.AgenticTaskSpec{
+				Kind: meithealv1alpha1.AgenticTaskKindVerify,
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:  "defilantech/LLMKube",
 					Issue: 839,
 				},
-				GateProfile: &foremanv1alpha1.GateProfile{
-					Language: foremanv1alpha1.GateLanguagePython,
+				GateProfile: &meithealv1alpha1.GateProfile{
+					Language: meithealv1alpha1.GateLanguagePython,
 				},
 			},
 		}
-		raw := buildDeterministicArgs(pyTask, "foreman/issue-839", "", upstreamURLForRepo(pyTask.Spec.Payload.Repo))
+		raw := buildDeterministicArgs(pyTask, "meitheal/issue-839", "", upstreamURLForRepo(pyTask.Spec.Payload.Repo))
 		var got map[string]any
 		if err := json.Unmarshal(raw, &got); err != nil {
 			t.Fatalf("decode args: %v", err)
@@ -288,7 +288,7 @@ func TestBuildDeterministicArgs(t *testing.T) {
 
 // resolveSchemeForTests builds a runtime scheme with the API types the
 // resolveInferenceBaseURL tests touch. discovery/v1 covers EndpointSlice,
-// inferencev1alpha1 covers InferenceService, foreman covers the
+// inferencev1alpha1 covers InferenceService, meitheal covers the
 // Agent CR field types referenced incidentally. corev1 is registered for
 // the incidental object references the executor builds.
 func resolveSchemeForTests(t *testing.T) *runtime.Scheme {
@@ -303,8 +303,8 @@ func resolveSchemeForTests(t *testing.T) *runtime.Scheme {
 	if err := inferencev1alpha1.AddToScheme(s); err != nil {
 		t.Fatalf("inferencev1alpha1: %v", err)
 	}
-	if err := foremanv1alpha1.AddToScheme(s); err != nil {
-		t.Fatalf("foreman: %v", err)
+	if err := meithealv1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("meitheal: %v", err)
 	}
 	return s
 }
@@ -319,11 +319,11 @@ func resolveSchemeForTests(t *testing.T) *runtime.Scheme {
 func TestResolveInferenceBaseURL(t *testing.T) {
 	// Helpers that build the canned cluster objects each case may want
 	// the fake client seeded with.
-	mkAgent := func(isvcName string) *foremanv1alpha1.Agent {
-		return &foremanv1alpha1.Agent{
+	mkAgent := func(isvcName string) *meithealv1alpha1.Agent {
+		return &meithealv1alpha1.Agent{
 			ObjectMeta: metav1.ObjectMeta{Name: "coder", Namespace: "default"},
-			Spec: foremanv1alpha1.AgentSpec{
-				InferenceServiceRef: foremanv1alpha1Local(isvcName),
+			Spec: meithealv1alpha1.AgentSpec{
+				InferenceServiceRef: meithealv1alpha1Local(isvcName),
 			},
 		}
 	}
@@ -448,7 +448,7 @@ func TestResolveInferenceBaseURL(t *testing.T) {
 				// Agent references the dotted name; the operator
 				// sanitizes dots to hyphens for the service-name label
 				// the metal-agent stamps on the EndpointSlice.
-				func() *foremanv1alpha1.Agent { return mkAgent("inf.svc.dotted") }(),
+				func() *meithealv1alpha1.Agent { return mkAgent("inf.svc.dotted") }(),
 				mkISvc("inf.svc.dotted", "http://inf-svc-dotted.default.svc.cluster.local:80/v1/chat/completions"),
 				mkEndpoints("inf-svc-dotted", 60177, true),
 			},
@@ -646,10 +646,10 @@ func TestResolveInferenceBaseURL(t *testing.T) {
 			// Build the agent for this case: the dotted-name case
 			// supplies its own; everything else uses the standard
 			// "test-svc" agent.
-			var agent *foremanv1alpha1.Agent
+			var agent *meithealv1alpha1.Agent
 			for _, obj := range tc.seedObjects {
 				switch v := obj.(type) {
-				case *foremanv1alpha1.Agent:
+				case *meithealv1alpha1.Agent:
 					agent = v
 					b = b.WithObjects(v)
 				case *inferencev1alpha1.InferenceService:
@@ -686,12 +686,12 @@ func TestResolveInferenceBaseURL(t *testing.T) {
 	}
 }
 
-// foremanv1alpha1Local is a tiny test-side helper to avoid importing
+// meithealv1alpha1Local is a tiny test-side helper to avoid importing
 // corev1 directly in the test fixture builder. The Agent CR uses
 // corev1.LocalObjectReference for InferenceServiceRef, which the
 // production code already depends on; this function names the import
 // boundary so the test reads cleanly.
-func foremanv1alpha1Local(name string) corev1.LocalObjectReference {
+func meithealv1alpha1Local(name string) corev1.LocalObjectReference {
 	return corev1.LocalObjectReference{Name: name}
 }
 
@@ -708,15 +708,15 @@ func TestFailResult_EmitsStructuredFailureReason(t *testing.T) {
 	e := &NativeAgentLoopExecutor{}
 	cases := []struct {
 		name   string
-		reason foremanv1alpha1.AgenticTaskFailureReason
+		reason meithealv1alpha1.AgenticTaskFailureReason
 	}{
-		{"AgentNotFound", foremanv1alpha1.FailureAgentNotFound},
-		{"InferenceServiceUnavailable", foremanv1alpha1.FailureInferenceServiceUnavailable},
-		{"AuthUnavailable", foremanv1alpha1.FailureAuthUnavailable},
-		{"GitRemoteNotConfigured", foremanv1alpha1.FailureGitRemoteNotConfigured},
-		{"CloneFailed", foremanv1alpha1.FailureCloneFailed},
-		{"InfrastructureError", foremanv1alpha1.FailureInfrastructureError},
-		{"ToolFailed", foremanv1alpha1.FailureToolFailed},
+		{"AgentNotFound", meithealv1alpha1.FailureAgentNotFound},
+		{"InferenceServiceUnavailable", meithealv1alpha1.FailureInferenceServiceUnavailable},
+		{"AuthUnavailable", meithealv1alpha1.FailureAuthUnavailable},
+		{"GitRemoteNotConfigured", meithealv1alpha1.FailureGitRemoteNotConfigured},
+		{"CloneFailed", meithealv1alpha1.FailureCloneFailed},
+		{"InfrastructureError", meithealv1alpha1.FailureInfrastructureError},
+		{"ToolFailed", meithealv1alpha1.FailureToolFailed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -729,7 +729,7 @@ func TestFailResult_EmitsStructuredFailureReason(t *testing.T) {
 			}
 			// Verdict on a failResult is always INCOMPLETE; the watcher
 			// patches Phase=Failed in this path.
-			if r.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+			if r.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 				t.Errorf("Verdict: want INCOMPLETE got %q", r.Verdict)
 			}
 		})
@@ -743,11 +743,11 @@ func TestFailResult_EmitsStructuredFailureReason(t *testing.T) {
 // the right structured reason.
 func TestIncompleteResult_EmitsStructuredFailureReason(t *testing.T) {
 	e := &NativeAgentLoopExecutor{}
-	cases := []foremanv1alpha1.AgenticTaskFailureReason{
-		foremanv1alpha1.FailureMaxTurnsExhausted,
-		foremanv1alpha1.FailureModelMisunderstood,
-		foremanv1alpha1.FailureTimeout,
-		foremanv1alpha1.FailureInfrastructureError,
+	cases := []meithealv1alpha1.AgenticTaskFailureReason{
+		meithealv1alpha1.FailureMaxTurnsExhausted,
+		meithealv1alpha1.FailureModelMisunderstood,
+		meithealv1alpha1.FailureTimeout,
+		meithealv1alpha1.FailureInfrastructureError,
 	}
 	for _, reason := range cases {
 		t.Run(string(reason), func(t *testing.T) {
@@ -825,7 +825,7 @@ func TestMapLoopError_MaxTurns_SpinGuard(t *testing.T) {
 	cases := []struct {
 		name       string
 		lr         *LoopResult
-		wantReason foremanv1alpha1.AgenticTaskFailureReason
+		wantReason meithealv1alpha1.AgenticTaskFailureReason
 		wantFrags  []string
 	}{
 		{
@@ -833,7 +833,7 @@ func TestMapLoopError_MaxTurns_SpinGuard(t *testing.T) {
 			// far faster than any model can produce a turn.
 			name:       "spin",
 			lr:         &LoopResult{Turns: 160, TurnDuration: 65 * time.Second, TurnsWithCompletion: 160, TurnsWithToolCall: 150},
-			wantReason: foremanv1alpha1.FailureLoopSpinning,
+			wantReason: meithealv1alpha1.FailureLoopSpinning,
 			wantFrags:  []string{"0.41s/turn", "spinning backend or shim"},
 		},
 		{
@@ -841,28 +841,28 @@ func TestMapLoopError_MaxTurns_SpinGuard(t *testing.T) {
 			// #1713 rejection detail in the summary.
 			name:       "spin with rejected submissions",
 			lr:         &LoopResult{Turns: 160, TurnDuration: 65 * time.Second, TurnsWithCompletion: 160, TurnsWithToolCall: 150, SubmissionsRejected: 2},
-			wantReason: foremanv1alpha1.FailureLoopSpinning,
+			wantReason: meithealv1alpha1.FailureLoopSpinning,
 			wantFrags:  []string{"0.41s/turn", "2 time(s)", "verification gate"},
 		},
 		{
 			// 1662s over 160 turns is slow real work, not a spin.
 			name:       "real exhaustion",
 			lr:         &LoopResult{Turns: 160, TurnDuration: 1662 * time.Second, TurnsWithCompletion: 160, TurnsWithToolCall: 150},
-			wantReason: foremanv1alpha1.FailureMaxTurnsExhausted,
+			wantReason: meithealv1alpha1.FailureMaxTurnsExhausted,
 		},
 		{
 			// Below the min-turns floor: a fast tiny run keeps the
 			// ordinary reason even at ~0.2ms/turn.
 			name:       "below min-turns floor",
 			lr:         &LoopResult{Turns: 5, TurnDuration: time.Millisecond},
-			wantReason: foremanv1alpha1.FailureMaxTurnsExhausted,
+			wantReason: meithealv1alpha1.FailureMaxTurnsExhausted,
 		},
 		{
 			// Average exactly at the threshold: the strict less-than
 			// fails, so 10 turns in 10s is not a spin.
 			name:       "boundary exactly one second per turn",
 			lr:         &LoopResult{Turns: 10, TurnDuration: 10 * time.Second},
-			wantReason: foremanv1alpha1.FailureMaxTurnsExhausted,
+			wantReason: meithealv1alpha1.FailureMaxTurnsExhausted,
 		},
 	}
 	for _, tc := range cases {
@@ -895,11 +895,11 @@ func TestMapLoopError_MaxTurns_SpinGuard(t *testing.T) {
 // must surface as clean executor errors rather than 401s from the
 // upstream proxy mid-loop.
 func TestResolveProviderEndpoint(t *testing.T) {
-	mkAgent := func(name string, provider foremanv1alpha1.AgentProvider, cfg *foremanv1alpha1.ProviderConfig) *foremanv1alpha1.Agent {
-		return &foremanv1alpha1.Agent{
+	mkAgent := func(name string, provider meithealv1alpha1.AgentProvider, cfg *meithealv1alpha1.ProviderConfig) *meithealv1alpha1.Agent {
+		return &meithealv1alpha1.Agent{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-			Spec: foremanv1alpha1.AgentSpec{
-				Role:           foremanv1alpha1.AgentRoleReviewer,
+			Spec: meithealv1alpha1.AgentSpec{
+				Role:           meithealv1alpha1.AgentRoleReviewer,
 				Provider:       provider,
 				ProviderConfig: cfg,
 				Model:          "human-readable-name",
@@ -915,7 +915,7 @@ func TestResolveProviderEndpoint(t *testing.T) {
 
 	cases := []struct {
 		name        string
-		agent       *foremanv1alpha1.Agent
+		agent       *meithealv1alpha1.Agent
 		seedObjects []runtime.Object
 		wantBase    string
 		wantModel   string
@@ -924,7 +924,7 @@ func TestResolveProviderEndpoint(t *testing.T) {
 	}{
 		{
 			name: "cloud-proxy without auth: baseURL + model resolve, authHeader empty",
-			agent: mkAgent("cloud-no-auth", foremanv1alpha1.AgentProviderCloudProxy, &foremanv1alpha1.ProviderConfig{
+			agent: mkAgent("cloud-no-auth", meithealv1alpha1.AgentProviderCloudProxy, &meithealv1alpha1.ProviderConfig{
 				BaseURL: "http://foundation-router.lan:4000/v1/",
 				Model:   "claude-sonnet-4-6",
 			}),
@@ -934,7 +934,7 @@ func TestResolveProviderEndpoint(t *testing.T) {
 		},
 		{
 			name: "cloud-proxy with Secret: authHeader = 'Bearer <token>'",
-			agent: mkAgent("cloud-auth", foremanv1alpha1.AgentProviderCloudProxy, &foremanv1alpha1.ProviderConfig{
+			agent: mkAgent("cloud-auth", meithealv1alpha1.AgentProviderCloudProxy, &meithealv1alpha1.ProviderConfig{
 				BaseURL: "http://foundation-router.lan:4000/v1",
 				Model:   "anthropic/claude-sonnet-4-6",
 				APIKeySecretRef: &corev1.SecretKeySelector{
@@ -949,26 +949,26 @@ func TestResolveProviderEndpoint(t *testing.T) {
 		},
 		{
 			name:        "cloud-proxy missing providerConfig",
-			agent:       mkAgent("cloud-no-cfg", foremanv1alpha1.AgentProviderCloudProxy, nil),
+			agent:       mkAgent("cloud-no-cfg", meithealv1alpha1.AgentProviderCloudProxy, nil),
 			wantErrFrag: "providerConfig is required",
 		},
 		{
 			name: "cloud-proxy missing baseURL",
-			agent: mkAgent("cloud-no-base", foremanv1alpha1.AgentProviderCloudProxy, &foremanv1alpha1.ProviderConfig{
+			agent: mkAgent("cloud-no-base", meithealv1alpha1.AgentProviderCloudProxy, &meithealv1alpha1.ProviderConfig{
 				Model: "claude-sonnet-4-6",
 			}),
 			wantErrFrag: "baseURL is required",
 		},
 		{
 			name: "cloud-proxy missing model",
-			agent: mkAgent("cloud-no-model", foremanv1alpha1.AgentProviderCloudProxy, &foremanv1alpha1.ProviderConfig{
+			agent: mkAgent("cloud-no-model", meithealv1alpha1.AgentProviderCloudProxy, &meithealv1alpha1.ProviderConfig{
 				BaseURL: "http://foundation-router.lan:4000/v1",
 			}),
 			wantErrFrag: "model is required",
 		},
 		{
 			name: "cloud-proxy: APIKeySecretRef points at nonexistent Secret",
-			agent: mkAgent("cloud-missing-secret", foremanv1alpha1.AgentProviderCloudProxy, &foremanv1alpha1.ProviderConfig{
+			agent: mkAgent("cloud-missing-secret", meithealv1alpha1.AgentProviderCloudProxy, &meithealv1alpha1.ProviderConfig{
 				BaseURL: "http://foundation-router.lan:4000/v1",
 				Model:   "claude-sonnet-4-6",
 				APIKeySecretRef: &corev1.SecretKeySelector{
@@ -980,7 +980,7 @@ func TestResolveProviderEndpoint(t *testing.T) {
 		},
 		{
 			name: "cloud-proxy: APIKeySecretRef key not present in Secret",
-			agent: mkAgent("cloud-bad-key", foremanv1alpha1.AgentProviderCloudProxy, &foremanv1alpha1.ProviderConfig{
+			agent: mkAgent("cloud-bad-key", meithealv1alpha1.AgentProviderCloudProxy, &meithealv1alpha1.ProviderConfig{
 				BaseURL: "http://foundation-router.lan:4000/v1",
 				Model:   "claude-sonnet-4-6",
 				APIKeySecretRef: &corev1.SecretKeySelector{
@@ -993,7 +993,7 @@ func TestResolveProviderEndpoint(t *testing.T) {
 		},
 		{
 			name:        "unknown provider value surfaces a clean error (not silently treated as local)",
-			agent:       mkAgent("weird-provider", foremanv1alpha1.AgentProvider("rot13"), nil),
+			agent:       mkAgent("weird-provider", meithealv1alpha1.AgentProvider("rot13"), nil),
 			wantErrFrag: "unknown agent.spec.provider",
 		},
 	}
@@ -1044,12 +1044,12 @@ func TestResolveProviderEndpoint(t *testing.T) {
 // the inverse of the cloud-proxy contract, which is the whole point of
 // having a separate resolver.
 func TestResolveAnthropicEndpoint(t *testing.T) {
-	mkAgent := func(name string, cfg *foremanv1alpha1.ProviderConfig) *foremanv1alpha1.Agent {
-		return &foremanv1alpha1.Agent{
+	mkAgent := func(name string, cfg *meithealv1alpha1.ProviderConfig) *meithealv1alpha1.Agent {
+		return &meithealv1alpha1.Agent{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-			Spec: foremanv1alpha1.AgentSpec{
-				Role:           foremanv1alpha1.AgentRoleReviewer,
-				Provider:       foremanv1alpha1.AgentProviderAnthropic,
+			Spec: meithealv1alpha1.AgentSpec{
+				Role:           meithealv1alpha1.AgentRoleReviewer,
+				Provider:       meithealv1alpha1.AgentProviderAnthropic,
 				ProviderConfig: cfg,
 				Model:          "human-readable-name",
 			},
@@ -1064,7 +1064,7 @@ func TestResolveAnthropicEndpoint(t *testing.T) {
 
 	cases := []struct {
 		name        string
-		agent       *foremanv1alpha1.Agent
+		agent       *meithealv1alpha1.Agent
 		seedObjects []runtime.Object
 		wantBase    string
 		wantModel   string
@@ -1074,7 +1074,7 @@ func TestResolveAnthropicEndpoint(t *testing.T) {
 	}{
 		{
 			name: "anthropic without auth: baseURL + model resolve, both auth fields empty",
-			agent: mkAgent("anth-no-auth", &foremanv1alpha1.ProviderConfig{
+			agent: mkAgent("anth-no-auth", &meithealv1alpha1.ProviderConfig{
 				BaseURL: "https://api.anthropic.com/v1/",
 				Model:   "claude-sonnet-4-6",
 			}),
@@ -1083,7 +1083,7 @@ func TestResolveAnthropicEndpoint(t *testing.T) {
 		},
 		{
 			name: "anthropic with Secret: apiKey is the raw value, authHeader stays empty",
-			agent: mkAgent("anth-auth", &foremanv1alpha1.ProviderConfig{
+			agent: mkAgent("anth-auth", &meithealv1alpha1.ProviderConfig{
 				BaseURL: "https://api.anthropic.com/v1",
 				Model:   "claude-sonnet-4-6",
 				APIKeySecretRef: &corev1.SecretKeySelector{
@@ -1104,21 +1104,21 @@ func TestResolveAnthropicEndpoint(t *testing.T) {
 		},
 		{
 			name: "anthropic missing baseURL",
-			agent: mkAgent("anth-no-base", &foremanv1alpha1.ProviderConfig{
+			agent: mkAgent("anth-no-base", &meithealv1alpha1.ProviderConfig{
 				Model: "claude-sonnet-4-6",
 			}),
 			wantErrFrag: "baseURL is required for provider=anthropic",
 		},
 		{
 			name: "anthropic missing model",
-			agent: mkAgent("anth-no-model", &foremanv1alpha1.ProviderConfig{
+			agent: mkAgent("anth-no-model", &meithealv1alpha1.ProviderConfig{
 				BaseURL: "https://api.anthropic.com/v1",
 			}),
 			wantErrFrag: "model is required for provider=anthropic",
 		},
 		{
 			name: "anthropic: APIKeySecretRef points at nonexistent Secret",
-			agent: mkAgent("anth-missing-secret", &foremanv1alpha1.ProviderConfig{
+			agent: mkAgent("anth-missing-secret", &meithealv1alpha1.ProviderConfig{
 				BaseURL: "https://api.anthropic.com/v1",
 				Model:   "claude-sonnet-4-6",
 				APIKeySecretRef: &corev1.SecretKeySelector{
@@ -1177,39 +1177,39 @@ func TestResolveAnthropicEndpoint(t *testing.T) {
 func TestIsDeterministicAgent(t *testing.T) {
 	cases := []struct {
 		name  string
-		agent *foremanv1alpha1.Agent
+		agent *meithealv1alpha1.Agent
 		want  bool
 	}{
 		{
 			name: "local + empty InferenceServiceRef -> deterministic (gate Agent shape)",
-			agent: &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{
-				Provider: foremanv1alpha1.AgentProviderLocal,
+			agent: &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{
+				Provider: meithealv1alpha1.AgentProviderLocal,
 			}},
 			want: true,
 		},
 		{
 			name:  "provider unset + empty InferenceServiceRef -> deterministic (v0.1 shape)",
-			agent: &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{}},
+			agent: &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{}},
 			want:  true,
 		},
 		{
 			name: "local + InferenceServiceRef set -> LLM",
-			agent: &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{
+			agent: &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{
 				InferenceServiceRef: corev1.LocalObjectReference{Name: "svc"},
 			}},
 			want: false,
 		},
 		{
 			name: "cloud-proxy with empty InferenceServiceRef -> LLM (NOT deterministic)",
-			agent: &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{
-				Provider: foremanv1alpha1.AgentProviderCloudProxy,
+			agent: &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{
+				Provider: meithealv1alpha1.AgentProviderCloudProxy,
 			}},
 			want: false,
 		},
 		{
 			name: "cloud-proxy with InferenceServiceRef set (defensive) -> LLM",
-			agent: &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{
-				Provider:            foremanv1alpha1.AgentProviderCloudProxy,
+			agent: &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{
+				Provider:            meithealv1alpha1.AgentProviderCloudProxy,
 				InferenceServiceRef: corev1.LocalObjectReference{Name: "ignored"},
 			}},
 			want: false,
@@ -1232,7 +1232,7 @@ func TestIsDeterministicAgent(t *testing.T) {
 func TestMCPEnabledForTask(t *testing.T) {
 	cases := []struct {
 		name string
-		task *foremanv1alpha1.AgenticTask
+		task *meithealv1alpha1.AgenticTask
 		want bool
 	}{
 		{
@@ -1242,22 +1242,22 @@ func TestMCPEnabledForTask(t *testing.T) {
 		},
 		{
 			name: "nil MCPEnabled (default) -> enabled",
-			task: &foremanv1alpha1.AgenticTask{
-				Spec: foremanv1alpha1.AgenticTaskSpec{MCPEnabled: nil},
+			task: &meithealv1alpha1.AgenticTask{
+				Spec: meithealv1alpha1.AgenticTaskSpec{MCPEnabled: nil},
 			},
 			want: true,
 		},
 		{
 			name: "MCPEnabled=true -> enabled",
-			task: &foremanv1alpha1.AgenticTask{
-				Spec: foremanv1alpha1.AgenticTaskSpec{MCPEnabled: ptr.To(true)},
+			task: &meithealv1alpha1.AgenticTask{
+				Spec: meithealv1alpha1.AgenticTaskSpec{MCPEnabled: ptr.To(true)},
 			},
 			want: true,
 		},
 		{
 			name: "MCPEnabled=false -> disabled (benchmark control run)",
-			task: &foremanv1alpha1.AgenticTask{
-				Spec: foremanv1alpha1.AgenticTaskSpec{MCPEnabled: ptr.To(false)},
+			task: &meithealv1alpha1.AgenticTask{
+				Spec: meithealv1alpha1.AgenticTaskSpec{MCPEnabled: ptr.To(false)},
 			},
 			want: false,
 		},
@@ -1287,32 +1287,32 @@ func TestMCPEnabledForTask(t *testing.T) {
 func TestProgressConfigFromAgent_ReviewerOverridesEditFree(t *testing.T) {
 	cases := []struct {
 		name           string
-		agent          *foremanv1alpha1.Agent
+		agent          *meithealv1alpha1.Agent
 		wantEditFree   int
 		wantRepeatedTC int
 	}{
 		{
 			name: "coder with default config keeps EditFreeTurnsLimit",
-			agent: &foremanv1alpha1.Agent{
-				Spec: foremanv1alpha1.AgentSpec{Role: foremanv1alpha1.AgentRoleCoder},
+			agent: &meithealv1alpha1.Agent{
+				Spec: meithealv1alpha1.AgentSpec{Role: meithealv1alpha1.AgentRoleCoder},
 			},
 			wantEditFree:   DefaultProgressConfig.EditFreeTurnsLimit,
 			wantRepeatedTC: DefaultProgressConfig.RepeatedToolThreshold,
 		},
 		{
 			name: "reviewer with default config gets EditFreeTurnsLimit=0",
-			agent: &foremanv1alpha1.Agent{
-				Spec: foremanv1alpha1.AgentSpec{Role: foremanv1alpha1.AgentRoleReviewer},
+			agent: &meithealv1alpha1.Agent{
+				Spec: meithealv1alpha1.AgentSpec{Role: meithealv1alpha1.AgentRoleReviewer},
 			},
 			wantEditFree:   0,
 			wantRepeatedTC: DefaultProgressConfig.RepeatedToolThreshold,
 		},
 		{
 			name: "reviewer with explicit per-Agent EditFreeTurnsLimit STILL gets 0",
-			agent: &foremanv1alpha1.Agent{
-				Spec: foremanv1alpha1.AgentSpec{
-					Role: foremanv1alpha1.AgentRoleReviewer,
-					StuckLoopDetection: &foremanv1alpha1.StuckLoopDetectionSpec{
+			agent: &meithealv1alpha1.Agent{
+				Spec: meithealv1alpha1.AgentSpec{
+					Role: meithealv1alpha1.AgentRoleReviewer,
+					StuckLoopDetection: &meithealv1alpha1.StuckLoopDetectionSpec{
 						EditFreeTurnsLimit:    25,
 						RepeatedToolThreshold: 7,
 					},
@@ -1323,10 +1323,10 @@ func TestProgressConfigFromAgent_ReviewerOverridesEditFree(t *testing.T) {
 		},
 		{
 			name: "coder with explicit per-Agent config preserves all signals",
-			agent: &foremanv1alpha1.Agent{
-				Spec: foremanv1alpha1.AgentSpec{
-					Role: foremanv1alpha1.AgentRoleCoder,
-					StuckLoopDetection: &foremanv1alpha1.StuckLoopDetectionSpec{
+			agent: &meithealv1alpha1.Agent{
+				Spec: meithealv1alpha1.AgentSpec{
+					Role: meithealv1alpha1.AgentRoleCoder,
+					StuckLoopDetection: &meithealv1alpha1.StuckLoopDetectionSpec{
 						EditFreeTurnsLimit:    12,
 						RepeatedToolThreshold: 4,
 					},
@@ -1337,8 +1337,8 @@ func TestProgressConfigFromAgent_ReviewerOverridesEditFree(t *testing.T) {
 		},
 		{
 			name: "verifier (deterministic agent) keeps DefaultProgressConfig",
-			agent: &foremanv1alpha1.Agent{
-				Spec: foremanv1alpha1.AgentSpec{Role: foremanv1alpha1.AgentRoleVerifier},
+			agent: &meithealv1alpha1.Agent{
+				Spec: meithealv1alpha1.AgentSpec{Role: meithealv1alpha1.AgentRoleVerifier},
 			},
 			wantEditFree:   DefaultProgressConfig.EditFreeTurnsLimit,
 			wantRepeatedTC: DefaultProgressConfig.RepeatedToolThreshold,
@@ -1372,13 +1372,13 @@ func TestProgressConfigFromAgent_ReviewerOverridesEditFree(t *testing.T) {
 // case writes a non-empty, payload-surfacing message regardless of
 // whether Payload.Prompt is set.
 func TestBuildUserPrompt_ReviewerCaseProducesNonEmptyContent(t *testing.T) {
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  510,
-				Branch: "foreman/v04-validation-batch-rerun-7/issue-510",
+				Branch: "meitheal/v04-validation-batch-rerun-7/issue-510",
 			},
 		},
 	}
@@ -1390,7 +1390,7 @@ func TestBuildUserPrompt_ReviewerCaseProducesNonEmptyContent(t *testing.T) {
 		"reviewing the branch",
 		"defilantech/LLMKube",
 		"510",
-		"foreman/v04-validation-batch-rerun-7/issue-510",
+		"meitheal/v04-validation-batch-rerun-7/issue-510",
 		"Step 1 of your system prompt",
 	} {
 		if !strings.Contains(got, want) {
@@ -1896,8 +1896,8 @@ func TestIssueAskSemanticallyCovers_ShortClaim(t *testing.T) {
 
 func TestEnforceReviewerIssueAsk_VerifiedGoStands(t *testing.T) {
 	extra := map[string]any{"issueAskVerified": true}
-	got := enforceReviewerIssueAsk(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictGo, false, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerIssueAsk(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictGo, false, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("verified GO should stand; got %v", got)
 	}
 	if _, demoted := extra["verdictDemoted"]; demoted {
@@ -1907,8 +1907,8 @@ func TestEnforceReviewerIssueAsk_VerifiedGoStands(t *testing.T) {
 
 func TestEnforceReviewerIssueAsk_UnverifiedGoDemotedToNoGo(t *testing.T) {
 	extra := map[string]any{"issueAskVerified": false}
-	got := enforceReviewerIssueAsk(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictGo, true, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	got := enforceReviewerIssueAsk(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictGo, true, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Errorf("unverified GO must demote to NO-GO; got %v", got)
 	}
 	if v, _ := extra["verdictDemoted"].(bool); !v {
@@ -1918,7 +1918,7 @@ func TestEnforceReviewerIssueAsk_UnverifiedGoDemotedToNoGo(t *testing.T) {
 		t.Errorf("demotion must name this rail in verdictDemotedBy=%q; got %v",
 			railIssueAsk, extra["verdictDemotedBy"])
 	}
-	if extra["verdictClaimed"] != string(foremanv1alpha1.AgenticTaskVerdictGo) {
+	if extra["verdictClaimed"] != string(meithealv1alpha1.AgenticTaskVerdictGo) {
 		t.Errorf("verdictClaimed should archive the original GO; got %v", extra["verdictClaimed"])
 	}
 	if reason, _ := extra["demotionReason"].(string); reason == "" {
@@ -1928,8 +1928,8 @@ func TestEnforceReviewerIssueAsk_UnverifiedGoDemotedToNoGo(t *testing.T) {
 
 func TestEnforceReviewerIssueAsk_UnverifiedNoGoKeptButMarked(t *testing.T) {
 	extra := map[string]any{"issueAskVerified": false}
-	got := enforceReviewerIssueAsk(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, true, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	got := enforceReviewerIssueAsk(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, true, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Errorf("unverified NO-GO should stay NO-GO; got %v", got)
 	}
 	if v, _ := extra["verdictDemoted"].(bool); !v {
@@ -1944,7 +1944,7 @@ func TestEnforceReviewerIssueAsk_UnverifiedNoGoKeptButMarked(t *testing.T) {
 		t.Errorf("marker must name this rail in verdictDemotedBy=%q; got %v",
 			railIssueAsk, extra["verdictDemotedBy"])
 	}
-	if extra["verdictClaimed"] != string(foremanv1alpha1.AgenticTaskVerdictNoGo) {
+	if extra["verdictClaimed"] != string(meithealv1alpha1.AgenticTaskVerdictNoGo) {
 		t.Errorf("verdictClaimed should archive the original NO-GO; got %v", extra["verdictClaimed"])
 	}
 }
@@ -1954,7 +1954,7 @@ func TestEnforceReviewerIssueAsk_UnverifiedNoGoKeptButMarked(t *testing.T) {
 // builder (enforceReviewerIssueAsk stamps LoopResult.Terminal.Extra, and
 // modelDecidedResult wraps it into the Result the watcher stores in
 // AgenticTask.status.result), then asserts the JSON path the
-// controller's inertDemotion (internal/foreman/controller/
+// controller's inertDemotion (internal/controller/
 // workload_iteration.go, not imported here) reads.
 //
 // The bug this pins: modelDecidedResult nests the rails' WHOLE map one
@@ -1969,15 +1969,15 @@ func TestIssueAskDemotionLandsUnderModelExtra(t *testing.T) {
 	// approval the harness could not tie back to the fetched issue body.
 	terminalExtra := map[string]any{"issueAskVerified": false}
 	verdict := enforceReviewerIssueAsk(logr.Discard(), terminalExtra,
-		foremanv1alpha1.AgenticTaskVerdictGo, true, nil)
-	if verdict != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		meithealv1alpha1.AgenticTaskVerdictGo, true, nil)
+	if verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("precondition: rail must demote GO to NO-GO; got %v", verdict)
 	}
 
 	lr := &LoopResult{
 		Terminal: &ToolResult{
 			Terminal: true,
-			Verdict:  string(foremanv1alpha1.AgenticTaskVerdictGo),
+			Verdict:  string(meithealv1alpha1.AgenticTaskVerdictGo),
 			Summary:  "APPROVE: the change is minimal and well covered",
 			Extra:    terminalExtra,
 		},
@@ -2007,7 +2007,7 @@ func TestIssueAskDemotionLandsUnderModelExtra(t *testing.T) {
 		t.Errorf("extra.modelExtra.verdictDemotedBy = %v, want %q (the path the controller reads)",
 			envelope.Extra.ModelExtra["verdictDemotedBy"], railIssueAsk)
 	}
-	if envelope.Extra.ModelExtra["verdictClaimed"] != string(foremanv1alpha1.AgenticTaskVerdictGo) {
+	if envelope.Extra.ModelExtra["verdictClaimed"] != string(meithealv1alpha1.AgenticTaskVerdictGo) {
 		t.Errorf("extra.modelExtra.verdictClaimed = %v, want GO",
 			envelope.Extra.ModelExtra["verdictClaimed"])
 	}
@@ -2031,8 +2031,8 @@ func TestEnforceReviewerIssueAsk_AbsentFieldIsObserveOnly(t *testing.T) {
 	// to verify against (a harness-side gap, not model dishonesty);
 	// enforcement must not fire.
 	extra := map[string]any{"issueAsk": "some claim"}
-	got := enforceReviewerIssueAsk(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictGo, false, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerIssueAsk(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictGo, false, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("absent issueAskVerified must not demote; got %v", got)
 	}
 	if _, demoted := extra["verdictDemoted"]; demoted {
@@ -2041,8 +2041,8 @@ func TestEnforceReviewerIssueAsk_AbsentFieldIsObserveOnly(t *testing.T) {
 }
 
 func TestEnforceReviewerIssueAsk_NilExtraIsNoOp(t *testing.T) {
-	got := enforceReviewerIssueAsk(logr.Discard(), nil, foremanv1alpha1.AgenticTaskVerdictGo, false, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerIssueAsk(logr.Discard(), nil, meithealv1alpha1.AgenticTaskVerdictGo, false, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("nil extra must pass the verdict through; got %v", got)
 	}
 }
@@ -2054,14 +2054,14 @@ func TestEnforceReviewerIssueAsk_NilExtraIsNoOp(t *testing.T) {
 func TestEnforceReviewerIssueAsk_UnverifiedGoScopeVouchKeepsGo(t *testing.T) {
 	extra := map[string]any{"issueAskVerified": false}
 	got := enforceReviewerIssueAsk(logr.Discard(), extra,
-		foremanv1alpha1.AgenticTaskVerdictGo, false, []string{"internal/controller/model_controller.go"})
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+		meithealv1alpha1.AgenticTaskVerdictGo, false, []string{"internal/controller/model_controller.go"})
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("unverified GO with scope vouch must keep GO; got %v", got)
 	}
 	if v, _ := extra["verdictDemoted"].(bool); !v {
 		t.Errorf("demotion flag must still be set for observability; got %v", extra["verdictDemoted"])
 	}
-	if extra["verdictClaimed"] != string(foremanv1alpha1.AgenticTaskVerdictGo) {
+	if extra["verdictClaimed"] != string(meithealv1alpha1.AgenticTaskVerdictGo) {
 		t.Errorf("verdictClaimed should archive the original GO; got %v", extra["verdictClaimed"])
 	}
 	if v, _ := extra["scopeVouched"].(bool); !v {
@@ -2078,14 +2078,14 @@ func TestEnforceReviewerIssueAsk_UnverifiedGoScopeVouchKeepsGo(t *testing.T) {
 func TestEnforceReviewerIssueAsk_UnverifiedGoNoScopeVouchDemotes(t *testing.T) {
 	extra := map[string]any{"issueAskVerified": false}
 	got := enforceReviewerIssueAsk(logr.Discard(), extra,
-		foremanv1alpha1.AgenticTaskVerdictGo, true, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		meithealv1alpha1.AgenticTaskVerdictGo, true, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Errorf("unverified GO with scope drift must demote to NO-GO; got %v", got)
 	}
 	if v, _ := extra["verdictDemoted"].(bool); !v {
 		t.Errorf("demotion must set verdictDemoted=true; got %v", extra["verdictDemoted"])
 	}
-	if extra["verdictClaimed"] != string(foremanv1alpha1.AgenticTaskVerdictGo) {
+	if extra["verdictClaimed"] != string(meithealv1alpha1.AgenticTaskVerdictGo) {
 		t.Errorf("verdictClaimed should archive the original GO; got %v", extra["verdictClaimed"])
 	}
 	if reason, _ := extra["demotionReason"].(string); reason == "" {
@@ -2099,8 +2099,8 @@ func TestEnforceReviewerIssueAsk_UnverifiedGoNoScopeVouchDemotes(t *testing.T) {
 func TestEnforceReviewerIssueAsk_UnverifiedGoNoRefsNoVouchDemotes(t *testing.T) {
 	extra := map[string]any{"issueAskVerified": false}
 	got := enforceReviewerIssueAsk(logr.Discard(), extra,
-		foremanv1alpha1.AgenticTaskVerdictGo, false, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		meithealv1alpha1.AgenticTaskVerdictGo, false, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Errorf("unverified GO with no scope refs must demote to NO-GO; got %v", got)
 	}
 	if v, _ := extra["verdictDemoted"].(bool); !v {
@@ -2118,86 +2118,86 @@ func TestEnforceReviewerUnverifiedSummary(t *testing.T) {
 	cases := []struct {
 		name    string
 		summary string
-		verdict foremanv1alpha1.AgenticTaskVerdict
-		want    foremanv1alpha1.AgenticTaskVerdict
+		verdict meithealv1alpha1.AgenticTaskVerdict
+		want    meithealv1alpha1.AgenticTaskVerdict
 	}{
 		{
 			name:    "windowstead reproduction: cannot verify",
 			summary: "Tests fail due to missing godot runtime in environment; cannot verify goal reward or progression logic.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "could not verify",
 			summary: "The change looks correct but I could not verify it without the service running.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "unable to verify",
 			summary: "Reviewed statically; unable to verify runtime behavior in this environment.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "contraction can't, straight apostrophe",
 			summary: "Reviewed statically; can't verify the migration path without a database.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "contraction can't, curly apostrophe",
 			summary: "Reviewed statically; can’t verify the migration path without a database.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "contraction couldn't, straight apostrophe",
 			summary: "The harness is missing, so we couldn't verify the fix in this environment.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "contraction couldn't, curly apostrophe",
 			summary: "The harness is missing, so we couldn’t verify the fix in this environment.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "spaced can not",
 			summary: "No runtime is available here, so I can not verify the behavior.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "was not able to",
 			summary: "I was not able to verify the fix before approving; the harness was unavailable.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "case-insensitive",
 			summary: "APPROVE. Could NOT VERIFY the migration path; no database available.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "whitespace-tolerant across wrapped lines",
 			summary: "The harness is missing, so we cannot\nverify the fix here.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "normal GO stays GO",
 			summary: "APPROVE: ran go test ./... and all specs pass; the change is minimal and well covered.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictGo,
 		},
 		{
 			name:    "affirmative verification language is not a match",
 			summary: "The new guard verifies the token before use; tests confirm it rejects expired tokens.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictGo,
 		},
 		{
 			// The tradeoff the enforcer's docstring documents: phrase
@@ -2208,14 +2208,14 @@ func TestEnforceReviewerUnverifiedSummary(t *testing.T) {
 			// are the common case.
 			name:    "object-subject honest GO is the accepted false positive",
 			summary: "The new signature check is correct: a client without the key cannot verify a forged signature, and the tests prove it.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 		{
 			name:    "non-GO with the phrase passes through unmarked",
 			summary: "REJECT: cannot verify anything in this broken environment and the diff is wrong.",
-			verdict: foremanv1alpha1.AgenticTaskVerdictNoGo,
-			want:    foremanv1alpha1.AgenticTaskVerdictNoGo,
+			verdict: meithealv1alpha1.AgenticTaskVerdictNoGo,
+			want:    meithealv1alpha1.AgenticTaskVerdictNoGo,
 		},
 	}
 	for _, tc := range cases {
@@ -2225,8 +2225,8 @@ func TestEnforceReviewerUnverifiedSummary(t *testing.T) {
 			if got != tc.want {
 				t.Fatalf("verdict = %v, want %v", got, tc.want)
 			}
-			demoted := tc.verdict == foremanv1alpha1.AgenticTaskVerdictGo &&
-				tc.want == foremanv1alpha1.AgenticTaskVerdictNoGo
+			demoted := tc.verdict == meithealv1alpha1.AgenticTaskVerdictGo &&
+				tc.want == meithealv1alpha1.AgenticTaskVerdictNoGo
 			v, marked := extra["verdictDemoted"].(bool)
 			if !demoted {
 				if marked {
@@ -2240,7 +2240,7 @@ func TestEnforceReviewerUnverifiedSummary(t *testing.T) {
 			if extra["verdictDemotedBy"] != railUnverifiedSummary {
 				t.Errorf("verdictDemotedBy = %v, want %q", extra["verdictDemotedBy"], railUnverifiedSummary)
 			}
-			if extra["verdictClaimed"] != string(foremanv1alpha1.AgenticTaskVerdictGo) {
+			if extra["verdictClaimed"] != string(meithealv1alpha1.AgenticTaskVerdictGo) {
 				t.Errorf("verdictClaimed should archive the original GO; got %v", extra["verdictClaimed"])
 			}
 			if reason, _ := extra["demotionReason"].(string); reason == "" {
@@ -2258,8 +2258,8 @@ func TestEnforceReviewerUnverifiedSummary_NilExtraIsNoOp(t *testing.T) {
 	// the audit trail, so the rails pass the verdict through with only a
 	// log line — the enforceReviewerIssueAsk convention.
 	got := enforceReviewerUnverifiedSummary(logr.Discard(), nil,
-		"cannot verify anything", foremanv1alpha1.AgenticTaskVerdictGo)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+		"cannot verify anything", meithealv1alpha1.AgenticTaskVerdictGo)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("nil extra must pass the verdict through; got %v", got)
 	}
 }
@@ -2269,15 +2269,15 @@ func TestEnforceReviewerUnverifiedSummary_PreservesFirstWriterVerdictClaimed(t *
 	// verdictClaimed; this rail must not overwrite it (#1678 first-writer-
 	// wins), while its own rail name still records who made the rewrite.
 	extra := map[string]any{
-		"verdictClaimed": string(foremanv1alpha1.AgenticTaskVerdictGo),
+		"verdictClaimed": string(meithealv1alpha1.AgenticTaskVerdictGo),
 	}
 	got := enforceReviewerUnverifiedSummary(logr.Discard(), extra,
 		"Tests could not verify the fix; no runtime available.",
-		foremanv1alpha1.AgenticTaskVerdictGo)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		meithealv1alpha1.AgenticTaskVerdictGo)
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("matching GO must demote to NO-GO; got %v", got)
 	}
-	if extra["verdictClaimed"] != string(foremanv1alpha1.AgenticTaskVerdictGo) {
+	if extra["verdictClaimed"] != string(meithealv1alpha1.AgenticTaskVerdictGo) {
 		t.Errorf("verdictClaimed must keep the first writer's archive; got %v", extra["verdictClaimed"])
 	}
 	if extra["verdictDemotedBy"] != railUnverifiedSummary {
@@ -2299,42 +2299,42 @@ func TestEnforceReviewerUnverifiedSummary_PreservesFirstWriterVerdictClaimed(t *
 func TestNormalizeModelVerdict_ErrorMapsToIncompleteWithModelReportedError(t *testing.T) {
 	cases := []struct {
 		raw         string
-		wantVerdict foremanv1alpha1.AgenticTaskVerdict
-		wantReason  foremanv1alpha1.AgenticTaskFailureReason
+		wantVerdict meithealv1alpha1.AgenticTaskVerdict
+		wantReason  meithealv1alpha1.AgenticTaskFailureReason
 	}{
 		{
 			raw:         "ERROR",
-			wantVerdict: foremanv1alpha1.AgenticTaskVerdictIncomplete,
-			wantReason:  foremanv1alpha1.FailureModelReportedError,
+			wantVerdict: meithealv1alpha1.AgenticTaskVerdictIncomplete,
+			wantReason:  meithealv1alpha1.FailureModelReportedError,
 		},
 		{
 			raw:         "GO",
-			wantVerdict: foremanv1alpha1.AgenticTaskVerdictGo,
+			wantVerdict: meithealv1alpha1.AgenticTaskVerdictGo,
 			wantReason:  "",
 		},
 		{
 			raw:         "NO-GO",
-			wantVerdict: foremanv1alpha1.AgenticTaskVerdictNoGo,
+			wantVerdict: meithealv1alpha1.AgenticTaskVerdictNoGo,
 			wantReason:  "",
 		},
 		{
 			raw:         "INCOMPLETE",
-			wantVerdict: foremanv1alpha1.AgenticTaskVerdictIncomplete,
+			wantVerdict: meithealv1alpha1.AgenticTaskVerdictIncomplete,
 			wantReason:  "",
 		},
 		{
 			raw:         "GATE-PASS",
-			wantVerdict: foremanv1alpha1.AgenticTaskVerdictGatePass,
+			wantVerdict: meithealv1alpha1.AgenticTaskVerdictGatePass,
 			wantReason:  "",
 		},
 		{
 			raw:         "GATE-FAIL",
-			wantVerdict: foremanv1alpha1.AgenticTaskVerdictGateFail,
+			wantVerdict: meithealv1alpha1.AgenticTaskVerdictGateFail,
 			wantReason:  "",
 		},
 		{
 			raw:         "GATE-ERROR",
-			wantVerdict: foremanv1alpha1.AgenticTaskVerdictGateError,
+			wantVerdict: meithealv1alpha1.AgenticTaskVerdictGateError,
 			wantReason:  "",
 		},
 	}
@@ -2359,15 +2359,15 @@ func TestNormalizeModelVerdict_ErrorMapsToIncompleteWithModelReportedError(t *te
 func TestCoderJobResultToResult_EmbeddedFailureReasonPreserved(t *testing.T) {
 	start := time.Now().Add(-time.Second)
 	cjr := CoderJobResult{
-		Verdict:       string(foremanv1alpha1.AgenticTaskVerdictIncomplete),
+		Verdict:       string(meithealv1alpha1.AgenticTaskVerdictIncomplete),
 		Summary:       "model reported it could not complete the task",
-		FailureReason: string(foremanv1alpha1.FailureModelReportedError),
+		FailureReason: string(meithealv1alpha1.FailureModelReportedError),
 	}
 	r := coderJobResultToResult("issue-fix", start, cjr)
-	if r.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if r.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Errorf("verdict: want INCOMPLETE got %s", r.Verdict)
 	}
-	if r.FailureReason != foremanv1alpha1.FailureModelReportedError {
+	if r.FailureReason != meithealv1alpha1.FailureModelReportedError {
 		t.Errorf("failureReason: want ModelReportedError got %s", r.FailureReason)
 	}
 }
@@ -2379,14 +2379,14 @@ func TestCoderJobResultToResult_EmbeddedFailureReasonPreserved(t *testing.T) {
 func TestCoderJobResultToResult_NoEmbeddedReasonFallsBackToMaxTurns(t *testing.T) {
 	start := time.Now().Add(-time.Second)
 	cjr := CoderJobResult{
-		Verdict: string(foremanv1alpha1.AgenticTaskVerdictIncomplete),
+		Verdict: string(meithealv1alpha1.AgenticTaskVerdictIncomplete),
 		Summary: "hit max turns without a verdict",
 	}
 	r := coderJobResultToResult("issue-fix", start, cjr)
-	if r.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if r.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Errorf("verdict: want INCOMPLETE got %s", r.Verdict)
 	}
-	if r.FailureReason != foremanv1alpha1.FailureMaxTurnsExhausted {
+	if r.FailureReason != meithealv1alpha1.FailureMaxTurnsExhausted {
 		t.Errorf("failureReason: want MaxTurnsExhausted got %s", r.FailureReason)
 	}
 }
@@ -2592,7 +2592,7 @@ func TestAttachGateAdvisories_OmitsWhenEmpty(t *testing.T) {
 }
 
 func TestRenderGateAdvisories_RendersWhenPresent(t *testing.T) {
-	advs := []foremanv1alpha1.GateAdvisory{
+	advs := []meithealv1alpha1.GateAdvisory{
 		{Check: "grounding-breadth", Detail: "cites dcgm_gpu_utilization (unknown)"},
 		{Check: "scope-overlap", Detail: "diff touches files not mentioned in the issue"},
 	}
@@ -2611,7 +2611,7 @@ func TestRenderGateAdvisories_OmittedWhenEmpty(t *testing.T) {
 	if got := renderGateAdvisories(nil); got != "" {
 		t.Errorf("nil advisories: want empty string, got %q", got)
 	}
-	if got := renderGateAdvisories([]foremanv1alpha1.GateAdvisory{}); got != "" {
+	if got := renderGateAdvisories([]meithealv1alpha1.GateAdvisory{}); got != "" {
 		t.Errorf("empty advisories: want empty string, got %q", got)
 	}
 }
@@ -2621,10 +2621,10 @@ func TestRenderGateAdvisories_OmittedWhenEmpty(t *testing.T) {
 // issue body, so an escalation-tier diagnosis hint coexists with the issue
 // context rather than replacing it.
 func TestBuildUserPrompt_IssueFix_RendersPromptPrefix(t *testing.T) {
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:         "defilantech/LLMKube",
 				Issue:        944,
 				Prompt:       "The issue body.",
@@ -2652,10 +2652,10 @@ func TestBuildUserPrompt_IssueFix_ContainsDateLine(t *testing.T) {
 	nowFunc = func() time.Time { return fixed }
 	defer func() { nowFunc = orig }()
 
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:  "defilantech/LLMKube",
 				Issue: 1202,
 			},
@@ -2674,16 +2674,16 @@ func TestBuildUserPrompt_IssueFix_ContainsDateLine(t *testing.T) {
 // wired into the payload by the reconciler are included in the reviewer's
 // first user message so the model is prompted to confirm or dismiss each one.
 func TestBuildUserPrompt_ReviewerAppendsAdvisories(t *testing.T) {
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  510,
-				Branch: "foreman/wl/issue-510",
-				GateAdvisories: []foremanv1alpha1.GateAdvisory{
+				Branch: "meitheal/wl/issue-510",
+				GateAdvisories: []meithealv1alpha1.GateAdvisory{
 					{Check: "grounding-breadth", Detail: "cites dcgm_gpu_utilization (unknown)"},
-					{Check: "scope-overlap", Detail: "diff touches api/foreman/v1alpha1/types.go not in the issue"},
+					{Check: "scope-overlap", Detail: "diff touches api/v1alpha1/types.go not in the issue"},
 				},
 			},
 		},
@@ -2706,13 +2706,13 @@ func TestBuildUserPrompt_ReviewerAppendsAdvisories(t *testing.T) {
 // advisory block is silently absent when the payload carries no advisories,
 // so the prompt stays clean for tasks where the coder gate found nothing.
 func TestBuildUserPrompt_ReviewerOmitsAdvisoryBlockWhenNone(t *testing.T) {
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  510,
-				Branch: "foreman/wl/issue-510",
+				Branch: "meitheal/wl/issue-510",
 			},
 		},
 	}
@@ -2731,12 +2731,12 @@ func TestBuildUserPrompt_ReviewerOmitsAdvisoryBlockWhenNone(t *testing.T) {
 // reviewer on a non-existent "issue #0": the branch under review is the anchor
 // instead (#1761), matching the #1530 guards on the two sibling call sites.
 func TestBuildUserPrompt_ReviewerZeroIssueOmitsIssue(t *testing.T) {
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
-				Branch: "foreman/wl/no-issue-review",
+				Branch: "meitheal/wl/no-issue-review",
 			},
 		},
 	}
@@ -2747,7 +2747,7 @@ func TestBuildUserPrompt_ReviewerZeroIssueOmitsIssue(t *testing.T) {
 	if strings.Contains(got, "- issue:") {
 		t.Errorf("zero-issue reviewer prompt must omit the issue line entirely; got:\n%s", got)
 	}
-	if !strings.Contains(got, "reviewing the branch foreman/wl/no-issue-review of defilantech/LLMKube") {
+	if !strings.Contains(got, "reviewing the branch meitheal/wl/no-issue-review of defilantech/LLMKube") {
 		t.Errorf("zero-issue reviewer prompt must name the branch under review; got:\n%s", got)
 	}
 }
@@ -2755,13 +2755,13 @@ func TestBuildUserPrompt_ReviewerZeroIssueOmitsIssue(t *testing.T) {
 // TestBuildUserPrompt_ReviewerPositiveIssueKeepsReferences verifies the guard
 // leaves the issue-anchored form untouched when the payload carries an issue.
 func TestBuildUserPrompt_ReviewerPositiveIssueKeepsReferences(t *testing.T) {
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  510,
-				Branch: "foreman/wl/issue-510",
+				Branch: "meitheal/wl/issue-510",
 			},
 		},
 	}
@@ -2769,7 +2769,7 @@ func TestBuildUserPrompt_ReviewerPositiveIssueKeepsReferences(t *testing.T) {
 	for _, want := range []string{
 		"reviewing the branch the coder produced for issue #510 of defilantech/LLMKube",
 		"- issue: 510",
-		"- branch: foreman/wl/issue-510",
+		"- branch: meitheal/wl/issue-510",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("reviewer prompt with an issue missing %q in:\n%s", want, got)
@@ -2805,14 +2805,14 @@ func TestFetchIssueBodyIfNeeded_AppendsIssueOnRevisionTask(t *testing.T) {
 		Labels: []string{"bug"},
 	}}
 	const feedback = "The reviewer rejected your previous attempt at issue #641 (verdict NO-GO)."
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:             "defilantech/LLMKube",
 				Issue:            641,
-				Branch:           "foreman/wl/issue-641",
-				ReviseFromBranch: "foreman/wl/issue-641",
+				Branch:           "meitheal/wl/issue-641",
+				ReviseFromBranch: "meitheal/wl/issue-641",
 				Prompt:           feedback,
 			},
 		},
@@ -2848,10 +2848,10 @@ func TestFetchIssueBodyIfNeeded_AppendsIssueOnRevisionTask(t *testing.T) {
 func TestFetchIssueBodyIfNeeded_NoIssueNumberIsNoOp(t *testing.T) {
 	fetcher := &stubIssueFetcher{issue: &githubissue.Issue{Number: 1, Title: "unused"}}
 	const prompt = "hand-authored task prompt with no issue reference"
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Prompt: prompt,
 			},
@@ -2875,10 +2875,10 @@ func TestFetchIssueBodyIfNeeded_NoIssueNumberIsNoOp(t *testing.T) {
 func TestFetchIssueBodyIfNeeded_ComposedPromptWithoutRevisionUntouched(t *testing.T) {
 	fetcher := &stubIssueFetcher{issue: &githubissue.Issue{Number: 641, Title: "unused"}}
 	const prompt = "bridge-composed prompt that already embeds the issue text"
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  641,
 				Prompt: prompt,
@@ -2981,10 +2981,10 @@ func TestReviewerDiffBase_ResolvesUpstreamNotStaleForkMain(t *testing.T) {
 
 	// reviewerDiffBase resolves the fresh upstream base instead of local main.
 	e := &NativeAgentLoopExecutor{UpstreamURLForRepo: func(string) string { return bare }}
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind:    foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", BaseBranch: "main"},
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind:    meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", BaseBranch: "main"},
 		},
 	}
 	base := e.reviewerDiffBase(context.Background(), logr.Discard(), task, fork)
@@ -3002,11 +3002,11 @@ func TestReviewerDiffBase_ResolvesUpstreamNotStaleForkMain(t *testing.T) {
 	}
 }
 
-func revisionTask(branch string) *foremanv1alpha1.AgenticTask {
-	return &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+func revisionTask(branch string) *meithealv1alpha1.AgenticTask {
+	return &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:             "defilantech/LLMKube",
 				Issue:            641,
 				Branch:           branch,
@@ -3014,7 +3014,7 @@ func revisionTask(branch string) *foremanv1alpha1.AgenticTask {
 				// The in-review revision path restores the prior attempt and
 				// rebases it onto the current base (#1029). Under the default
 				// reset strategy the restore is skipped entirely.
-				BranchStrategy: foremanv1alpha1.BranchStrategyRebase,
+				BranchStrategy: meithealv1alpha1.BranchStrategyRebase,
 			},
 		},
 	}
@@ -3030,7 +3030,7 @@ func TestSetupTaskBranch_RestoresPriorAttempt(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bare, _ := seededRemote(t, dir)
-	const branch = "foreman/wl/issue-641"
+	const branch = "meitheal/wl/issue-641"
 
 	// Prior attempt pushed to the remote.
 	prior := filepath.Join(dir, "prior")
@@ -3077,7 +3077,7 @@ func TestSetupTaskBranch_MissingRefFailsLoud(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bare, _ := seededRemote(t, dir)
-	const branch = "foreman/wl/issue-641"
+	const branch = "meitheal/wl/issue-641"
 
 	ws := filepath.Join(dir, "ws")
 	gitIn(t, "", "clone", bare, ws)
@@ -3103,7 +3103,7 @@ func TestSetupTaskBranch_ResetSkipsPriorAttempt(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bare, mainSHA := seededRemote(t, dir)
-	const branch = "foreman/wl/issue-641"
+	const branch = "meitheal/wl/issue-641"
 
 	// A prior attempt exists on the remote — it WOULD be restored under rebase.
 	prior := filepath.Join(dir, "prior")
@@ -3121,7 +3121,7 @@ func TestSetupTaskBranch_ResetSkipsPriorAttempt(t *testing.T) {
 
 	// reset strategy despite reviseFromBranch being set.
 	task := revisionTask(branch)
-	task.Spec.Payload.BranchStrategy = foremanv1alpha1.BranchStrategyReset
+	task.Spec.Payload.BranchStrategy = meithealv1alpha1.BranchStrategyReset
 
 	err := setupTaskBranch(context.Background(), task, ws, branch, "main",
 		func(string) string { return bare }, nil, logr.Discard())
@@ -3150,7 +3150,7 @@ func TestSetupTaskBranch_ReviseFromBranchDefaultsToRebase(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bare, _ := seededRemote(t, dir)
-	const branch = "foreman/wl/issue-641"
+	const branch = "meitheal/wl/issue-641"
 
 	// Prior attempt pushed to the remote.
 	prior := filepath.Join(dir, "prior")
@@ -3168,10 +3168,10 @@ func TestSetupTaskBranch_ReviseFromBranchDefaultsToRebase(t *testing.T) {
 	gitIn(t, "", "clone", bare, ws)
 
 	// reviseFromBranch set, branchStrategy left empty — the #1047 footgun.
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:             "defilantech/LLMKube",
 				Branch:           branch,
 				ReviseFromBranch: branch,
@@ -3342,7 +3342,7 @@ func TestMakeCoderGateVerifier_GenericGate_ClaimEvidenceMergedIntoFeedback(t *te
 		return "", nil
 	}
 
-	profile := &foremanv1alpha1.GateProfile{Language: foremanv1alpha1.GateLanguagePython}
+	profile := &meithealv1alpha1.GateProfile{Language: meithealv1alpha1.GateLanguagePython}
 	verifier := makeCoderGateVerifier("/ws", "", fakeEvidenceBaseSHA, logr.Discard(), profile, nil)
 
 	terminal := &ToolResult{Verdict: "GO", Extra: map[string]any{}}
@@ -3379,7 +3379,7 @@ func TestMakeCoderGateVerifier_GenericGate_CleanPassesWithNoClaims(t *testing.T)
 		return "", nil // sh -c commands pass; empty git diff, no claims
 	}
 
-	profile := &foremanv1alpha1.GateProfile{Language: foremanv1alpha1.GateLanguagePython}
+	profile := &meithealv1alpha1.GateProfile{Language: meithealv1alpha1.GateLanguagePython}
 	verifier := makeCoderGateVerifier("/ws", "", fakeEvidenceBaseSHA, logr.Discard(), profile, nil)
 
 	terminal := &ToolResult{Verdict: "GO", Extra: map[string]any{}}
@@ -3411,8 +3411,8 @@ func TestMaxTokensPerTurnForAgent(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			agent := &foremanv1alpha1.Agent{
-				Spec: foremanv1alpha1.AgentSpec{MaxOutputTokens: tc.spec},
+			agent := &meithealv1alpha1.Agent{
+				Spec: meithealv1alpha1.AgentSpec{MaxOutputTokens: tc.spec},
 			}
 			if got := maxTokensPerTurnForAgent(agent); got != tc.want {
 				t.Errorf("maxTokensPerTurnForAgent=%d want %d", got, tc.want)
@@ -3425,11 +3425,11 @@ func TestMaxTokensPerTurnForAgent(t *testing.T) {
 // coder already pushed, and BaseBranch is the base the change is measured
 // against. No ReviseFromBranch, because a reviewer is not restoring a prior
 // attempt; it is reading one that already exists on the remote.
-func reviewTask(branch string) *foremanv1alpha1.AgenticTask {
-	return &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+func reviewTask(branch string) *meithealv1alpha1.AgenticTask {
+	return &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:       "defilantech/LLMKube",
 				Issue:      641,
 				Branch:     branch,
@@ -3458,7 +3458,7 @@ func TestSetupTaskBranch_ReviewStartsAtCoderCommitNotBase(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bare, mainSHA := seededRemote(t, dir)
-	const branch = "foreman/wl/issue-641"
+	const branch = "meitheal/wl/issue-641"
 
 	// The coder's branch, already pushed.
 	coder := filepath.Join(dir, "coder")
@@ -3500,7 +3500,7 @@ func TestSetupTaskBranch_IssueFixStillCutsFromBase(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bare, mainSHA := seededRemote(t, dir)
-	const branch = "foreman/wl/issue-900"
+	const branch = "meitheal/wl/issue-900"
 
 	// A stale branch of the same name exists on the remote. An issue-fix must
 	// ignore it and start from base.
@@ -3517,10 +3517,10 @@ func TestSetupTaskBranch_IssueFixStillCutsFromBase(t *testing.T) {
 	ws := filepath.Join(dir, "coder-ws")
 	gitIn(t, "", "clone", bare, ws)
 
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo: "defilantech/LLMKube", Issue: 900, BaseBranch: "main",
 			},
 		},
@@ -3552,7 +3552,7 @@ func TestSetupTaskBranch_ReviewMissingBranchFailsLoud(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bare, _ := seededRemote(t, dir)
-	const branch = "foreman/wl/issue-641"
+	const branch = "meitheal/wl/issue-641"
 
 	ws := filepath.Join(dir, "review-ws")
 	gitIn(t, "", "clone", bare, ws)
@@ -3582,7 +3582,7 @@ func TestSetupTaskBranch_VerifyStartsAtCoderCommitNotBase(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bare, _ := seededRemote(t, dir)
-	const branch = "foreman/wl/issue-641"
+	const branch = "meitheal/wl/issue-641"
 
 	coder := filepath.Join(dir, "coder")
 	gitIn(t, "", "clone", bare, coder)
@@ -3599,7 +3599,7 @@ func TestSetupTaskBranch_VerifyStartsAtCoderCommitNotBase(t *testing.T) {
 	gitIn(t, "", "clone", bare, ws)
 
 	task := reviewTask(branch)
-	task.Spec.Kind = foremanv1alpha1.AgenticTaskKindVerify
+	task.Spec.Kind = meithealv1alpha1.AgenticTaskKindVerify
 
 	if err := setupTaskBranch(context.Background(), task, ws, branch, "main",
 		func(string) string { return bare }, nil, logr.Discard()); err != nil {
@@ -3622,7 +3622,7 @@ func TestSetupTaskBranch_IssueFixEmptyRepoRefusesStaleForkHead(t *testing.T) {
 	}
 	dir := t.TempDir()
 	seededRemote(t, dir) // upstream main at A
-	const branch = "foreman/wl/issue-641"
+	const branch = "meitheal/wl/issue-641"
 
 	// A STALE fork clone taken before upstream advanced: its local "main"
 	// is the pre-advance tip — exactly what the old fallback would base on.
@@ -3645,11 +3645,11 @@ func TestSetupTaskBranch_IssueFixEmptyRepoRefusesStaleForkHead(t *testing.T) {
 	}
 
 	// Empty Repo: the #1625 hazard. The default resolver yields "" for it.
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "code-641"},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind:    foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{Issue: 641},
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind:    meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{Issue: 641},
 		},
 	}
 	err := setupTaskBranch(context.Background(), task, ws, branch, "main",
@@ -3687,16 +3687,16 @@ func TestSetupTaskBranch_FreeformEmptyRepoKeepsForkHeadFallback(t *testing.T) {
 	}
 	dir := t.TempDir()
 	_, mainSHA := seededRemote(t, dir)
-	const branch = "foreman/freeform"
+	const branch = "meitheal/freeform"
 
 	ws := filepath.Join(dir, "ws")
 	gitIn(t, "", "clone", filepath.Join(dir, "origin.git"), ws)
 
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "freeform-1"},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind:    foremanv1alpha1.AgenticTaskKindFreeform,
-			Payload: foremanv1alpha1.AgenticTaskPayload{Prompt: "just do a thing"},
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind:    meithealv1alpha1.AgenticTaskKindFreeform,
+			Payload: meithealv1alpha1.AgenticTaskPayload{Prompt: "just do a thing"},
 		},
 	}
 	if err := setupTaskBranch(context.Background(), task, ws, branch, "main",
@@ -3720,7 +3720,7 @@ func TestSetupTaskBranch_IssueFixValidRepoBasesOnUpstreamTip(t *testing.T) {
 	}
 	dir := t.TempDir()
 	_, forkSHA := seededRemote(t, dir)
-	const branch = "foreman/wl/issue-641"
+	const branch = "meitheal/wl/issue-641"
 
 	ws := filepath.Join(dir, "fork-ws")
 	gitIn(t, "", "clone", filepath.Join(dir, "origin.git"), ws)
@@ -3741,11 +3741,11 @@ func TestSetupTaskBranch_IssueFixValidRepoBasesOnUpstreamTip(t *testing.T) {
 
 	// A valid slug resolves an upstream URL; the branch must land on the
 	// upstream tip, not the stale fork HEAD.
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "code-641"},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind:    foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 641},
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind:    meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 641},
 		},
 	}
 	if err := setupTaskBranch(context.Background(), task, ws, branch, "main",
@@ -3841,7 +3841,7 @@ func TestOpenPRsAsDraft(t *testing.T) {
 	boolp := func(b bool) *bool { return &b }
 	cases := []struct {
 		name  string
-		agent *foremanv1alpha1.Agent
+		agent *meithealv1alpha1.Agent
 		want  bool
 	}{
 		{
@@ -3851,13 +3851,13 @@ func TestOpenPRsAsDraft(t *testing.T) {
 		},
 		{
 			name:  "unset field defaults to draft (preserves #1703)",
-			agent: &foremanv1alpha1.Agent{},
+			agent: &meithealv1alpha1.Agent{},
 			want:  true,
 		},
 		{
 			name: "explicit true opens a draft",
-			agent: &foremanv1alpha1.Agent{
-				Spec: foremanv1alpha1.AgentSpec{OpenPullRequestsAsDraft: boolp(true)},
+			agent: &meithealv1alpha1.Agent{
+				Spec: meithealv1alpha1.AgentSpec{OpenPullRequestsAsDraft: boolp(true)},
 			},
 			want: true,
 		},
@@ -3865,8 +3865,8 @@ func TestOpenPRsAsDraft(t *testing.T) {
 			// The reported case: an unattended loop whose reviewer workflow
 			// skips drafts needs ready-for-review PRs.
 			name: "explicit false opens ready for review",
-			agent: &foremanv1alpha1.Agent{
-				Spec: foremanv1alpha1.AgentSpec{OpenPullRequestsAsDraft: boolp(false)},
+			agent: &meithealv1alpha1.Agent{
+				Spec: meithealv1alpha1.AgentSpec{OpenPullRequestsAsDraft: boolp(false)},
 			},
 			want: false,
 		},

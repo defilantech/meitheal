@@ -19,14 +19,14 @@ COPY pkg/ pkg/
 
 # Static build so the resulting binary runs on distroless-static.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w" -o foreman-operator ./cmd/foreman-operator
+    go build -trimpath -ldflags="-s -w" -o meitheal-operator ./cmd/meitheal-operator
 
 # Runtime stage: distroless static, non-root, no shell.
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
-COPY --from=builder /workspace/foreman-operator /foreman-operator
+COPY --from=builder /workspace/meitheal-operator /meitheal-operator
 
 USER 65532:65532
 
-ENTRYPOINT ["/foreman-operator"]
+ENTRYPOINT ["/meitheal-operator"]

@@ -36,9 +36,9 @@ const (
 	// apart from a correct one when the two happen to agree.
 	driveWorkload = "wl-test"
 	// What preflight probes, before any Workload exists.
-	drivePlannedBranch = "foreman/wl-1602/issue-1602"
+	drivePlannedBranch = "meitheal/wl-1602/issue-1602"
 	// What every stage after dispatch acts on.
-	driveDispatchedBranch = "foreman/wl-test/issue-1602"
+	driveDispatchedBranch = "meitheal/wl-test/issue-1602"
 	// Realistic gate output: multi-line, with runs of two spaces. Nothing here
 	// asserts on it through the rendered table, whose column splitter treats
 	// two spaces as a break.
@@ -369,7 +369,7 @@ func TestDriveItem_TakesTheBranchFromTheWorkloadDispatchCreated(t *testing.T) {
 	if _, err := driveItemUnderTest(context.Background(), e, t.TempDir()); err != nil {
 		t.Fatalf("DriveItem: %v", err)
 	}
-	const want = "foreman/coder-1602-retry-7/issue-1602"
+	const want = "meitheal/coder-1602-retry-7/issue-1602"
 	if got := e.calls["verify"].branch; got != want {
 		t.Errorf("Verify branch = %q, want %q", got, want)
 	}
@@ -382,7 +382,7 @@ func TestDriveItem_TakesTheBranchFromTheWorkloadDispatchCreated(t *testing.T) {
 
 // Dispatch returning ("", nil) is the one input the "trust the name Dispatch
 // returns" contract cannot absorb. Unguarded it is silent: the branch becomes
-// "foreman//issue-1602", watch and verify act on nothing, and the item parks a
+// "meitheal//issue-1602", watch and verify act on nothing, and the item parks a
 // decision whose Workload field, the one thing telling a human which run to go
 // look at, is blank.
 func TestDriveItem_RefusesAnEmptyWorkloadNameFromDispatch(t *testing.T) {

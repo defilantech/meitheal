@@ -2,18 +2,18 @@
 {{- /*
 Compute the serving cert + CA bundle ONCE so the Secret and the
 ValidatingWebhookConfiguration below are guaranteed to use matching
-material. foreman.webhook.certs reuses the existing Secret on upgrade
+material. meitheal.webhook.certs reuses the existing Secret on upgrade
 (lookup-reuse), so the cert stays stable and the injected caBundle never
 drifts from the served cert.
 */}}
-{{- $certs := include "foreman.webhook.certs" . | fromYaml }}
+{{- $certs := include "meitheal.webhook.certs" . | fromYaml }}
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ include "foreman.webhook.secretName" . }}
-  namespace: {{ include "foreman.namespace" . }}
+  name: {{ include "meitheal.webhook.secretName" . }}
+  namespace: {{ include "meitheal.namespace" . }}
   labels:
-    {{- include "foreman.operator.labels" . | nindent 4 }}
+    {{- include "meitheal.operator.labels" . | nindent 4 }}
 type: kubernetes.io/tls
 data:
   tls.crt: {{ $certs.cert }}
@@ -23,13 +23,13 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "foreman.webhook.serviceName" . }}
-  namespace: {{ include "foreman.namespace" . }}
+  name: {{ include "meitheal.webhook.serviceName" . }}
+  namespace: {{ include "meitheal.namespace" . }}
   labels:
-    {{- include "foreman.operator.labels" . | nindent 4 }}
+    {{- include "meitheal.operator.labels" . | nindent 4 }}
 spec:
   selector:
-    {{- include "foreman.operator.labels" . | nindent 4 }}
+    {{- include "meitheal.operator.labels" . | nindent 4 }}
   ports:
     - name: webhook
       port: 443
@@ -39,38 +39,38 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: {{ include "foreman.webhook.configName" . }}
+  name: {{ include "meitheal.webhook.configName" . }}
   labels:
-    {{- include "foreman.operator.labels" . | nindent 4 }}
+    {{- include "meitheal.operator.labels" . | nindent 4 }}
 webhooks:
-  - name: vagent.foreman.llmkube.dev
+  - name: vagent.meitheal.dev
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: {{ .Values.webhook.failurePolicy }}
     clientConfig:
       service:
-        name: {{ include "foreman.webhook.serviceName" . }}
-        namespace: {{ include "foreman.namespace" . }}
-        path: /validate-foreman-llmkube-dev-v1alpha1-agent
+        name: {{ include "meitheal.webhook.serviceName" . }}
+        namespace: {{ include "meitheal.namespace" . }}
+        path: /validate-meitheal-dev-v1alpha1-agent
       caBundle: {{ $certs.ca }}
     rules:
-      - apiGroups: ["foreman.llmkube.dev"]
+      - apiGroups: ["meitheal.dev"]
         apiVersions: ["v1alpha1"]
         operations: ["CREATE", "UPDATE"]
         resources: ["agents"]
         scope: Namespaced
-  - name: vagentictask.foreman.llmkube.dev
+  - name: vagentictask.meitheal.dev
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: {{ .Values.webhook.failurePolicy }}
     clientConfig:
       service:
-        name: {{ include "foreman.webhook.serviceName" . }}
-        namespace: {{ include "foreman.namespace" . }}
-        path: /validate-foreman-llmkube-dev-v1alpha1-agentictask
+        name: {{ include "meitheal.webhook.serviceName" . }}
+        namespace: {{ include "meitheal.namespace" . }}
+        path: /validate-meitheal-dev-v1alpha1-agentictask
       caBundle: {{ $certs.ca }}
     rules:
-      - apiGroups: ["foreman.llmkube.dev"]
+      - apiGroups: ["meitheal.dev"]
         apiVersions: ["v1alpha1"]
         operations: ["CREATE"]
         resources: ["agentictasks"]

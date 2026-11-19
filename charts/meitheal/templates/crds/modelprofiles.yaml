@@ -5,9 +5,12 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
-  name: modelprofiles.foreman.llmkube.dev
+    {{- if .Values.crds.keep }}
+    helm.sh/resource-policy: keep
+    {{- end }}
+  name: modelprofiles.meitheal.dev
 spec:
-  group: foreman.llmkube.dev
+  group: meitheal.dev
   names:
     kind: ModelProfile
     listKind: ModelProfileList
@@ -181,5 +184,4 @@ spec:
     storage: true
     subresources:
       status: {}
-
 {{- end }}

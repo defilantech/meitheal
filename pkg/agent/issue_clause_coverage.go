@@ -41,7 +41,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/reviewer"
 )
 
@@ -106,10 +106,10 @@ func applyIssueClauseCoverage(
 // statement, keeping that function's cyclomatic complexity budget untouched.
 func applyIssueClauseCoverageForTask(
 	log logr.Logger,
-	task *foremanv1alpha1.AgenticTask,
+	task *meithealv1alpha1.AgenticTask,
 	loopRes *LoopResult,
 ) {
-	if task.Spec.Kind != foremanv1alpha1.AgenticTaskKindIssueFix {
+	if task.Spec.Kind != meithealv1alpha1.AgenticTaskKindIssueFix {
 		return
 	}
 	if loopRes == nil || loopRes.Terminal == nil {

@@ -21,7 +21,7 @@ package agent_test
 // enforceReviewerIssueAsk -- and BOTH wrote verdictClaimed unconditionally, so
 // when the scope rail demoted GO->NO-GO and the issueAsk rail then ran on the
 // already-demoted verdict, the second write clobbered the first and
-// inertDemotion (internal/foreman/controller) could no longer tell a real
+// inertDemotion (internal/controller) could no longer tell a real
 // GO->NO-GO rewrite from a rail that merely re-annotated.
 //
 // These drive the REAL rails through Execute -> runLLMPath -> the reviewer
@@ -41,8 +41,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
 
@@ -113,12 +113,12 @@ func reviewExecutor(
 	bare, branch string,
 	reg *fakeRegistry,
 	oaiSrv *httptest.Server,
-) *foremanagent.NativeAgentLoopExecutor {
+) *meithealagent.NativeAgentLoopExecutor {
 	t.Helper()
-	agent := &foremanv1alpha1.Agent{
+	agent := &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "reviewer-demo", Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:                foremanv1alpha1.AgentRoleReviewer,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:                meithealv1alpha1.AgentRoleReviewer,
 			Model:               "test-model",
 			InferenceServiceRef: corev1.LocalObjectReference{Name: "test-svc"},
 			SystemPrompt:        "you are a test reviewer",
@@ -126,13 +126,13 @@ func reviewExecutor(
 			MaxTurns:            5,
 		},
 	}
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "review-demo", Namespace: "default", UID: types.UID("review-demo-uid"),
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  1678,
 				Branch: branch,
@@ -141,17 +141,17 @@ func reviewExecutor(
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
-	return &foremanagent.NativeAgentLoopExecutor{
+	return &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(t.TempDir(), "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return reg, nil
 		},
 		AuthFactory: fakeAuth(t),
@@ -169,13 +169,13 @@ func TestScopeThenIssueAskVerdictClaimed(t *testing.T) {
 	gitOrSkip(t)
 	root := t.TempDir()
 	bare := initBareWithSeed(t, root)
-	const branch = "foreman/review-demo"
+	const branch = "meitheal/review-demo"
 	// csPushNonEmptyBranch pushes fix.go, which the issue body does NOT name,
 	// so the scope rail sees drift.
 	csPushNonEmptyBranch(t, root, bare, branch)
 	oaiSrv := scriptedOAI(t, []string{fetchIssueBody, submitGOUnverified})
 
-	reg := &fakeRegistry{results: map[string]*foremanagent.ToolResult{
+	reg := &fakeRegistry{results: map[string]*meithealagent.ToolResult{
 		"fetch_issue": {
 			// A body that names other.go, so the scope rail extracts a ref
 			// the diff never touches.
@@ -193,11 +193,11 @@ func TestScopeThenIssueAskVerdictClaimed(t *testing.T) {
 	}}
 	e := reviewExecutor(t, bare, branch, reg, oaiSrv)
 
-	res, err := execWithAgent(t, e, &foremanv1alpha1.AgenticTask{
+	res, err := execWithAgent(t, e, &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "review-demo", Namespace: "default", UID: types.UID("review-demo-uid")},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  1678,
 				Branch: branch,
@@ -208,7 +208,7 @@ func TestScopeThenIssueAskVerdictClaimed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("final verdict: want NO-GO got %s", res.Verdict)
 	}
 
@@ -216,7 +216,7 @@ func TestScopeThenIssueAskVerdictClaimed(t *testing.T) {
 	if !ok {
 		t.Fatalf("modelExtra missing or wrong type: %T (%v)", res.Extra["modelExtra"], res.Extra)
 	}
-	if got, want := me["verdictClaimed"], string(foremanv1alpha1.AgenticTaskVerdictGo); got != want {
+	if got, want := me["verdictClaimed"], string(meithealv1alpha1.AgenticTaskVerdictGo); got != want {
 		t.Fatalf("verdictClaimed after both rails: got %v, want %v (the scope rail must own the archive)",
 			got, want)
 	}
@@ -231,11 +231,11 @@ func TestScopeRailAloneArchivesOriginalVerdict(t *testing.T) {
 	gitOrSkip(t)
 	root := t.TempDir()
 	bare := initBareWithSeed(t, root)
-	const branch = "foreman/review-solo"
+	const branch = "meitheal/review-solo"
 	csPushNonEmptyBranch(t, root, bare, branch)
 	oaiSrv := scriptedOAI(t, []string{fetchIssueBody, submitGOVerified})
 
-	reg := &fakeRegistry{results: map[string]*foremanagent.ToolResult{
+	reg := &fakeRegistry{results: map[string]*meithealagent.ToolResult{
 		"fetch_issue": {
 			Output: map[string]any{"body": "## Bug\n\nEdit other.go to resolve the issue."},
 		},
@@ -252,11 +252,11 @@ func TestScopeRailAloneArchivesOriginalVerdict(t *testing.T) {
 	}}
 	e := reviewExecutor(t, bare, branch, reg, oaiSrv)
 
-	res, err := execWithAgent(t, e, &foremanv1alpha1.AgenticTask{
+	res, err := execWithAgent(t, e, &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "review-demo", Namespace: "default", UID: types.UID("review-demo-uid")},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  1678,
 				Branch: branch,
@@ -272,7 +272,7 @@ func TestScopeRailAloneArchivesOriginalVerdict(t *testing.T) {
 	if !ok {
 		t.Fatalf("modelExtra missing or wrong type: %T (%v)", res.Extra["modelExtra"], res.Extra)
 	}
-	if got, want := me["verdictClaimed"], string(foremanv1alpha1.AgenticTaskVerdictGo); got != want {
+	if got, want := me["verdictClaimed"], string(meithealv1alpha1.AgenticTaskVerdictGo); got != want {
 		t.Fatalf("verdictClaimed after the scope rail: got %v, want %v", got, want)
 	}
 	if got := me["verdictDemotedBy"].(string); got != "scope-overlap" {

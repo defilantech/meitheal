@@ -37,7 +37,7 @@ func TestSoftResetToBase_AnchorsAtBranchPointNotUpstreamTip(t *testing.T) {
 
 	// Workspace cut from A; the model self-commits fix.txt on a task branch.
 	ws := mustClone(t, bare, filepath.Join(dir, "ws"))
-	mustGit(t, ws, "checkout", "-b", "foreman/wl/issue-1002")
+	mustGit(t, ws, "checkout", "-b", "meitheal/wl/issue-1002")
 	if err := os.WriteFile(filepath.Join(ws, "fix.txt"), []byte("model edit\n"), 0o644); err != nil {
 		t.Fatalf("write fix.txt: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestSoftResetToBase_NoSelfCommitIsNothingToCommit(t *testing.T) {
 	seedOrigin(t, bare)
 
 	ws := mustClone(t, bare, filepath.Join(dir, "ws"))
-	mustGit(t, ws, "checkout", "-b", "foreman/wl/issue-1002")
+	mustGit(t, ws, "checkout", "-b", "meitheal/wl/issue-1002")
 
 	// Upstream advances; the workspace itself made no commits.
 	adv := mustClone(t, bare, filepath.Join(dir, "adv"))
@@ -108,7 +108,7 @@ func TestCommit_CommitterAuthorSplit(t *testing.T) {
 	if err := Clone(ctx, CloneOptions{RemoteURL: bare, Dest: dest}); err != nil {
 		t.Fatalf("Clone: %v", err)
 	}
-	if err := CreateAndCheckoutBranch(ctx, dest, "foreman/issue-1281"); err != nil {
+	if err := CreateAndCheckoutBranch(ctx, dest, "meitheal/issue-1281"); err != nil {
 		t.Fatalf("CreateAndCheckoutBranch: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dest, "change.txt"),
@@ -116,7 +116,7 @@ func TestCommit_CommitterAuthorSplit(t *testing.T) {
 		t.Fatalf("write change: %v", err)
 	}
 
-	bot := Identity{Name: "Foreman Bot", Email: "bot@foreman.test"}
+	bot := Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"}
 	human := Identity{Name: "Jory Dogfood", Email: "jory@example.com"}
 
 	sha, err := Commit(ctx, CommitOptions{

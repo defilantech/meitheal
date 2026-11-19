@@ -26,14 +26,14 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // TestSynthesizeIssueBatch_GatelessCodeToReview: no VerifierAgentRef
 // emits code-<N> plus the reviewer fan-out only, with each review
 // depending directly on the code step.
 func TestSynthesizeIssueBatch_GatelessCodeToReview(t *testing.T) {
-	w := &foremanv1alpha1.Workload{}
+	w := &meithealv1alpha1.Workload{}
 	w.Name = "wl"
 	w.Spec.Repo = "defilantech/LLMKube"
 	w.Spec.Issues = []int32{7}
@@ -51,10 +51,10 @@ func TestSynthesizeIssueBatch_GatelessCodeToReview(t *testing.T) {
 		}
 	}
 	for _, s := range steps {
-		if s.Kind == foremanv1alpha1.AgenticTaskKindVerify {
+		if s.Kind == meithealv1alpha1.AgenticTaskKindVerify {
 			t.Fatalf("gateless batch must not emit a verify step, got %q", s.Name)
 		}
-		if s.Kind == foremanv1alpha1.AgenticTaskKindReview {
+		if s.Kind == meithealv1alpha1.AgenticTaskKindReview {
 			if len(s.DependsOn) != 1 || s.DependsOn[0] != "code-7" {
 				t.Errorf("review %q dependsOn = %v, want [code-7]", s.Name, s.DependsOn)
 			}
@@ -66,7 +66,7 @@ func TestSynthesizeIssueBatch_GatelessCodeToReview(t *testing.T) {
 // with a VerifierAgentRef the verify step remains and reviews depend on
 // it, not on the code step.
 func TestSynthesizeIssueBatch_VerifierKeepsGate(t *testing.T) {
-	w := &foremanv1alpha1.Workload{}
+	w := &meithealv1alpha1.Workload{}
 	w.Name = "wl"
 	w.Spec.Repo = "defilantech/LLMKube"
 	w.Spec.Issues = []int32{7}
@@ -94,7 +94,7 @@ func TestSynthesizeIssueBatch_VerifierKeepsGate(t *testing.T) {
 func TestChooseSteps_IssueBatchWithoutVerifier(t *testing.T) {
 	r := &WorkloadReconciler{}
 
-	w := &foremanv1alpha1.Workload{}
+	w := &meithealv1alpha1.Workload{}
 	w.Name = "wl"
 	w.Spec.Repo = "defilantech/LLMKube"
 	w.Spec.Issues = []int32{7}
@@ -107,7 +107,7 @@ func TestChooseSteps_IssueBatchWithoutVerifier(t *testing.T) {
 		t.Fatalf("steps = %+v, want the single code-7 step", steps)
 	}
 
-	w2 := &foremanv1alpha1.Workload{}
+	w2 := &meithealv1alpha1.Workload{}
 	w2.Spec.Issues = []int32{7}
 	if _, _, err := r.chooseSteps(w2); err == nil {
 		t.Fatal("nil coder must still error")
@@ -118,7 +118,7 @@ func TestChooseSteps_IssueBatchWithoutVerifier(t *testing.T) {
 // the escalated tier emits code-<N>-esc plus the reviewer fan-out, with
 // escalated reviews depending directly on the escalated code step.
 func TestCoderEscalationSteps_GatelessSkipsVerify(t *testing.T) {
-	w := &foremanv1alpha1.Workload{}
+	w := &meithealv1alpha1.Workload{}
 	w.Name = "wl"
 	w.Spec.Repo = "defilantech/LLMKube"
 	w.Spec.Issues = []int32{944}
@@ -126,14 +126,14 @@ func TestCoderEscalationSteps_GatelessSkipsVerify(t *testing.T) {
 	w.Spec.EscalationCoderAgentRef = &corev1.LocalObjectReference{Name: "coder-qwopus"}
 	w.Spec.ReviewerAgentRefs = []corev1.LocalObjectReference{{Name: "reviewer"}}
 
-	code := foremanv1alpha1.AgenticTask{}
+	code := meithealv1alpha1.AgenticTask{}
 	code.Name = "wl-code-944"
 	code.Labels = map[string]string{labelStep: "code-944"}
-	code.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-	code.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+	code.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+	code.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 	code.Status.Result = resultRaw("MODEL-DECIDED", "", "could not solve", "")
 
-	steps, escalated, _ := coderEscalationSteps(w, []foremanv1alpha1.AgenticTask{code})
+	steps, escalated, _ := coderEscalationSteps(w, []meithealv1alpha1.AgenticTask{code})
 	want := []string{"code-944-esc", "review-944-esc-0"}
 	if len(steps) != len(want) {
 		t.Fatalf("got %d steps, want %d (%v)", len(steps), len(want), want)
@@ -157,9 +157,9 @@ func TestCoderEscalationSteps_GatelessSkipsVerify(t *testing.T) {
 func TestReviewIterationSteps_GatelessReviewDependsOnCode(t *testing.T) {
 	w := iterationWorkload([]int32{641}, 1, nil)
 	w.Spec.VerifierAgentRef = nil
-	children := []foremanv1alpha1.AgenticTask{
-		child("code-641", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictGo),
-		child("review-641-0", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictNoGo),
+	children := []meithealv1alpha1.AgenticTask{
+		child("code-641", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictGo),
+		child("review-641-0", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictNoGo),
 	}
 
 	steps, iterated, _ := reviewIterationSteps(w, children)

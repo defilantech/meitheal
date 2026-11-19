@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 	"github.com/defilantech/meitheal/pkg/audit"
 )
@@ -37,7 +37,7 @@ import (
 // metadata and the truncation marker so a runaway transcript fails
 // gracefully rather than returning a 413 from the apiserver.
 const (
-	TranscriptSchemaVersion = "foreman.transcript.v1"
+	TranscriptSchemaVersion = "meitheal.transcript.v1"
 
 	transcriptCapBytes = (1 << 20) - (16 << 10) // 1 MiB - 16 KiB
 
@@ -73,9 +73,9 @@ type TranscriptMeta struct {
 
 // transcriptName returns the ConfigMap name for a task. We prefix to
 // keep transcript ConfigMaps trivially discoverable
-// (`kubectl get cm -l foreman.llmkube.dev/transcript-of=<task>`).
-func transcriptName(task *foremanv1alpha1.AgenticTask) string {
-	return audit.ConfigMapName("foreman-transcript-", task.Name, string(task.UID), task.Status.Attempt)
+// (`kubectl get cm -l meitheal.dev/transcript-of=<task>`).
+func transcriptName(task *meithealv1alpha1.AgenticTask) string {
+	return audit.ConfigMapName("meitheal-transcript-", task.Name, string(task.UID), task.Status.Attempt)
 }
 
 // WriteTranscript creates or updates a durable ConfigMap for this execution
@@ -90,7 +90,7 @@ func transcriptName(task *foremanv1alpha1.AgenticTask) string {
 func WriteTranscript(
 	ctx context.Context,
 	c client.Client,
-	task *foremanv1alpha1.AgenticTask,
+	task *meithealv1alpha1.AgenticTask,
 	loopResult *LoopResult,
 ) (corev1.ObjectReference, error) {
 	if task == nil || loopResult == nil {
@@ -149,9 +149,9 @@ func WriteTranscript(
 			Name:      transcriptName(task),
 			Namespace: task.Namespace,
 			Labels: map[string]string{
-				"foreman.llmkube.dev/transcript-of": task.Name,
-				"app.kubernetes.io/part-of":         "foreman",
-				audit.TranscriptLabel:               "true",
+				"meitheal.dev/transcript-of": task.Name,
+				"app.kubernetes.io/part-of":  "meitheal",
+				audit.TranscriptLabel:        "true",
 			},
 		},
 		Data: map[string]string{

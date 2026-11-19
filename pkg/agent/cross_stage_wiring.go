@@ -24,7 +24,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // branchFactsFromBranch computes the ground-truth BranchFacts for the branch
@@ -101,7 +101,7 @@ var editVerbPatterns = []*regexp.Regexp{
 func applyCrossStageContradictionsForTask(
 	ctx context.Context, log logr.Logger, workspace, base string,
 	diff []string, diffErr error, loopRes *LoopResult,
-	verdict foremanv1alpha1.AgenticTaskVerdict,
+	verdict meithealv1alpha1.AgenticTaskVerdict,
 ) {
 	if loopRes == nil || loopRes.Terminal == nil || diffErr != nil {
 		return
@@ -171,7 +171,7 @@ func applyCrossStageContradictionsForTask(
 func applyCrossStageContradictionsForCoderTask(
 	ctx context.Context, log logr.Logger, workspace, base string,
 	diff []string, diffErr error, loopRes *LoopResult,
-	verdict foremanv1alpha1.AgenticTaskVerdict,
+	verdict meithealv1alpha1.AgenticTaskVerdict,
 ) {
 	if loopRes == nil || loopRes.Terminal == nil || diffErr != nil {
 		return
@@ -226,7 +226,7 @@ func applyCrossStageContradictionsForCoderTask(
 func applyCrossStageContradictionsForGate(
 	ctx context.Context, log logr.Logger, workspace, base string,
 	diff []string, diffErr error, r *Result,
-	verdict foremanv1alpha1.AgenticTaskVerdict,
+	verdict meithealv1alpha1.AgenticTaskVerdict,
 ) {
 	if r == nil || r.Extra == nil || diffErr != nil {
 		return

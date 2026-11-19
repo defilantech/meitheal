@@ -1,29 +1,30 @@
-# Foreman
+# Meitheal
 
 <p align="center">
-  <img src="../images/foreman-logo-icon.svg" alt="Foreman" width="128" height="128" />
+  <img src="../images/meitheal-logo-icon.svg" alt="Meitheal" width="128" height="128" />
 </p>
 
-Foreman is the Kubernetes-native control plane for agentic workloads
-that ships as an opt-in add-on to LLMKube. It dispatches **coder**,
+Meitheal is a Kubernetes-native control plane for agentic workloads.
+It dispatches **coder**,
 **verifier**, and **reviewer** agents across a heterogeneous fleet of
 locally-hosted LLM nodes (Apple Silicon Metal, NVIDIA CUDA, Intel
 oneAPI / SYCL), runs each agent through a native Go function-calling
 loop, and produces PR-shaped contributions against your GitHub
 repositories.
 
-If you only want LLMKube for serving local models, the operator and
-CRDs you already use are unchanged. Foreman lives in its own API
-group (`foreman.llmkube.dev`) and its own Helm chart. You install it
-on top of LLMKube when you're ready for the pipeline shape; you
-ignore it otherwise.
+Meitheal lives in its own API group (`meitheal.dev`) and its own Helm
+chart. Agents use models served by LLMKube InferenceServices or by any
+OpenAI-compatible endpoint. Meitheal started as Foreman inside LLMKube
+and moved to this repository with its history; the
+[migration steps](../README.md#migrating-from-foreman) cover an
+existing Foreman install.
 
 This page is the entry point. Deep references are linked at the
 bottom.
 
-## Why Foreman
+## Why Meitheal
 
-The argument for Foreman is the combination of three constraints
+The argument for Meitheal is the combination of three constraints
 that ordinary agentic frameworks don't co-solve:
 
 1. **Kubernetes-native.** Declarative CRDs, controller-runtime
@@ -42,20 +43,20 @@ In-process frameworks (CrewAI, LangGraph, AutoGen) are excellent
 inside one Python or TypeScript process; they don't solve the fleet
 dispatch problem. Datacenter inference platforms (NVIDIA Dynamo,
 vLLM serving) solve the inference side but not the agent-pipeline
-side. Foreman lives between them: above the inference engine,
+side. Meitheal lives between them: above the inference engine,
 below the application-layer agent framework, with Kubernetes as
 the substrate.
 
 ## Key concepts
 
-Four CRDs make up the Foreman surface:
+Four CRDs make up the Meitheal surface:
 
 | CRD | Scope | What it represents |
 |---|---|---|
 | `Workload` | namespaced | The user-facing intent ("fix these eight issues in this repo"). The reconciler decomposes it into a pipeline of AgenticTasks. |
 | `AgenticTask` | namespaced | One dispatchable unit of work. References an Agent + a payload. The scheduler claims it for a FleetNode whose capability matches. |
 | `Agent` | namespaced | A reusable role definition: system prompt, tool whitelist, model endpoint, required capability. The same Agent can drive many AgenticTasks. |
-| `FleetNode` | cluster-scoped | A worker in the fleet. Identity is the foreman-agent *process*, not the machine: each agent self-registers one FleetNode and advertises its capability (accelerator family, RAM, context window, roles). A host running two agents therefore has two FleetNodes; the machine an in-cluster agent landed on is reported as a property on `status.kubernetesNode`. |
+| `FleetNode` | cluster-scoped | A worker in the fleet. Identity is the meitheal-agent *process*, not the machine: each agent self-registers one FleetNode and advertises its capability (accelerator family, RAM, context window, roles). A host running two agents therefore has two FleetNodes; the machine an in-cluster agent landed on is reported as a property on `status.kubernetesNode`. |
 
 The minimal lifecycle:
 
@@ -68,7 +69,7 @@ Workload (intent)
 ```
 
 Each task is claimed by the FleetNode whose capability satisfies the
-referenced Agent's `requiredCapability`. The foreman-agent on that
+referenced Agent's `requiredCapability`. The meitheal-agent on that
 host runs the native Go loop against the local inference endpoint.
 Verdicts cascade to the parent Workload. Fork branches land on
 GitHub for human review.
@@ -76,7 +77,7 @@ GitHub for human review.
 ### How many tasks a node runs at once
 
 A FleetNode runs **one in-process task at a time**. That task executes the
-native Go loop inside the foreman-agent process: it clones, runs the host's
+native Go loop inside the meitheal-agent process: it clones, runs the host's
 toolchain and drives the inference endpoint from this process, so a second
 concurrent run would compete for the same host CPU and RAM and the same
 toolchain. Workspaces are not the reason — each run gets its own
@@ -131,28 +132,29 @@ v0.2+ work. See **What v0.1 deliberately doesn't ship** below.
 
 ## Install
 
-Foreman is a separate Helm chart that depends on LLMKube core:
+Meitheal is its own Helm chart. Install LLMKube first when your Agents
+use LLMKube InferenceServices:
 
 ```bash
-# Make sure LLMKube core is installed first (0.8.0+)
+# Only when Agents use LLMKube InferenceServices
 helm repo add llmkube https://defilantech.github.io/LLMKube
 helm repo update
 helm upgrade --install llmkube llmkube/llmkube \
   --namespace llmkube-system --create-namespace
 
-# Then add Foreman
-helm install foreman llmkube/foreman \
-  --namespace foreman-system --create-namespace
+# Meitheal
+helm install meitheal oci://ghcr.io/defilantech/charts/meitheal \
+  --namespace meitheal-system --create-namespace
 ```
 
-That installs the foreman-operator (controllers for the four CRDs),
-plus a foreman-agent Deployment for the gate-runner role on the
+That installs the meitheal-operator (controllers for the four CRDs),
+plus a meitheal-agent Deployment for the gate-runner role on the
 Linux/K8s host. Each agent replica registers its own FleetNode, so a
 pool with `replicaCount: 2` produces two FleetNodes on that one host,
 each reporting the same `status.kubernetesNode`. Apple Silicon coder /
-reviewer nodes run the foreman-agent binary directly via launchd;
-see [the M3 runbook](/docs/foreman/runbook-m3) and
-[the M4 runbook](/docs/foreman/runbook-m4) for hosts-side install.
+reviewer nodes run the meitheal-agent binary directly via launchd;
+see [the M3 runbook](/docs/runbook-m3) and
+[the M4 runbook](/docs/runbook-m4) for hosts-side install.
 
 ## A minimal example
 
@@ -160,7 +162,7 @@ A two-step coder + gate pipeline against a single issue (the V3
 shape from M4):
 
 ```yaml
-apiVersion: foreman.llmkube.dev/v1alpha1
+apiVersion: meitheal.dev/v1alpha1
 kind: Workload
 metadata:
   name: fix-one-bug
@@ -185,18 +187,18 @@ The Workload synthesizes a `fix-one-bug-code-510` AgenticTask (coder)
 and a `fix-one-bug-verify-510` AgenticTask (gate, depends on code),
 each step name prefixed with the Workload name. When both succeed,
 a DCO-signed branch lands on the fork
-(`Defilan/LLMKube:foreman/fix-one-bug/issue-510`). Verdict
+(`Defilan/LLMKube:meitheal/fix-one-bug/issue-510`). Verdict
 `GATE-PASS` means it cleared the gate; open the branch as an
 upstream PR or queue more issues into the Workload.
 
 For the full reviewer-ensemble shape:
-`examples/foreman/workload-v04-default.yaml` in this repo.
+`examples/workload-v04-default.yaml` in this repo.
 
 ## Coder escalation tier
 
 Setting `Workload.spec.escalationCoderAgentRef` opts the Workload
 into a coder escalation tier. When the base coder fails an issue at
-its model's ceiling, Foreman re-runs that one issue on the named
+its model's ceiling, Meitheal re-runs that one issue on the named
 larger-model coder Agent, carrying the failed model's own diagnosis
 forward as a prompt hint. The idea is a routing hop, not a retry
 storm: a fast, capable model takes the first pass, and only the
@@ -233,7 +235,7 @@ responsible for ensuring the escalation Agent's model is reachable;
 the controller schedules against it but does not manage serving.
 
 ```yaml
-apiVersion: foreman.llmkube.dev/v1alpha1
+apiVersion: meitheal.dev/v1alpha1
 kind: Workload
 metadata:
   name: fix-a-batch
@@ -259,7 +261,7 @@ model's failure summary threaded into the prompt.
 
 When a coder concludes the work is already present on the branch or
 upstream base (e.g. a `Fixes #N` commit since `BaseBranch`, or an
-existing pushed `foreman/.../issue-N` branch), it emits
+existing pushed `meitheal/.../issue-N` branch), it emits
 `verdict="NO-GO"` with `extra.outcome="ALREADY-RESOLVED"` and cites
 the resolution in `extra.resolvedBy`. This is distinct from a
 capability failure (`MODEL-DECIDED`):
@@ -277,7 +279,7 @@ capability failure (`MODEL-DECIDED`):
 
 ## What v0.1 deliberately doesn't ship
 
-Foreman v0.1 is the foundation, not the finished platform. A few
+Meitheal v0.1 is the foundation, not the finished platform. A few
 capabilities we know people will ask for and deliberately punted:
 
 - **Linear pipelines only.** Full DAGs (parallel branches, joins,
@@ -292,8 +294,8 @@ capabilities we know people will ask for and deliberately punted:
   rules. The AgentScore corpus that biases future dispatch based on
   past outcomes is on the roadmap; v0.1 records the data.
 - **Model-tool-protocol compatibility is implicit, not declared.**
-  Foreman currently assumes every inference endpoint speaks OpenAI
-  `tool_calls`. See [model-compatibility](/docs/foreman/model-compatibility)
+  Meitheal currently assumes every inference endpoint speaks OpenAI
+  `tool_calls`. See [model-compatibility](/docs/model-compatibility)
   for the calibrated table.
 
 The v0.1 CRD shape was designed so each of those additions is a
@@ -302,7 +304,7 @@ non-breaking extension. Pinning the foundation is the work of
 
 ## Watching a native agent run
 
-The Foreman agent serves `GET /stream` at `127.0.0.1:8082` by default.
+The Meitheal agent serves `GET /stream` at `127.0.0.1:8082` by default.
 Use `curl -N http://127.0.0.1:8082/stream` on the agent host (or port-forward
 an agent pod). `--turn-stream-bind-address=0` disables the endpoint.
 It is unauthenticated; keep the loopback binding unless you deliberately
@@ -336,14 +338,14 @@ progress while keeping `source.onmessage` for completed turns.
 
 ## Deep references
 
-- **[M3 coder runbook](/docs/foreman/runbook-m3)**: install the foreman-agent
+- **[M3 coder runbook](/docs/runbook-m3)**: install the meitheal-agent
   on the coder host (M5 Max / Apple Silicon).
-- **[M4 verifier runbook](/docs/foreman/runbook-m4)**: install Foreman as a chart
+- **[M4 verifier runbook](/docs/runbook-m4)**: install Meitheal as a chart
   on the K8s cluster and stand up the gate Agent on a verifier
   node.
-- **[Verifier node install notes](/docs/foreman/install-verifier-node)**:
+- **[Verifier node install notes](/docs/install-verifier-node)**:
   deeper notes on the ShadowStack reference verifier deployment.
-- **[Model compatibility table](/docs/foreman/model-compatibility)**: which
+- **[Model compatibility table](/docs/model-compatibility)**: which
   models the v0.4 reviewer and coder roles have been empirically
   validated against.
 

@@ -385,7 +385,7 @@ func (r *R) Reconcile(ctx context.Context) error {
 		baseSrc := "package cli\n\nfunc computeCacheKey(s string) string { return s }\n"
 		currentSrc := `package cli
 
-import "github.com/defilantech/llmkube/pkg/foreman/agent/repo"
+import "github.com/defilantech/llmkube/pkg/agent/repo"
 
 var _ = repo.DiffNameOnly
 

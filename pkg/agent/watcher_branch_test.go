@@ -23,7 +23,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // pendingTaskClaimedAt is a fixed second-precision timestamp used by
@@ -36,12 +36,12 @@ var pendingTaskClaimedAt = metav1.NewTime(time.Unix(1_700_000_000, 0))
 // The AssignedNode and ClaimedAt fields satisfy the ownership guard added in
 // #668: tests that call patchTerminal directly must present a live object
 // that matches the node name and claim timestamp on the in-memory copy.
-func pendingTask(name string) *foremanv1alpha1.AgenticTask {
+func pendingTask(name string) *meithealv1alpha1.AgenticTask {
 	ts := pendingTaskClaimedAt
-	return &foremanv1alpha1.AgenticTask{
+	return &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Status: foremanv1alpha1.AgenticTaskStatus{
-			Phase:        foremanv1alpha1.AgenticTaskPhaseRunning,
+		Status: meithealv1alpha1.AgenticTaskStatus{
+			Phase:        meithealv1alpha1.AgenticTaskPhaseRunning,
 			AssignedNode: "coder",
 			ClaimedAt:    &ts,
 		},
@@ -61,11 +61,11 @@ func TestPatchTerminal_LiftsBranchAndCommitOnGo(t *testing.T) {
 	c := newRecoveryClient(t, pendingTask("code-624"))
 	w := &AgenticTaskWatcher{Client: c, NodeName: "coder", Namespace: "default"}
 
-	res := NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictGo,
+	res := NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictGo,
 		"fixed the bug", time.Second)
 	res.Extra = map[string]any{
 		"outcome":   "",
-		"branch":    "foreman/issue-624",
+		"branch":    "meitheal/issue-624",
 		"commitSHA": "abc1234def5678",
 	}
 
@@ -74,11 +74,11 @@ func TestPatchTerminal_LiftsBranchAndCommitOnGo(t *testing.T) {
 	}
 
 	got := getTask(t, c, "code-624")
-	if got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseSucceeded {
+	if got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseSucceeded {
 		t.Fatalf("phase = %q, want Succeeded", got.Status.Phase)
 	}
-	if got.Status.Branch != "foreman/issue-624" {
-		t.Fatalf("status.branch = %q, want %q", got.Status.Branch, "foreman/issue-624")
+	if got.Status.Branch != "meitheal/issue-624" {
+		t.Fatalf("status.branch = %q, want %q", got.Status.Branch, "meitheal/issue-624")
 	}
 	if got.Status.CommitSHA != "abc1234def5678" {
 		t.Fatalf("status.commitSHA = %q, want %q", got.Status.CommitSHA, "abc1234def5678")
@@ -95,13 +95,13 @@ func TestPatchTerminal_LiftsJobName(t *testing.T) {
 	c := newRecoveryClient(t, pendingTask("code-1535"))
 	w := &AgenticTaskWatcher{Client: c, NodeName: "coder", Namespace: "default"}
 
-	res := NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictGo,
+	res := NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictGo,
 		"fixed in a Job", time.Second)
 	res.Extra = map[string]any{
 		"outcome":   "",
-		"branch":    "foreman/issue-1535",
+		"branch":    "meitheal/issue-1535",
 		"commitSHA": "abc1234def5678",
-		"jobName":   "foreman-coder-code-1535-1786665563449",
+		"jobName":   "meitheal-coder-code-1535-1786665563449",
 	}
 
 	if err := w.patchTerminal(context.Background(), pendingTask("code-1535"), res, nil); err != nil {
@@ -109,8 +109,8 @@ func TestPatchTerminal_LiftsJobName(t *testing.T) {
 	}
 
 	got := getTask(t, c, "code-1535")
-	if got.Status.JobName != "foreman-coder-code-1535-1786665563449" {
-		t.Fatalf("status.jobName = %q, want %q", got.Status.JobName, "foreman-coder-code-1535-1786665563449")
+	if got.Status.JobName != "meitheal-coder-code-1535-1786665563449" {
+		t.Fatalf("status.jobName = %q, want %q", got.Status.JobName, "meitheal-coder-code-1535-1786665563449")
 	}
 }
 
@@ -121,11 +121,11 @@ func TestPatchTerminal_NoGoLeavesCommitEmpty(t *testing.T) {
 	c := newRecoveryClient(t, pendingTask("code-nogo"))
 	w := &AgenticTaskWatcher{Client: c, NodeName: "coder", Namespace: "default"}
 
-	res := NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictNoGo,
+	res := NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictNoGo,
 		"model declined", time.Second)
 	res.Extra = map[string]any{
 		"outcome":        "MODEL-NO-GO",
-		"intendedBranch": "foreman/issue-nogo",
+		"intendedBranch": "meitheal/issue-nogo",
 	}
 
 	if err := w.patchTerminal(context.Background(), pendingTask("code-nogo"), res, nil); err != nil {
@@ -133,8 +133,8 @@ func TestPatchTerminal_NoGoLeavesCommitEmpty(t *testing.T) {
 	}
 
 	got := getTask(t, c, "code-nogo")
-	if got.Status.Branch != "foreman/issue-nogo" {
-		t.Fatalf("status.branch = %q, want %q", got.Status.Branch, "foreman/issue-nogo")
+	if got.Status.Branch != "meitheal/issue-nogo" {
+		t.Fatalf("status.branch = %q, want %q", got.Status.Branch, "meitheal/issue-nogo")
 	}
 	if got.Status.CommitSHA != "" {
 		t.Fatalf("status.commitSHA = %q, want empty on NO-GO", got.Status.CommitSHA)

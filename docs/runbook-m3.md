@@ -1,4 +1,4 @@
-# Foreman M3 runbook: native agent loop on the M5 Max
+# Meitheal M3 runbook: native agent loop on the M5 Max
 
 This runbook walks through the M3 end-to-end demo: from a fresh checkout
 to a model-authored, DCO-signed branch landing on the LLMKube fork.
@@ -20,37 +20,37 @@ Carnice model.
   ```sh
   kubectl get inferenceservice qwen36-35b-carnice-mtp -n default
   ```
-- The Foreman CRDs (Agent, AgenticTask, FleetNode, Workload) installed
+- The Meitheal CRDs (Agent, AgenticTask, FleetNode, Workload) installed
   in the target cluster. When checking out a newer branch on top of a
-  cluster that already had older foreman CRDs, **re-apply all four**:
+  cluster that already had older meitheal CRDs, **re-apply all four**:
   ```sh
-  kubectl apply -f config/crd/bases/foreman.llmkube.dev_agentictasks.yaml
-  kubectl apply -f config/crd/bases/foreman.llmkube.dev_agents.yaml
-  kubectl apply -f config/crd/bases/foreman.llmkube.dev_fleetnodes.yaml
-  kubectl apply -f config/crd/bases/foreman.llmkube.dev_workloads.yaml
+  kubectl apply -f config/crd/bases/meitheal.dev_agentictasks.yaml
+  kubectl apply -f config/crd/bases/meitheal.dev_agents.yaml
+  kubectl apply -f config/crd/bases/meitheal.dev_fleetnodes.yaml
+  kubectl apply -f config/crd/bases/meitheal.dev_workloads.yaml
   ```
   Re-applying every file (not just newly created ones) is required
   because the M3 branch added `spec.agentRef` to the AgenticTask
   schema; an older AgenticTask CRD will silently reject the new field
   under strict decode with `unknown field "spec.agentRef"`. Sanity:
   ```sh
-  kubectl get crds | grep foreman.llmkube.dev   # expect 4
-  kubectl get crd agentictasks.foreman.llmkube.dev \
+  kubectl get crds | grep meitheal.dev   # expect 4
+  kubectl get crd agentictasks.meitheal.dev \
     -o jsonpath='{.spec.versions[0].schema.openAPIV3Schema.properties.spec.properties.agentRef.type}'
   # expect: object
   ```
 - A GitHub Personal Access Token with `public_repo` scope (the
-  Foreman bot will push branches with this). The token is read from
+  Meitheal bot will push branches with this). The token is read from
   one of:
-  - `$GITHUB_TOKEN` in the foreman-agent's env (preferred for
+  - `$GITHUB_TOKEN` in the meitheal-agent's env (preferred for
     production / launchd), or
-  - `~/.config/foreman/github-token` for local dev. The `gh` CLI
-    keyring works as a source: `gh auth token > ~/.config/foreman/github-token && chmod 600 ~/.config/foreman/github-token`.
+  - `~/.config/github-token` for local dev. The `gh` CLI
+    keyring works as a source: `gh auth token > ~/.config/github-token && chmod 600 ~/.config/github-token`.
 
 ## 1. Apply the Agent CR
 
 ```sh
-kubectl apply -f config/foreman/agents/qwen36-35b-carnice-mtp-coder.yaml
+kubectl apply -f config/agents/qwen36-35b-carnice-mtp-coder.yaml
 ```
 
 Verify:
@@ -71,7 +71,7 @@ you need on top of the model (16 is plenty for an LLMKube repo clone
 M3 Carnice coder Agent ships with `minRAMGB: 16` for exactly this
 reason.
 
-## 2. Start (or restart) foreman-agent in native mode
+## 2. Start (or restart) meitheal-agent in native mode
 
 The default `--agent-mode` flipped to `native` at the same commit that
 shipped this runbook, but the binary still needs a few flags pointed
@@ -81,18 +81,18 @@ in native mode:
 ```sh
 # Stop existing instance (if running under launchd or as a foreground
 # process). The launchd unit name varies by install; check
-# `launchctl list | grep foreman` if unsure.
-pkill -f 'llmkube-foreman-agent --agent-mode=stub' || true
+# `launchctl list | grep meitheal` if unsure.
+pkill -f 'meitheal-agent --agent-mode=stub' || true
 
-./bin/llmkube-foreman-agent \
+./bin/meitheal-agent \
   --agent-mode=native \
   --kubeconfig=$HOME/.kube/config \
   --task-namespace=default \
-  --workspace-dir=$HOME/foreman-workspaces \
+  --workspace-dir=$HOME/meitheal-workspaces \
   --git-remote-url=https://github.com/Defilan/LLMKube.git \
   --inference-base-url-host-override=127.0.0.1 \
-  --commit-author-name="Foreman Bot" \
-  --commit-author-email="foreman@$(hostname -s).local" \
+  --commit-author-name="Meitheal Bot" \
+  --commit-author-email="meitheal@$(hostname -s).local" \
   --installed-models=qwen36-35b-carnice-mtp \
   --max-context-tokens=262144 \
   --tokens-per-second=80
@@ -104,7 +104,7 @@ Why each native-mode flag:
   Optional as of #915: leave it unset and each coder task clones and
   pushes its own `payload.repo` instead, so one agent serves many repos.
   Set it only to pin every task to a single shared remote.
-- `--inference-base-url-host-override`: required when foreman-agent
+- `--inference-base-url-host-override`: required when meitheal-agent
   runs on the host (where `*.svc.cluster.local` does not resolve).
   The executor still reads `InferenceService.status.endpoint` for the
   scheme and path, then substitutes this host and re-reads the live
@@ -112,7 +112,7 @@ Why each native-mode flag:
   annotation `llmkube.ai/agent-engine-port` (falling back to the
   `<isvc>` slice's own port for older agents that predate it). This
   works because the engine listens on `127.0.0.1` on the same Mac as
-  foreman-agent, so the annotated loopback port is always reachable
+  meitheal-agent, so the annotated loopback port is always reachable
   from here even once the `<isvc>` Service and slice are adopted for
   the relay pod. Set to `127.0.0.1` for the launchd-on-M5-Max case.
   (`--inference-base-url-override` is still available for tests and
@@ -156,12 +156,12 @@ Avoid (until the model has been validated end-to-end):
 
 ## 4. Author the AgenticTask
 
-Copy `examples/foreman/m3-coder-demo.yaml`, replace
+Copy `examples/m3-coder-demo.yaml`, replace
 `REPLACE_WITH_ISSUE_NUMBER` with the chosen issue number, and paste
 the issue's title + body into `spec.payload.prompt`. Then apply:
 
 ```sh
-cp examples/foreman/m3-coder-demo.yaml /tmp/m3-demo.yaml
+cp examples/m3-coder-demo.yaml /tmp/m3-demo.yaml
 # Edit /tmp/m3-demo.yaml: payload.issue + payload.prompt
 kubectl apply -f /tmp/m3-demo.yaml
 ```
@@ -172,14 +172,14 @@ kubectl apply -f /tmp/m3-demo.yaml
 # Phase transitions, real-time:
 kubectl get agentictask m3-coder-demo -w
 
-# Once it reaches Running, tail the foreman-agent log:
-tail -f ~/Library/Logs/llmkube-foreman-agent.log
+# Once it reaches Running, tail the meitheal-agent log:
+tail -f ~/Library/Logs/meitheal-agent.log
 
 # When it finishes, full status:
 kubectl get agentictask m3-coder-demo -o yaml | yq '.status'
 
 # Transcript:
-kubectl get cm -l foreman.llmkube.dev/transcript-of=m3-coder-demo
+kubectl get cm -l meitheal.dev/transcript-of=m3-coder-demo
 transcript=$(kubectl get agentictask m3-coder-demo -o jsonpath='{.status.transcriptRef}')
 kubectl get cm "$transcript" -o jsonpath='{.data.transcript\.json}' \
   | jq '.messages | length' # how many turns
@@ -189,7 +189,7 @@ kubectl get cm "$transcript" -o jsonpath='{.data.meta\.json}' | jq
 Each execution claim increments `status.attempt`. Audit and transcript ConfigMap
 names include the task UID and attempt number, so retrying or recreating the task
 preserves earlier outcomes and transcripts. List audits with
-`kubectl get cm -l foreman.llmkube.dev/audit-task=m3-coder-demo`; each audit's
+`kubectl get cm -l meitheal.dev/audit-task=m3-coder-demo`; each audit's
 `transcriptRef` names its own transcript in the task namespace. The status field
 points to the latest completed attempt.
 
@@ -198,7 +198,7 @@ New transcripts survive task deletion and use the operator's existing
 default), measured from ConfigMap creation. A zero duration disables cleanup.
 With cleanup disabled, transcripts accumulate indefinitely, even after task deletion, unless manually deleted.
 Legacy records remain readable; already overwritten or deleted evidence cannot
-be recovered. Upgrade the Foreman CRDs, operator, agents, and coder images
+be recovered. Upgrade the Meitheal CRDs, operator, agents, and coder images
 together: the attempt counter and the Job's `--attempt-key` check require the
 updated components.
 
@@ -206,7 +206,7 @@ Expected phase progression:
 
 - `Pending` (scheduler sees the task, matches it against fleet nodes)
 - `Scheduled` (assignedNode=m5-max)
-- `Running` (foreman-agent claims it, native loop starts)
+- `Running` (meitheal-agent claims it, native loop starts)
 - `Succeeded` (loop terminated; transcript persisted; on GO, branch
   pushed)
 
@@ -221,8 +221,8 @@ On a GO outcome:
 kubectl get agentictask m3-coder-demo -o jsonpath='{.status.result}' | jq
 
 # Confirm the branch is on the fork:
-gh api repos/Defilan/LLMKube/branches/foreman/issue-<N> | jq .commit.sha
-gh api repos/Defilan/LLMKube/commits/foreman/issue-<N> | jq '.commit.message'
+gh api repos/Defilan/LLMKube/branches/meitheal/issue-<N> | jq .commit.sha
+gh api repos/Defilan/LLMKube/commits/meitheal/issue-<N> | jq '.commit.message'
 
 # The commit message MUST end with `Fixes #<N>` and MUST carry the
 # DCO sign-off the executor added via `git commit -s`.
@@ -234,8 +234,8 @@ gh api repos/Defilan/LLMKube/commits/foreman/issue-<N> | jq '.commit.message'
 gh pr create \
   --repo defilantech/LLMKube \
   --base main \
-  --head Defilan:foreman/issue-<N> \
-  --title "$(gh api repos/Defilan/LLMKube/commits/foreman/issue-<N> | jq -r .commit.message | head -1)" \
+  --head Defilan:meitheal/issue-<N> \
+  --title "$(gh api repos/Defilan/LLMKube/commits/meitheal/issue-<N> | jq -r .commit.message | head -1)" \
   --body-file - <<'BODY'
 ## What
 
@@ -251,7 +251,7 @@ gh pr create \
 
 ## Checklist
 
-- [x] Built locally via the foreman coder agent.
+- [x] Built locally via the meitheal coder agent.
 - [x] `make fmt vet lint test` passed inside the agent's workspace
       (see transcript ConfigMap named by `status.transcriptRef`).
 - [x] DCO sign-off present.
@@ -268,16 +268,16 @@ A clean M3 demo run produces:
 - One attempt-scoped transcript ConfigMap carrying the full
   turn-by-turn transcript (truncated marker only if the run exceeded
   ~1 MiB).
-- One branch `foreman/issue-<N>` on `Defilan/LLMKube` whose head
-  commit is authored by `Foreman Bot`, carries `Fixes #<N>` in the
-  trailer, and `Signed-off-by: Foreman Bot ...`.
+- One branch `meitheal/issue-<N>` on `Defilan/LLMKube` whose head
+  commit is authored by `Meitheal Bot`, carries `Fixes #<N>` in the
+  trailer, and `Signed-off-by: Meitheal Bot ...`.
 
 ## What can go wrong
 
 - **`status.result.extra.outcome == "EXECUTOR-PRECONDITION-FAILED"`**
   with `reason=AgentNotFound`: the Agent CR was deleted between
   scheduling and execution. Reapply
-  `config/foreman/agents/qwen36-35b-carnice-mtp-coder.yaml`.
+  `config/agents/qwen36-35b-carnice-mtp-coder.yaml`.
 
 - **`outcome=PUSH-FAILED`**: the GitHub token lacks `public_repo`
   scope, or the fork's `main` moved under us. Rotate the token or
@@ -286,7 +286,7 @@ A clean M3 demo run produces:
 - **`outcome=COMMIT-REJECTED`**: usually a pre-commit hook in the
   workspace that the model could not satisfy. Check the transcript;
   the bash tool's stderr will show the rejection. Fixable by either
-  improving the system prompt or removing the hook for foreman runs.
+  improving the system prompt or removing the hook for meitheal runs.
 
 - **`outcome=NO-CHANGES`**: the model emitted `verdict=GO` but never
   edited a file. Honest report: the loop's reasoning is in the
@@ -321,5 +321,5 @@ A clean M3 demo run produces:
 - Automated PR creation: still a manual step here. M4 wires it
   alongside the gate.
 - A Workload CR that fans an intent out across many tasks: M6.
-- Anything cross-cluster: foreman-agent runs on the M5 Max only in
+- Anything cross-cluster: meitheal-agent runs on the M5 Max only in
   v0.1.

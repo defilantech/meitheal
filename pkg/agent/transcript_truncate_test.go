@@ -30,7 +30,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
@@ -43,8 +43,8 @@ func truncScheme(t *testing.T) *runtime.Scheme {
 	if err := clientgoscheme.AddToScheme(s); err != nil {
 		t.Fatalf("clientgo scheme: %v", err)
 	}
-	if err := foremanv1alpha1.AddToScheme(s); err != nil {
-		t.Fatalf("foreman scheme: %v", err)
+	if err := meithealv1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("meitheal scheme: %v", err)
 	}
 	return s
 }
@@ -79,9 +79,9 @@ func bigTranscript(n, msgBytes int) []oai.Message {
 // disproportionately the failures, so this gutted exactly the transcripts worth
 // keeping.
 func TestWriteTranscript_TruncationFillsTheBudget(t *testing.T) {
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "trunc-budget", Namespace: "default"},
-		Spec:       foremanv1alpha1.AgenticTaskSpec{Kind: foremanv1alpha1.AgenticTaskKindIssueFix},
+		Spec:       meithealv1alpha1.AgenticTaskSpec{Kind: meithealv1alpha1.AgenticTaskKindIssueFix},
 	}
 	c := fake.NewClientBuilder().WithScheme(truncScheme(t)).WithObjects(task).Build()
 
@@ -136,9 +136,9 @@ func TestWriteTranscript_TruncationFillsTheBudget(t *testing.T) {
 // message at the head, a marker naming how much was dropped, and the final
 // messages (where submit_result lives) at the tail.
 func TestWriteTranscript_TruncationKeepsHeadMarkerAndTail(t *testing.T) {
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "trunc-shape", Namespace: "default"},
-		Spec:       foremanv1alpha1.AgenticTaskSpec{Kind: foremanv1alpha1.AgenticTaskKindIssueFix},
+		Spec:       meithealv1alpha1.AgenticTaskSpec{Kind: meithealv1alpha1.AgenticTaskKindIssueFix},
 	}
 	c := fake.NewClientBuilder().WithScheme(truncScheme(t)).WithObjects(task).Build()
 

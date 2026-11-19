@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package datadir resolves the per-user directory llmkube's host binaries
+// Package datadir resolves the per-user directory Meitheal's host binaries
 // keep their data under.
 package datadir
 
@@ -24,8 +24,8 @@ import (
 	"runtime"
 )
 
-// Dir returns ~/Library/Application Support/llmkube on macOS and
-// $XDG_DATA_HOME/llmkube elsewhere, with ~/.local/share/llmkube when
+// Dir returns ~/Library/Application Support/meitheal on macOS and
+// $XDG_DATA_HOME/meitheal elsewhere, with ~/.local/share/meitheal when
 // XDG_DATA_HOME is unset or not absolute, as the XDG Base Directory
 // Specification requires. home is the user's home directory.
 func Dir(home string) string {
@@ -34,10 +34,10 @@ func Dir(home string) string {
 
 func dir(goos, home, xdgDataHome string) string {
 	if goos == "darwin" {
-		return filepath.Join(home, "Library", "Application Support", "llmkube")
+		return filepath.Join(home, "Library", "Application Support", "meitheal")
 	}
 	if filepath.IsAbs(xdgDataHome) {
-		return filepath.Join(xdgDataHome, "llmkube")
+		return filepath.Join(xdgDataHome, "meitheal")
 	}
-	return filepath.Join(home, ".local", "share", "llmkube")
+	return filepath.Join(home, ".local", "share", "meitheal")
 }

@@ -36,9 +36,10 @@ import (
 // both files.
 //
 // The script and the release Dockerfiles live in the target repository
-// (LLMKube), not here. testdata/llmkube holds a copy of them taken from the
-// LLMKube release this module pins in go.mod; refresh the copy and
-// builtInScanTargets together when that pin moves.
+// (LLMKube), not here. testdata/llmkube holds a copy of them taken from
+// LLMKube v0.10.19, the release this module pins in go.mod, minus the two
+// rows for the operator and agent images that moved to this repository.
+// Refresh the copy and builtInScanTargets together when that pin moves.
 const scanTargetRepo = "testdata/llmkube"
 
 const scanScriptPath = scanTargetRepo + "/hack/scan-images.sh"
@@ -100,7 +101,7 @@ func TestBuiltInScanTargetsMatchScanScript(t *testing.T) {
 
 	if len(rows) != len(builtInScanTargets) {
 		t.Fatalf("scan-target count diverged: %s has %d ALL rows, but "+
-			"pkg/foreman/agent/tools/scan_targets.go builtInScanTargets has %d; "+
+			"pkg/agent/tools/scan_targets.go builtInScanTargets has %d; "+
 			"update both files together", scanScriptPath, len(rows), len(builtInScanTargets))
 	}
 
@@ -114,7 +115,7 @@ func TestBuiltInScanTargetsMatchScanScript(t *testing.T) {
 		if got.ID != want.id || got.Image != want.image || got.Dockerfile != want.dockerfile ||
 			got.Binary != want.binary || got.Main != want.main {
 			t.Errorf("scan target %d diverged: %s row is %q but builtInScanTargets[%d] is %+v; "+
-				"hack/scan-images.sh and pkg/foreman/agent/tools/scan_targets.go must change together",
+				"hack/scan-images.sh and pkg/agent/tools/scan_targets.go must change together",
 				i, scanScriptPath, row, i, got)
 		}
 	}
@@ -150,7 +151,7 @@ func TestScanGateDefaultsMatchScanScript(t *testing.T) {
 	scriptSeverity := ms[1]
 	if got := strings.Join(DefaultScanSeverity, ","); got != scriptSeverity {
 		t.Errorf("DefaultScanSeverity renders %q but %s uses --severity %s; "+
-			"hack/scan-images.sh and pkg/foreman/agent/tools/scan_targets.go must change together",
+			"hack/scan-images.sh and pkg/agent/tools/scan_targets.go must change together",
 			got, scanScriptPath, scriptSeverity)
 	}
 	if !DefaultScanIgnoreUnfixed && strings.Contains(joined, "--ignore-unfixed") {
@@ -185,8 +186,8 @@ func TestScanGateDefaultsMatchScanScript(t *testing.T) {
 		t.Fatalf("resolveScanTargets(nil): %v", err)
 	}
 	job, err := renderScanJob(scanRendererInput{
-		Name:                    "foreman-scan-parity",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-scan-parity",
+		Namespace:               "meitheal-system",
 		BuilderImage:            "golang:1.26",
 		RunnerImage:             "alpine:3.24",
 		Repo:                    "defilantech/LLMKube",
@@ -260,7 +261,7 @@ func TestResolveScanTargets(t *testing.T) {
 	})
 
 	t.Run("named subset comes back in script order, deduplicated", func(t *testing.T) {
-		got, err := resolveScanTargets([]string{"foreman-agent", "controller", "foreman-agent"})
+		got, err := resolveScanTargets([]string{"router-proxy", "controller", "router-proxy"})
 		if err != nil {
 			t.Fatalf("resolveScanTargets: %v", err)
 		}
@@ -268,7 +269,7 @@ func TestResolveScanTargets(t *testing.T) {
 		for _, tgt := range got {
 			ids = append(ids, tgt.ID)
 		}
-		if want := []string{"controller", "foreman-agent"}; !reflect.DeepEqual(ids, want) {
+		if want := []string{"controller", "router-proxy"}; !reflect.DeepEqual(ids, want) {
 			t.Errorf("want %v in script order, got %v", want, ids)
 		}
 	})
@@ -293,7 +294,7 @@ func TestDefaultScanTargetIDsReturnsCopy(t *testing.T) {
 		first[0], first[1] = first[1], first[0]
 	}
 	second := DefaultScanTargetIDs()
-	want := []string{"controller", "foreman-operator", "foreman-agent", "router-proxy"}
+	want := []string{"controller", "router-proxy"}
 	if !reflect.DeepEqual(second, want) {
 		t.Errorf("DefaultScanTargetIDs leaked a mutable view: %v", second)
 	}

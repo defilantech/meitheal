@@ -17,7 +17,7 @@ limitations under the License.
 package agent
 
 import (
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // CapabilityOptions is the cross-platform constructor input for
@@ -27,7 +27,7 @@ type CapabilityOptions struct {
 	// Accelerator labels the host's accelerator family. On darwin this
 	// defaults to "metal"; on other platforms it must be set explicitly
 	// in v0.1 (M4 will probe NVIDIA + similar).
-	Accelerator foremanv1alpha1.FleetNodeAccelerator
+	Accelerator meithealv1alpha1.FleetNodeAccelerator
 
 	// InstalledModels are the Model CR names this node can load.
 	InstalledModels []string

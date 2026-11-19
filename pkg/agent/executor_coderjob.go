@@ -27,19 +27,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/audit"
 )
 
 // CoderJobSubmitter is the seam between the executor (this package) and
-// the coder-Job submitter (pkg/foreman/agent/tools.RunCoderJob). The
+// the coder-Job submitter (pkg/agent/tools.RunCoderJob). The
 // dependency direction is the reason it lives here: the tools package
 // imports the agent package (for ToolResult, RunTaskResult, the sentinel
 // constants), so the agent package cannot import tools without a cycle.
-// cmd/foreman-agent wires a closure over tools.RunCoderJob.Run into the
+// cmd/meitheal-agent wires a closure over tools.RunCoderJob.Run into the
 // executor's CoderJobSubmitter field.
 //
-// Submit renders + submits a per-task Job that runs `foreman-agent
+// Submit renders + submits a per-task Job that runs `meitheal-agent
 // run-task`, polls it to completion, and returns the parsed verdict +
 // branch + commit + log tail. It must never block forever: the submitter
 // owns the poll timeout.
@@ -91,7 +91,7 @@ type CoderJobRequest struct {
 
 // CoderJobResult is the parsed outcome the submitter returns. It mirrors
 // the flat fields of tools.CoderJobResult; the executor folds it into a
-// *Result. Verdict is a string form of foremanv1alpha1.AgenticTaskVerdict
+// *Result. Verdict is a string form of meithealv1alpha1.AgenticTaskVerdict
 // (GO / NO-GO / INCOMPLETE) or the synthetic "ERROR" for a Job-level
 // failure that never reached a verdict.
 type CoderJobResult struct {
@@ -124,16 +124,16 @@ type CoderJobResult struct {
 // constructs its NativeAgentLoopExecutor WITHOUT a CoderJobSubmitter, so
 // even though it executes the SAME Agent (still mode==Job), condition (2)
 // is false and it runs the loop in-process. Only the watcher's executor
-// -- the one cmd/foreman-agent wires a submitter into -- ever takes the
+// -- the one cmd/meitheal-agent wires a submitter into -- ever takes the
 // Job path. That is what keeps the Job from submitting another Job.
-func (e *NativeAgentLoopExecutor) useCoderJobPath(agent *foremanv1alpha1.Agent) bool {
+func (e *NativeAgentLoopExecutor) useCoderJobPath(agent *meithealv1alpha1.Agent) bool {
 	if e.CoderJobSubmitter == nil {
 		return false
 	}
 	if agent.Spec.Execution == nil {
 		return false
 	}
-	return agent.Spec.Execution.Mode == foremanv1alpha1.ExecutionModeJob
+	return agent.Spec.Execution.Mode == meithealv1alpha1.ExecutionModeJob
 }
 
 // SupervisesAgent implements SupervisingExecutor: a Job-mode task's loop,
@@ -146,7 +146,7 @@ func (e *NativeAgentLoopExecutor) useCoderJobPath(agent *foremanv1alpha1.Agent) 
 // A nil Agent (no agentRef, or deleted between scheduling and the claim) is
 // not supervised: Execute turns it into a terminal failure in this process
 // without ever reaching the Job path.
-func (e *NativeAgentLoopExecutor) SupervisesAgent(agent *foremanv1alpha1.Agent) bool {
+func (e *NativeAgentLoopExecutor) SupervisesAgent(agent *meithealv1alpha1.Agent) bool {
 	if agent == nil {
 		return false
 	}
@@ -160,8 +160,8 @@ func (e *NativeAgentLoopExecutor) SupervisesAgent(agent *foremanv1alpha1.Agent) 
 // THIS process -- all of that runs inside the Job, which calls RunTask.
 func (e *NativeAgentLoopExecutor) executeCoderJob(
 	ctx context.Context,
-	task *foremanv1alpha1.AgenticTask,
-	agent *foremanv1alpha1.Agent,
+	task *meithealv1alpha1.AgenticTask,
+	agent *meithealv1alpha1.Agent,
 	start time.Time,
 ) *Result {
 	log := logf.FromContext(ctx).WithName("native-agent-loop").WithValues(
@@ -185,7 +185,7 @@ func (e *NativeAgentLoopExecutor) executeCoderJob(
 		// finalizer-based cleanup workflows LLMKube does not use. Omitting it
 		// keeps the create working under the agent's current RBAC.
 		OwnerReference: &metav1.OwnerReference{
-			APIVersion: foremanv1alpha1.GroupVersion.String(),
+			APIVersion: meithealv1alpha1.GroupVersion.String(),
 			Kind:       "AgenticTask",
 			Name:       task.Name,
 			UID:        task.UID,
@@ -215,7 +215,7 @@ func (e *NativeAgentLoopExecutor) executeCoderJob(
 		// not a data-shaped outcome; surface it as an infrastructure
 		// failure so the watcher flags it distinctly from a model NO-GO.
 		log.Error(err, "coder Job submit failed")
-		return e.failResult(start, foremanv1alpha1.FailureInfrastructureError,
+		return e.failResult(start, meithealv1alpha1.FailureInfrastructureError,
 			"coder Job submit: "+err.Error())
 	}
 
@@ -253,13 +253,15 @@ func jobExtra(cjr CoderJobResult, supervisor map[string]any) map[string]any {
 // phase/verdict/conditions. Best-effort: a refetch that finds no task (it was
 // deleted) or a patch failure is logged and swallowed; the terminal patch
 // re-lifts the name, so a miss here still lands on completion.
-func (e *NativeAgentLoopExecutor) stampJobName(ctx context.Context, task *foremanv1alpha1.AgenticTask, jobName string) {
+func (e *NativeAgentLoopExecutor) stampJobName(
+	ctx context.Context, task *meithealv1alpha1.AgenticTask, jobName string,
+) {
 	if e.Client == nil || jobName == "" {
 		return
 	}
 	log := logf.FromContext(ctx).WithName("native-agent-loop").WithValues("task", task.Name, "ns", task.Namespace)
 
-	var fresh foremanv1alpha1.AgenticTask
+	var fresh meithealv1alpha1.AgenticTask
 	key := types.NamespacedName{Namespace: task.Namespace, Name: task.Name}
 	if err := e.Client.Get(ctx, key, &fresh); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -290,8 +292,8 @@ func boolPtr(b bool) *bool {
 
 func coderJobResultToResult(kind string, start time.Time, cjr CoderJobResult) *Result {
 	switch cjr.Verdict {
-	case string(foremanv1alpha1.AgenticTaskVerdictGo):
-		r := NewResult(kind, foremanv1alpha1.AgenticTaskVerdictGo, cjr.Summary, time.Since(start))
+	case string(meithealv1alpha1.AgenticTaskVerdictGo):
+		r := NewResult(kind, meithealv1alpha1.AgenticTaskVerdictGo, cjr.Summary, time.Since(start))
 		r.Extra = jobExtra(cjr, map[string]any{
 			"branch":        cjr.Branch,
 			"commitSHA":     cjr.CommitSHA,
@@ -305,8 +307,8 @@ func coderJobResultToResult(kind string, start time.Time, cjr CoderJobResult) *R
 			r.Extra["outcome"] = ""
 		}
 		return r
-	case string(foremanv1alpha1.AgenticTaskVerdictNoGo):
-		r := NewResult(kind, foremanv1alpha1.AgenticTaskVerdictNoGo, cjr.Summary, time.Since(start))
+	case string(meithealv1alpha1.AgenticTaskVerdictNoGo):
+		r := NewResult(kind, meithealv1alpha1.AgenticTaskVerdictNoGo, cjr.Summary, time.Since(start))
 		r.Extra = jobExtra(cjr, map[string]any{
 			"intendedBranch": cjr.Branch,
 			"executionMode":  "Job",
@@ -322,16 +324,16 @@ func coderJobResultToResult(kind string, start time.Time, cjr CoderJobResult) *R
 			r.Extra["outcome"] = "MODEL-NO-GO"
 		}
 		return r
-	case string(foremanv1alpha1.AgenticTaskVerdictIncomplete):
-		r := NewResult(kind, foremanv1alpha1.AgenticTaskVerdictIncomplete, cjr.Summary, time.Since(start))
+	case string(meithealv1alpha1.AgenticTaskVerdictIncomplete):
+		r := NewResult(kind, meithealv1alpha1.AgenticTaskVerdictIncomplete, cjr.Summary, time.Since(start))
 		// Prefer the reason the in-pod run-task already computed (e.g.
 		// FailureModelReportedError when the model called submit_result with
 		// verdict=ERROR). Fall back to FailureMaxTurnsExhausted only when no
-		// structured reason was embedded in the FOREMAN-RESULT envelope.
+		// structured reason was embedded in the MEITHEAL-RESULT envelope.
 		if cjr.FailureReason != "" {
-			r.FailureReason = foremanv1alpha1.AgenticTaskFailureReason(cjr.FailureReason)
+			r.FailureReason = meithealv1alpha1.AgenticTaskFailureReason(cjr.FailureReason)
 		} else {
-			r.FailureReason = foremanv1alpha1.FailureMaxTurnsExhausted
+			r.FailureReason = meithealv1alpha1.FailureMaxTurnsExhausted
 		}
 		// jobExtra, not a fresh map: the in-pod run's extras must survive every
 		// terminal branch, not only GO and NO-GO (#1656). transcriptRef is the
@@ -356,8 +358,8 @@ func coderJobResultToResult(kind string, start time.Time, cjr CoderJobResult) *R
 		if summary == "" {
 			summary = "coder Job failed before producing a verdict"
 		}
-		r := NewResult(kind, foremanv1alpha1.AgenticTaskVerdictNoGo, summary, time.Since(start))
-		r.FailureReason = foremanv1alpha1.FailureInfrastructureError
+		r := NewResult(kind, meithealv1alpha1.AgenticTaskVerdictNoGo, summary, time.Since(start))
+		r.FailureReason = meithealv1alpha1.FailureInfrastructureError
 		// jobExtra for the same reason as the INCOMPLETE branch above: a Job
 		// that died after the model wrote its envelope still carries extras
 		// worth keeping, and the supervisor keys below still override them.

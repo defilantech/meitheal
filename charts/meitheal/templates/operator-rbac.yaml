@@ -3,35 +3,35 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "foreman.operator.serviceAccountName" . }}
-  namespace: {{ include "foreman.namespace" . }}
+  name: {{ include "meitheal.operator.serviceAccountName" . }}
+  namespace: {{ include "meitheal.namespace" . }}
   labels:
-    {{- include "foreman.operator.labels" . | nindent 4 }}
+    {{- include "meitheal.operator.labels" . | nindent 4 }}
 ---
 {{- end }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "foreman.fullname" . }}-operator
+  name: {{ include "meitheal.fullname" . }}-operator
   labels:
-    {{- include "foreman.operator.labels" . | nindent 4 }}
+    {{- include "meitheal.operator.labels" . | nindent 4 }}
 rules:
-  # Foreman CRs (the five kinds the five controllers reconcile).
-  - apiGroups: ["foreman.llmkube.dev"]
+  # Meitheal CRs (the five kinds the five controllers reconcile).
+  - apiGroups: ["meitheal.dev"]
     resources:
       - workloads
       - agentictasks
       - agents
       - fleetnodes
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources:
       - workloads/status
       - agentictasks/status
       - agents/status
       - fleetnodes/status
     verbs: ["get", "update", "patch"]
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources:
       - workloads/finalizers
       - agentictasks/finalizers
@@ -39,15 +39,15 @@ rules:
       - fleetnodes/finalizers
     verbs: ["update"]
   # AgentReleaseReconciler: full status management + approval gate.
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources:
       - agentreleases
     verbs: ["get", "list", "watch", "update", "patch"]
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources:
       - agentreleases/status
     verbs: ["get", "update", "patch"]
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources:
       - agentreleases/finalizers
     verbs: ["update"]
@@ -60,7 +60,7 @@ rules:
 
   # WorkloadReconciler + AgenticTaskReconciler look up ModelProfile CRs
   # to resolve an Agent's optional spec.modelProfileRef.
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources: ["modelprofiles"]
     verbs: ["get", "list", "watch"]
 
@@ -81,7 +81,7 @@ rules:
     # RBAC verbs are per-resource, not per-label-selector, so the full
     # CRUD set is granted and the blast radius is enforced in code by
     # client.MatchingLabels{AuditLabel: "true"} inside the reaper's
-    # Sweep (pkg/foreman/audit/reaper.go). get/list/watch are also used
+    # Sweep (pkg/audit/reaper.go). get/list/watch are also used
     # by the live audit writer and the transcript helpers.
     resources: ["configmaps"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
@@ -89,15 +89,15 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "foreman.fullname" . }}-operator
+  name: {{ include "meitheal.fullname" . }}-operator
   labels:
-    {{- include "foreman.operator.labels" . | nindent 4 }}
+    {{- include "meitheal.operator.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "foreman.fullname" . }}-operator
+  name: {{ include "meitheal.fullname" . }}-operator
 subjects:
   - kind: ServiceAccount
-    name: {{ include "foreman.operator.serviceAccountName" . }}
-    namespace: {{ include "foreman.namespace" . }}
+    name: {{ include "meitheal.operator.serviceAccountName" . }}
+    namespace: {{ include "meitheal.namespace" . }}
 {{- end }}

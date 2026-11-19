@@ -1,49 +1,50 @@
-# Foreman Job-mode coder Agent. Unlike the Carnice coder
+# Meitheal Job-mode coder Agent. Unlike the Carnice coder
 # (qwen36-35b-carnice-mtp-coder.yaml), which runs in-process on a Mac via
 # the metal-agent, this Agent runs in an ephemeral Kubernetes Job
 # (spec.execution.mode=Job) against an in-cluster CUDA InferenceService.
 # Use this shape when the model serving the coder lives in the cluster
-# (or behind a reachable remote endpoint) rather than on the foreman-
-# agent's own host. The Job pulls the builder image (foreman-agent binary
-# + go/make/git toolchain), runs `foreman-agent run-task` under the
-# foreman-coder ServiceAccount the chart installs, clones into its own
+# (or behind a reachable remote endpoint) rather than on the meitheal-
+# agent's own host. The Job pulls the builder image (meitheal-agent binary
+# + go/make/git toolchain), runs `meitheal-agent run-task` under the
+# meitheal-coder ServiceAccount the chart installs, clones into its own
 # emptyDir, and discards the tree on exit.
 #
 # The system prompt below is the inline copy of
-# config/foreman/system-prompts/coder.md; edit the .md, then re-paste
+# config/system-prompts/coder.md; edit the .md, then re-paste
 # here so git history shows the change.
 #
 # Apply this manifest with kubectl into the same namespace as the
 # referenced InferenceService:
 #
-#   kubectl apply -f config/foreman/agents/gemma4-26b-q4-coder.yaml
+#   kubectl apply -f config/agents/gemma4-26b-q4-coder.yaml
 #
-# See docs/site/foreman/remote-model-coder.md for the full operator
+# See docs/remote-model-coder.md for the full operator
 # walkthrough (builder image, git-credentials / model-auth Secrets, and
 # launching a Job-mode AgenticTask).
-apiVersion: foreman.llmkube.dev/v1alpha1
+apiVersion: meitheal.dev/v1alpha1
 kind: Agent
 metadata:
   name: gemma4-26b-q4-coder
   namespace: default
   labels:
-    app.kubernetes.io/part-of: foreman
-    foreman.llmkube.dev/role: coder
+    app.kubernetes.io/part-of: meitheal
+    meitheal.dev/role: coder
 spec:
   role: coder
   model: gemma4-26b-q4
   inferenceServiceRef:
     name: gemma4-26b-q4
   # Job-mode execution (#620): run-task executes inside an ephemeral Job
-  # rather than in-process on the foreman-agent host. The image carries
-  # the foreman-agent binary plus the go/make/git toolchain the coder
-  # needs to build and test; it is built in a later task and published at
-  # this conventional tag. serviceAccountName matches the foreman-coder
-  # SA the chart provisions (charts/foreman/templates/coder-rbac.yaml).
+  # rather than in-process on the meitheal-agent host. The image carries
+  # the meitheal-agent binary plus the go/make/git toolchain the coder
+  # needs to build and test (Dockerfile.agent-builder, published by each
+  # release as meitheal-agent-coder). serviceAccountName matches the
+  # meitheal-coder SA the chart provisions
+  # (charts/meitheal/templates/coder-rbac.yaml).
   execution:
     mode: Job
-    image: registry.defilan.net/llmkube-foreman-agent-builder:dev
-    serviceAccountName: foreman-coder
+    image: ghcr.io/defilantech/meitheal-agent-coder:0.1.0
+    serviceAccountName: meitheal-coder
   # *string to dodge float-on-CRD complications; the executor parses
   # this as a float at loop start. Mirrors the autofix opencode
   # config's plan-agent temperature (0.2 for build; 0.4-0.6 for plan).
@@ -53,7 +54,7 @@ spec:
   maxTurns: 80
   maxRetries: 3
   # Stuck-loop detector (#544). Same numbers as DefaultProgressConfig
-  # in pkg/foreman/agent/progress.go; spelled out here so operators can
+  # in pkg/agent/progress.go; spelled out here so operators can
   # see and tune them without reading Go source. Empirically motivated
   # by the v0.3 batch on 2026-05-26 where Carnice repeated the same
   # `git log | grep "449"` call 58 times before MaxTurns; with these
@@ -93,7 +94,7 @@ spec:
     accelerator: cuda
   systemPrompt: |-
     You fix one LLMKube issue per run. The repository is already cloned in
-    your workspace and checked out on a foreman-authored branch the
+    your workspace and checked out on a meitheal-authored branch the
     executor created for you. Read `AGENTS.md` at the repo root first: it
     has the build and test commands, the code style, and the standards you
     must follow.
@@ -141,7 +142,7 @@ spec:
       redesign.
     - The issue is already resolved on the branch or upstream base.
       Common evidence: a commit since `BaseBranch` with a `Fixes #<N>`
-      trailer, or an existing `foreman/.../issue-<N>` branch with the fix
+      trailer, or an existing `meitheal/.../issue-<N>` branch with the fix
       already pushed. Emit `verdict="NO-GO"` with
       `extra.outcome="ALREADY-RESOLVED"` and cite the resolving SHA or
       branch in `extra.resolvedBy`. This is the honest "already done" bail
@@ -187,13 +188,12 @@ spec:
       or `go vet` yourself. The coder workspace cannot run envtest
       (KUBEBUILDER_ASSETS is unavailable), so `make test` hangs on the
       envtest-backed controller packages (`internal/controller`,
-      `internal/foreman/controller`) and burns your turn budget for no result.
+      `internal/controller`) and burns your turn budget for no result.
       The deterministic clean-room gate runs `fmt`, `vet`, `lint`, and the full
       `test` suite AFTER you submit GO and returns any failures for you to fix,
       so a single `go build ./...` is the only self-check you need.
-      - If you changed `api/v1alpha1/` or `api/foreman/v1alpha1/`, also run
-        `make manifests`, `make generate`, and `make chart-crds` (or
-        `make foreman-chart-crds` for the foreman group); then confirm
+      - If you changed `api/v1alpha1/`, also run `make manifests`,
+        `make generate`, and `make chart-crds`; then confirm
         `git status --porcelain` is empty. (These regenerate CRDs and do not
         need envtest.)
 
@@ -324,7 +324,7 @@ spec:
         generic model-decided bail.
       - `resolvedBy` (paired with `outcome="ALREADY-RESOLVED"`):
         the resolving commit SHA or branch (e.g. `"e97d0ca"` or
-        `"foreman/<workload>/issue-129"`). Surfaced to the operator
+        `"meitheal/<workload>/issue-129"`). Surfaced to the operator
         who decides whether to close the issue on GitHub.
       - `unverified` (paired with `outcome="NEEDS-VERIFICATION"`): a list of
         `{fact, whyItMatters, howToVerify}` objects, one per external fact

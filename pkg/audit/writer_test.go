@@ -19,7 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func TestWriteRecordCreatesDurableConfigMap(t *testing.T) {
@@ -31,7 +31,7 @@ func TestWriteRecordCreatesDurableConfigMap(t *testing.T) {
 	}
 
 	var cm corev1.ConfigMap
-	key := types.NamespacedName{Namespace: "default", Name: "foreman-audit-coder-89"}
+	key := types.NamespacedName{Namespace: "default", Name: "meitheal-audit-coder-89"}
 	if err := c.Get(context.Background(), key, &cm); err != nil {
 		t.Fatalf("audit ConfigMap not created: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestWriteRecordIdempotentUpsert(t *testing.T) {
 		t.Fatalf("second write: %v", err)
 	}
 	var cm corev1.ConfigMap
-	_ = c.Get(ctx, types.NamespacedName{Namespace: "default", Name: "foreman-audit-t"}, &cm)
+	_ = c.Get(ctx, types.NamespacedName{Namespace: "default", Name: "meitheal-audit-t"}, &cm)
 	var got Record
 	_ = json.Unmarshal([]byte(cm.Data[auditDataKey]), &got)
 	if got.Verdict != "NO-GO" {
@@ -73,7 +73,7 @@ func TestWriteRecordIdempotentUpsert(t *testing.T) {
 func TestRecordTerminalWritesOnceAndSetsAnnotation(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
-	_ = foremanv1alpha1.AddToScheme(scheme)
+	_ = meithealv1alpha1.AddToScheme(scheme)
 
 	task := coderTask() // from record_test.go (same package)
 	agent := coderAgent()
@@ -87,12 +87,12 @@ func TestRecordTerminalWritesOnceAndSetsAnnotation(t *testing.T) {
 	}
 	// audit CM exists in the task namespace (empty audit ns -> task ns)
 	var cm corev1.ConfigMap
-	key := types.NamespacedName{Namespace: "default", Name: "foreman-audit-coder-89-uid-1-attempt-0"}
+	key := types.NamespacedName{Namespace: "default", Name: "meitheal-audit-coder-89-uid-1-attempt-0"}
 	if err := c.Get(ctx, key, &cm); err != nil {
 		t.Fatalf("audit CM not written: %v", err)
 	}
 	// annotation guard set on the task
-	var got foremanv1alpha1.AgenticTask
+	var got meithealv1alpha1.AgenticTask
 	_ = c.Get(ctx, types.NamespacedName{Namespace: "default", Name: "coder-89"}, &got)
 	if got.Annotations[AuditedAnnotation] != "true" {
 		t.Errorf("audited annotation not set: %v", got.Annotations)
@@ -114,7 +114,7 @@ func TestRecordTerminalLegacyMarkerDoesNotSuppressNewAttempt(t *testing.T) {
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
-	_ = foremanv1alpha1.AddToScheme(scheme)
+	_ = meithealv1alpha1.AddToScheme(scheme)
 	task := coderTask()
 	task.Annotations = map[string]string{AuditedAnnotation: "true"}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(task).WithStatusSubresource(task).Build()

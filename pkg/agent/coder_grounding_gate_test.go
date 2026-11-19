@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
@@ -166,8 +166,8 @@ func TestApplyCoderGroundingRailForTask_GatesOnIssueFixKind(t *testing.T) {
 		}
 	}
 
-	reviewTask := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{Kind: foremanv1alpha1.AgenticTaskKindReview},
+	reviewTask := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{Kind: meithealv1alpha1.AgenticTaskKindReview},
 	}
 	lr := newLoopRes()
 	applyCoderGroundingRailForTask(context.Background(), logr.Discard(), reviewTask, "/ws", "main", lr)
@@ -175,8 +175,8 @@ func TestApplyCoderGroundingRailForTask_GatesOnIssueFixKind(t *testing.T) {
 		t.Fatal("kind != issue-fix -> rail must be a no-op")
 	}
 
-	issueFixTask := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{Kind: foremanv1alpha1.AgenticTaskKindIssueFix},
+	issueFixTask := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{Kind: meithealv1alpha1.AgenticTaskKindIssueFix},
 	}
 	lr = newLoopRes()
 	applyCoderGroundingRailForTask(context.Background(), logr.Discard(), issueFixTask, "/ws", "main", lr)

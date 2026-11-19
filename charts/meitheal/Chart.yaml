@@ -1,23 +1,22 @@
 apiVersion: v2
-name: foreman
+name: meitheal
 description: |
-  Foreman is an opt-in add-on for LLMKube that schedules agentic workloads
-  (Workload, AgenticTask) across a fleet of nodes (FleetNode). Installing
-  LLMKube alone does not install or require Foreman. Foreman is a SIBLING
-  chart to llmkube, not a subchart: install llmkube first (helm install
-  llmkube defilantech/llmkube), then install foreman alongside it. They
-  share no Helm relationship at packaging or install time; the only
-  coupling is that the foreman-operator's RBAC reads inference.llmkube.dev
-  CRDs that llmkube installs.
+  Meitheal schedules agentic coding workloads (Workload, AgenticTask)
+  across a fleet of nodes (FleetNode) that run coder, verifier and
+  reviewer agents on local models. An Agent's model can be an
+  InferenceService served by LLMKube or any OpenAI-compatible endpoint.
+  When Agents use LLMKube InferenceServices, install LLMKube's own chart
+  first; the meitheal-operator's RBAC reads the inference.llmkube.dev
+  CRDs that chart installs. The two charts share no Helm relationship.
 type: application
-version: 0.10.19
-appVersion: 0.10.19
+version: 0.1.0
+appVersion: 0.1.0
 keywords:
-  - llmkube
-  - foreman
+  - meitheal
   - agentic
   - workload
   - orchestration
-home: https://github.com/defilantech/LLMKube
+  - llm
+home: https://github.com/defilantech/meitheal
 sources:
-  - https://github.com/defilantech/LLMKube
+  - https://github.com/defilantech/meitheal

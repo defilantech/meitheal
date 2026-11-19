@@ -25,7 +25,7 @@ import (
 )
 
 // mkRepo seeds a workspace dir with a small Go project. The structure
-// mirrors what foreman-agent will see after `git clone`: top-level
+// mirrors what meitheal-agent will see after `git clone`: top-level
 // cmd/ package, a couple of internal packages, a vendor/ dir that
 // must be skipped, and a generated file that must be skipped.
 func mkRepo(t *testing.T) string {

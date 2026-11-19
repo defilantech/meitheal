@@ -25,7 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/audit"
 )
 
@@ -72,7 +72,7 @@ func BaselineFor(ctx context.Context, c client.Client, namespace, agent string) 
 		// audit.TaskRef.Kind is a plain string on the wire, so the constant is
 		// converted rather than the comparison reshaped: the record carries
 		// whatever the writer serialised, not a typed kind.
-		if rec.Task.Kind != string(foremanv1alpha1.AgenticTaskKindIssueFix) {
+		if rec.Task.Kind != string(meithealv1alpha1.AgenticTaskKindIssueFix) {
 			continue
 		}
 		// SucceededOnTarget is this exact predicate, precomputed by

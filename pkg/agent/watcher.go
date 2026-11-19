@@ -33,7 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // DefaultWatcherInterval is the poll cadence between AgenticTask list
@@ -72,7 +72,7 @@ const DefaultMaxSupervisedTasks = 4
 // ErrWatcherStalled is returned from Run when consecutive List() failures
 // exceed the configured threshold; the supervisor (launchd / systemd /
 // the harness) is expected to recycle the process to rebuild the client.
-var ErrWatcherStalled = errors.New("foreman agentictask watcher stalled: consecutive list failures exceeded threshold")
+var ErrWatcherStalled = errors.New("meitheal agentictask watcher stalled: consecutive list failures exceeded threshold")
 
 // AgenticTaskWatcher is the node-side dispatch loop: it polls the
 // cluster for AgenticTasks assigned to this FleetNode, claims any in
@@ -126,7 +126,7 @@ type AgenticTaskWatcher struct {
 	inflightMu sync.Mutex
 	// inflight is the in-process run, if any. At most one: it uses this
 	// process's CPU, memory and workspace.
-	inflight *foremanv1alpha1.AgenticTask
+	inflight *meithealv1alpha1.AgenticTask
 	// supervised counts Job-mode runs in flight. The agent is idle while
 	// they run, so they get their own budget instead of the single
 	// in-process slot (#1559).
@@ -191,7 +191,7 @@ func (w *AgenticTaskWatcher) hasCapacityFor(supervise bool) bool {
 // because the watcher may be polling every namespace. It is the memo key for
 // the execution-mode lookup in pollOnce; tasks with no agentRef share the
 // empty-name key, which every Executor answers the same way.
-func agentRefKey(t *foremanv1alpha1.AgenticTask) string {
+func agentRefKey(t *meithealv1alpha1.AgenticTask) string {
 	if t.Spec.AgentRef == nil {
 		return t.Namespace + "/"
 	}
@@ -203,7 +203,7 @@ func agentRefKey(t *foremanv1alpha1.AgenticTask) string {
 type agentResolution struct {
 	// agent is the resolved Agent, or nil when the task has no agentRef or
 	// its Agent is gone. Handed to Executor.Execute as-is.
-	agent *foremanv1alpha1.Agent
+	agent *meithealv1alpha1.Agent
 	// supervise is which slot this task needs, derived from agent by the
 	// same predicate Execute dispatches on.
 	supervise bool
@@ -215,7 +215,7 @@ type agentResolution struct {
 // resolveCandidateAgent reads a candidate's Agent once and derives which slot
 // it would occupy.
 func (w *AgenticTaskWatcher) resolveCandidateAgent(
-	ctx context.Context, t *foremanv1alpha1.AgenticTask,
+	ctx context.Context, t *meithealv1alpha1.AgenticTask,
 ) agentResolution {
 	agent, err := resolveTaskAgent(ctx, w.Client, t)
 	if err != nil {
@@ -230,7 +230,7 @@ func (w *AgenticTaskWatcher) resolveCandidateAgent(
 // supervised -- Execute fails it in this process without reaching the Job
 // path -- so it charges the in-process slot it would have held before #1559,
 // which it releases again as soon as the failure is patched.
-func (w *AgenticTaskWatcher) supervises(agent *foremanv1alpha1.Agent) bool {
+func (w *AgenticTaskWatcher) supervises(agent *meithealv1alpha1.Agent) bool {
 	se, ok := w.Executor.(SupervisingExecutor)
 	return ok && se.SupervisesAgent(agent)
 }
@@ -307,7 +307,7 @@ func (w *AgenticTaskWatcher) Run(ctx context.Context) error {
 func (w *AgenticTaskWatcher) recoverOrphanedTasks(ctx context.Context, namespace string) error {
 	log := logf.FromContext(ctx).WithName("agentictask-watcher").WithValues("node", w.NodeName)
 
-	var list foremanv1alpha1.AgenticTaskList
+	var list meithealv1alpha1.AgenticTaskList
 	if err := w.Client.List(ctx, &list, client.InNamespace(namespace)); err != nil {
 		return fmt.Errorf("list AgenticTasks for recovery: %w", err)
 	}
@@ -315,7 +315,7 @@ func (w *AgenticTaskWatcher) recoverOrphanedTasks(ctx context.Context, namespace
 	recovered := 0
 	for i := range list.Items {
 		t := &list.Items[i]
-		if t.Status.AssignedNode != w.NodeName || t.Status.Phase != foremanv1alpha1.AgenticTaskPhaseRunning {
+		if t.Status.AssignedNode != w.NodeName || t.Status.Phase != meithealv1alpha1.AgenticTaskPhaseRunning {
 			continue
 		}
 		if err := w.resetOrphanedTask(ctx, t); err != nil {
@@ -336,10 +336,10 @@ func (w *AgenticTaskWatcher) recoverOrphanedTasks(ctx context.Context, namespace
 
 // resetOrphanedTask flips an orphaned Running task back to Pending and
 // clears the dead PID's claim, so the scheduler re-dispatches it.
-func (w *AgenticTaskWatcher) resetOrphanedTask(ctx context.Context, t *foremanv1alpha1.AgenticTask) error {
+func (w *AgenticTaskWatcher) resetOrphanedTask(ctx context.Context, t *meithealv1alpha1.AgenticTask) error {
 	patch := client.MergeFrom(t.DeepCopy())
 	now := metav1.Now()
-	t.Status.Phase = foremanv1alpha1.AgenticTaskPhasePending
+	t.Status.Phase = meithealv1alpha1.AgenticTaskPhasePending
 	t.Status.AssignedNode = ""
 	t.Status.ClaimedAt = nil
 	t.Status.StartedAt = nil
@@ -358,13 +358,13 @@ func (w *AgenticTaskWatcher) resetOrphanedTask(ctx context.Context, t *foremanv1
 // starting new coder work. Claiming in List order instead maximizes
 // WIP — with a deep issue-fix backlog on a one-task-per-node agent,
 // verify/review tasks starve and no Workload ever completes (#936).
-func kindClaimPriority(kind foremanv1alpha1.AgenticTaskKind) int {
+func kindClaimPriority(kind meithealv1alpha1.AgenticTaskKind) int {
 	switch kind {
-	case foremanv1alpha1.AgenticTaskKindReview:
+	case meithealv1alpha1.AgenticTaskKindReview:
 		return 0
-	case foremanv1alpha1.AgenticTaskKindVerify:
+	case meithealv1alpha1.AgenticTaskKindVerify:
 		return 1
-	case foremanv1alpha1.AgenticTaskKindIssueFix:
+	case meithealv1alpha1.AgenticTaskKindIssueFix:
 		return 2
 	default:
 		return 3
@@ -373,7 +373,7 @@ func kindClaimPriority(kind foremanv1alpha1.AgenticTaskKind) int {
 
 // sortTasksDepthFirst orders claim candidates by kindClaimPriority,
 // breaking ties oldest-first so no task starves within its kind.
-func sortTasksDepthFirst(tasks []*foremanv1alpha1.AgenticTask) {
+func sortTasksDepthFirst(tasks []*meithealv1alpha1.AgenticTask) {
 	sort.SliceStable(tasks, func(i, j int) bool {
 		pi, pj := kindClaimPriority(tasks[i].Spec.Kind), kindClaimPriority(tasks[j].Spec.Kind)
 		if pi != pj {
@@ -399,7 +399,7 @@ func (w *AgenticTaskWatcher) pollOnce(ctx context.Context, namespace string) err
 	// today by wiring, not by construction: a nil-submitter
 	// NativeAgentLoopExecutor does exist (RunTask builds one inside the coder
 	// Job pod so a Job cannot recurse into another Job --
-	// cmd/foreman-agent/main.go:454) and it would answer false for every
+	// cmd/meitheal-agent/main.go:454) and it would answer false for every
 	// Agent, but it never meets a watcher, because RunTask constructs none
 	// and the only watcher gets the submitter-wired executor. If they ever
 	// diverge the cost is that this guard stops firing and the pointless
@@ -409,18 +409,18 @@ func (w *AgenticTaskWatcher) pollOnce(ctx context.Context, namespace string) err
 		return nil
 	}
 
-	var list foremanv1alpha1.AgenticTaskList
+	var list meithealv1alpha1.AgenticTaskList
 	if err := w.Client.List(ctx, &list, client.InNamespace(namespace)); err != nil {
 		return fmt.Errorf("list AgenticTasks: %w", err)
 	}
 
-	candidates := make([]*foremanv1alpha1.AgenticTask, 0, len(list.Items))
+	candidates := make([]*meithealv1alpha1.AgenticTask, 0, len(list.Items))
 	for i := range list.Items {
 		t := &list.Items[i]
 		if t.Status.AssignedNode != w.NodeName {
 			continue
 		}
-		if t.Status.Phase != foremanv1alpha1.AgenticTaskPhaseScheduled {
+		if t.Status.Phase != meithealv1alpha1.AgenticTaskPhaseScheduled {
 			continue
 		}
 		candidates = append(candidates, t)
@@ -513,7 +513,7 @@ func (w *AgenticTaskWatcher) pollOnce(ctx context.Context, namespace string) err
 // claim flips Scheduled -> Running using a status merge patch. Optimistic
 // concurrency: if the patch fails because someone else moved the task,
 // the next poll will see the new phase and skip cleanly.
-func (w *AgenticTaskWatcher) claim(ctx context.Context, t *foremanv1alpha1.AgenticTask) error {
+func (w *AgenticTaskWatcher) claim(ctx context.Context, t *meithealv1alpha1.AgenticTask) error {
 	patch := client.MergeFromWithOptions(t.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	now := metav1.Now()
 	t.Status.Attempt++
@@ -527,7 +527,7 @@ func (w *AgenticTaskWatcher) claim(ctx context.Context, t *foremanv1alpha1.Agent
 	t.Status.CommitSHA = ""
 	t.Status.JobName = ""
 	t.Status.TranscriptRef = ""
-	t.Status.Phase = foremanv1alpha1.AgenticTaskPhaseRunning
+	t.Status.Phase = meithealv1alpha1.AgenticTaskPhaseRunning
 	t.Status.ClaimedAt = &now
 	t.Status.StartedAt = &now
 	setCondition(&t.Status.Conditions, metav1.Condition{
@@ -551,8 +551,8 @@ func (w *AgenticTaskWatcher) claim(ctx context.Context, t *foremanv1alpha1.Agent
 // accounting did not budget for.
 func (w *AgenticTaskWatcher) launchExecutor(
 	ctx context.Context,
-	t *foremanv1alpha1.AgenticTask,
-	agent *foremanv1alpha1.Agent,
+	t *meithealv1alpha1.AgenticTask,
+	agent *meithealv1alpha1.Agent,
 	supervise bool,
 ) {
 	w.inflightMu.Lock()
@@ -632,7 +632,7 @@ func (w *AgenticTaskWatcher) launchExecutor(
 func (w *AgenticTaskWatcher) watchTaskLiveness(
 	ctx context.Context,
 	cancel context.CancelFunc,
-	t *foremanv1alpha1.AgenticTask,
+	t *meithealv1alpha1.AgenticTask,
 ) {
 	log := logf.FromContext(ctx).WithName("task-liveness").WithValues("task", t.Name)
 	key := types.NamespacedName{Namespace: t.Namespace, Name: t.Name}
@@ -651,7 +651,7 @@ func (w *AgenticTaskWatcher) watchTaskLiveness(
 			// Run finished (or was already cancelled): nothing to watch.
 			return
 		case <-ticker.C:
-			var cur foremanv1alpha1.AgenticTask
+			var cur meithealv1alpha1.AgenticTask
 			err := w.Client.Get(ctx, key, &cur)
 			switch {
 			case err == nil:
@@ -687,7 +687,7 @@ func (w *AgenticTaskWatcher) watchTaskLiveness(
 // result envelope, and Completed condition.
 func (w *AgenticTaskWatcher) patchTerminal(
 	ctx context.Context,
-	t *foremanv1alpha1.AgenticTask,
+	t *meithealv1alpha1.AgenticTask,
 	res *Result,
 	execErr error,
 ) error {
@@ -698,7 +698,7 @@ func (w *AgenticTaskWatcher) patchTerminal(
 	})
 }
 
-func (w *AgenticTaskWatcher) ownsClaim(current, claimed *foremanv1alpha1.AgenticTask) bool {
+func (w *AgenticTaskWatcher) ownsClaim(current, claimed *meithealv1alpha1.AgenticTask) bool {
 	return current.UID == claimed.UID && current.Status.Attempt == claimed.Status.Attempt &&
 		current.Status.AssignedNode == w.NodeName && current.Status.ClaimedAt != nil &&
 		claimed.Status.ClaimedAt != nil && current.Status.ClaimedAt.Equal(claimed.Status.ClaimedAt)
@@ -706,11 +706,11 @@ func (w *AgenticTaskWatcher) ownsClaim(current, claimed *foremanv1alpha1.Agentic
 
 func (w *AgenticTaskWatcher) patchTerminalOnce(
 	ctx context.Context,
-	t *foremanv1alpha1.AgenticTask,
+	t *meithealv1alpha1.AgenticTask,
 	res *Result,
 	execErr error,
 ) error {
-	var fresh foremanv1alpha1.AgenticTask
+	var fresh meithealv1alpha1.AgenticTask
 	key := types.NamespacedName{Namespace: t.Namespace, Name: t.Name}
 	if err := w.Client.Get(ctx, key, &fresh); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -738,13 +738,13 @@ func (w *AgenticTaskWatcher) patchTerminalOnce(
 	fresh.Status.FinishedAt = &now
 
 	if execErr != nil {
-		fresh.Status.Phase = foremanv1alpha1.AgenticTaskPhaseFailed
-		fresh.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictIncomplete
+		fresh.Status.Phase = meithealv1alpha1.AgenticTaskPhaseFailed
+		fresh.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictIncomplete
 		// v0.3 #559: the bubble-up path lands here. Map to
 		// InfrastructureError (the watcher has no visibility into
 		// what KIND of err this is, only that the executor wanted
 		// the supervisor to see it).
-		fresh.Status.FailureReason = foremanv1alpha1.FailureInfrastructureError
+		fresh.Status.FailureReason = meithealv1alpha1.FailureInfrastructureError
 		setCondition(&fresh.Status.Conditions, metav1.Condition{
 			Type:               "Completed",
 			Status:             metav1.ConditionFalse,
@@ -758,9 +758,9 @@ func (w *AgenticTaskWatcher) patchTerminalOnce(
 	if res == nil {
 		// Defensive: nil error + nil result is a contract violation;
 		// surface it explicitly rather than silently succeeding.
-		fresh.Status.Phase = foremanv1alpha1.AgenticTaskPhaseFailed
-		fresh.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictIncomplete
-		fresh.Status.FailureReason = foremanv1alpha1.FailureInfrastructureError
+		fresh.Status.Phase = meithealv1alpha1.AgenticTaskPhaseFailed
+		fresh.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictIncomplete
+		fresh.Status.FailureReason = meithealv1alpha1.FailureInfrastructureError
 		setCondition(&fresh.Status.Conditions, metav1.Condition{
 			Type:               "Completed",
 			Status:             metav1.ConditionFalse,
@@ -771,7 +771,7 @@ func (w *AgenticTaskWatcher) patchTerminalOnce(
 		return w.Client.Status().Patch(ctx, &fresh, patch)
 	}
 
-	fresh.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
+	fresh.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
 	fresh.Status.Verdict = res.Verdict
 	// v0.3 #559: lift the structured FailureReason from the Result
 	// envelope onto the status. Empty on a successful task (Verdict
@@ -846,7 +846,7 @@ func (w *AgenticTaskWatcher) patchTerminalOnce(
 		"rejectedFailureReason", res.FailureReason,
 	)
 
-	var fallback foremanv1alpha1.AgenticTask
+	var fallback meithealv1alpha1.AgenticTask
 	if getErr := w.Client.Get(ctx, key, &fallback); getErr != nil {
 		return fmt.Errorf("fallback refetch %s: %w", key, getErr)
 	}
@@ -855,9 +855,9 @@ func (w *AgenticTaskWatcher) patchTerminalOnce(
 	}
 	fallbackPatch := client.MergeFromWithOptions(fallback.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	fallbackNow := metav1.Now()
-	fallback.Status.Phase = foremanv1alpha1.AgenticTaskPhaseFailed
-	fallback.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictIncomplete
-	fallback.Status.FailureReason = foremanv1alpha1.FailureInfrastructureError
+	fallback.Status.Phase = meithealv1alpha1.AgenticTaskPhaseFailed
+	fallback.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictIncomplete
+	fallback.Status.FailureReason = meithealv1alpha1.FailureInfrastructureError
 	fallback.Status.FinishedAt = &fallbackNow
 	// Preserve the raw result envelope: status.result is
 	// x-kubernetes-preserve-unknown-fields so it survives the patch even

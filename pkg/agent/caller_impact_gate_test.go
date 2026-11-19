@@ -57,16 +57,16 @@ func callerImpactRunner(changedFiles, diffOutput string, grepOutputs map[string]
 // is called from files other than the one being changed.
 func TestCheckCallerImpact_ListsOtherCallers(t *testing.T) {
 	// changed files: one non-test Go file
-	changedFiles := " M pkg/foreman/agent/repo/diff.go"
+	changedFiles := " M pkg/agent/repo/diff.go"
 
 	// git diff -U0 output showing a hunk inside DiffNameOnly
 	diffOutput := "@@ -50,3 +50,4 @@ func DiffNameOnly(base string) string {\n+\tgitAdd()\n"
 
 	// grep results: definition site + two call sites in a different file
 	grepOutputs := map[string]string{
-		"DiffNameOnly": "./pkg/foreman/agent/repo/diff.go:50:func DiffNameOnly(base string) string {\n" +
-			"./pkg/foreman/agent/executor_native.go:559:\tDiffNameOnly(\"HEAD\")\n" +
-			"./pkg/foreman/agent/executor_native.go:1386:\tDiffNameOnly(\"main\")\n",
+		"DiffNameOnly": "./pkg/agent/repo/diff.go:50:func DiffNameOnly(base string) string {\n" +
+			"./pkg/agent/executor_native.go:559:\tDiffNameOnly(\"HEAD\")\n" +
+			"./pkg/agent/executor_native.go:1386:\tDiffNameOnly(\"main\")\n",
 	}
 
 	run := callerImpactRunner(changedFiles, diffOutput, grepOutputs)
@@ -88,14 +88,14 @@ func TestCheckCallerImpact_ListsOtherCallers(t *testing.T) {
 // (no external callers) does NOT produce an advisory.
 func TestCheckCallerImpact_UnexportedSingleUseNoAdvisory(t *testing.T) {
 	// changed files: one non-test Go file
-	changedFiles := " M pkg/foreman/agent/helper.go"
+	changedFiles := " M pkg/agent/helper.go"
 
 	// git diff -U0 output showing a hunk inside the unexported helper function
 	diffOutput := "@@ -10,3 +10,4 @@ func helper(x int) int {\n+\treturn x + 1\n"
 
 	// grep returns only the definition line (no external callers)
 	grepOutputs := map[string]string{
-		"helper": "./pkg/foreman/agent/helper.go:10:func helper(x int) int {\n",
+		"helper": "./pkg/agent/helper.go:10:func helper(x int) int {\n",
 	}
 
 	run := callerImpactRunner(changedFiles, diffOutput, grepOutputs)
@@ -110,11 +110,11 @@ func TestCheckCallerImpact_UnexportedSingleUseNoAdvisory(t *testing.T) {
 // exported function with no external callers also produces no advisory
 // (only the definition site found by grep).
 func TestCheckCallerImpact_ExportedWithNoExternalCallers(t *testing.T) {
-	changedFiles := " M pkg/foreman/agent/foo.go"
+	changedFiles := " M pkg/agent/foo.go"
 	diffOutput := "@@ -5,3 +5,4 @@ func MyExportedFunc() {\n+\tlog.Println(\"updated\")\n"
 
 	grepOutputs := map[string]string{
-		"MyExportedFunc": "./pkg/foreman/agent/foo.go:5:func MyExportedFunc() {\n",
+		"MyExportedFunc": "./pkg/agent/foo.go:5:func MyExportedFunc() {\n",
 	}
 
 	run := callerImpactRunner(changedFiles, diffOutput, grepOutputs)

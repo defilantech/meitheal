@@ -67,13 +67,13 @@ type Updater struct {
 	OS, Arch string
 
 	// InstallRoot is the user-owned directory managed by this Updater.
-	// Conventionally ~/Library/Application Support/llmkube/<binaryName>
-	// on macOS, and $XDG_DATA_HOME/llmkube/<binaryName> elsewhere
-	// (~/.local/share/llmkube/<binaryName> when XDG_DATA_HOME is unset or
+	// Conventionally ~/Library/Application Support/meitheal/<binaryName>
+	// on macOS, and $XDG_DATA_HOME/meitheal/<binaryName> elsewhere
+	// (~/.local/share/meitheal/<binaryName> when XDG_DATA_HOME is unset or
 	// not absolute). Use ResolveInstallRoot to get the platform default.
 	InstallRoot string
 
-	// BinaryName is the name of the executable file (e.g. "foreman-agent").
+	// BinaryName is the name of the executable file (e.g. "meitheal-agent").
 	BinaryName string
 
 	// Verifier checks the downloaded artifact before staging. In production
@@ -386,9 +386,9 @@ func (u *Updater) download(hc *http.Client, url string, dst *os.File, maxBytes i
 // ResolveInstallRoot returns the user-owned default install root for
 // binaryName, <datadir.Dir>/<binaryName>:
 //
-//   - darwin: ~/Library/Application Support/llmkube/<binaryName>
-//   - other:  $XDG_DATA_HOME/llmkube/<binaryName>, or
-//     ~/.local/share/llmkube/<binaryName> when XDG_DATA_HOME is unset or
+//   - darwin: ~/Library/Application Support/meitheal/<binaryName>
+//   - other:  $XDG_DATA_HOME/meitheal/<binaryName>, or
+//     ~/.local/share/meitheal/<binaryName> when XDG_DATA_HOME is unset or
 //     not absolute
 //
 // The home directory is required only when the result depends on it.

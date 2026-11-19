@@ -46,7 +46,7 @@ var ErrNoChoices = errors.New("oai: response contained no choices")
 
 // Client is a minimal OpenAI-compatible chat-completions client.
 //
-// It is deliberately not the official OpenAI SDK: Foreman needs exactly
+// It is deliberately not the official OpenAI SDK: Meitheal needs exactly
 // one HTTP shape, we want llama.cpp-specific retry semantics, and the
 // SDK pulls a large transitive cone we would rather not adopt for v0.1.
 //

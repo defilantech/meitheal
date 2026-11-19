@@ -158,7 +158,7 @@ func TestIntegrate_MissingOptions(t *testing.T) {
 	}
 }
 
-// TestIntegrate_NoAmbientGitIdentity reproduces the in-cluster foreman-agent
+// TestIntegrate_NoAmbientGitIdentity reproduces the in-cluster meitheal-agent
 // pod, where git has no user.name/user.email in any config scope. The slice
 // branches were committed by the coder (with an identity), but the pod that
 // runs Integrate has none, so the union commit must supply its own or it dies
@@ -186,10 +186,10 @@ func TestIntegrate_NoAmbientGitIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("integrate without ambient git identity: %v", err)
 	}
-	// The union commit landed, authored by the foreman bot identity.
+	// The union commit landed, authored by the meitheal bot identity.
 	got := strings.TrimSpace(git(t, dir, "log", "-1", "--format=%an <%ae>", "integ"))
-	if !strings.Contains(got, "foreman@llmkube.dev") {
-		t.Fatalf("union commit author = %q, want the foreman bot identity", got)
+	if !strings.Contains(got, "meitheal@meitheal.dev") {
+		t.Fatalf("union commit author = %q, want the meitheal bot identity", got)
 	}
 	if res.Branch != "integ" {
 		t.Fatalf("branch = %q, want integ", res.Branch)

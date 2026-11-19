@@ -31,12 +31,12 @@ import (
 )
 
 // baselineCMIn builds an audit-record ConfigMap in the given namespace, shaped
-// the way pkg/foreman/audit's writer shapes it: the audit label, plus the
+// the way pkg/audit's writer shapes it: the audit label, plus the
 // JSON Record under the audit.json data key.
 func baselineCMIn(t *testing.T, namespace, name, agent, kind, verdict string, elapsed float64) *corev1.ConfigMap {
 	t.Helper()
 	rec := audit.Record{
-		SchemaVersion: "foreman.audit.v1",
+		SchemaVersion: "meitheal.audit.v1",
 		Verdict:       verdict,
 		// BuildRecord derives this from AgenticTask.SucceededOnTarget(),
 		// which is true exactly for a Succeeded task whose verdict is GO
@@ -53,7 +53,7 @@ func baselineCMIn(t *testing.T, namespace, name, agent, kind, verdict string, el
 	}
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foreman-audit-" + name,
+			Name:      "meitheal-audit-" + name,
 			Namespace: namespace,
 			Labels:    map[string]string{audit.AuditLabel: "true"},
 		},
@@ -111,7 +111,7 @@ func TestBaselineFor_FiltersAreLoadBearing(t *testing.T) {
 	// A labelled audit ConfigMap holding JSON that is not a Record.
 	malformed := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foreman-audit-malformed",
+			Name:      "meitheal-audit-malformed",
 			Namespace: "default",
 			Labels:    map[string]string{audit.AuditLabel: "true"},
 		},
@@ -120,7 +120,7 @@ func TestBaselineFor_FiltersAreLoadBearing(t *testing.T) {
 	// A labelled audit ConfigMap with no audit.json key at all.
 	keyless := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foreman-audit-keyless",
+			Name:      "meitheal-audit-keyless",
 			Namespace: "default",
 			Labels:    map[string]string{audit.AuditLabel: "true"},
 		},

@@ -14,10 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package agent is the Foreman worker library: it lets a node register
+// Package agent is the Meitheal worker library: it lets a node register
 // itself as a FleetNode, heartbeat its capability, and (in later
 // milestones) watch + execute AgenticTasks dispatched to it. The
-// cmd/foreman-agent binary is a thin wrapper around this package.
+// cmd/meitheal-agent binary is a thin wrapper around this package.
 package agent
 
 import (
@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // DefaultHeartbeatInterval is the v0.1 cadence. The scheduler treats a
@@ -43,7 +43,7 @@ const DefaultHeartbeatInterval = 30 * time.Second
 // Implementations must be cheap (called on every heartbeat) and must not
 // panic; on transient failure, return a zero or last-known value.
 type CapabilityProvider interface {
-	Capability() foremanv1alpha1.FleetNodeCapability
+	Capability() meithealv1alpha1.FleetNodeCapability
 }
 
 // UpdateApplier applies a binary update given a (version, url, sha256) triple.
@@ -71,7 +71,7 @@ func (f UpdateApplierFunc) Apply(version, url, sha256 string) (bool, error) {
 type Registrar struct {
 	Client   client.Client
 	NodeName string
-	Spec     foremanv1alpha1.FleetNodeSpec
+	Spec     meithealv1alpha1.FleetNodeSpec
 	Provider CapabilityProvider
 
 	// Labels are operator-managed labels (from the agent's --node-labels
@@ -95,7 +95,7 @@ type Registrar struct {
 	// Empty string is accepted (older agents omit this field).
 	Version string
 
-	// Kind identifies the agent type. Conventionally "foreman-agent".
+	// Kind identifies the agent type. Conventionally "meitheal-agent".
 	// Stamped on FleetNode.status.agentKind every heartbeat.
 	Kind string
 
@@ -154,11 +154,11 @@ func (r *Registrar) Upsert(ctx context.Context) error {
 	log := logf.FromContext(ctx)
 	key := types.NamespacedName{Name: r.NodeName}
 
-	var existing foremanv1alpha1.FleetNode
+	var existing meithealv1alpha1.FleetNode
 	err := r.Client.Get(ctx, key, &existing)
 	switch {
 	case apierrors.IsNotFound(err):
-		node := &foremanv1alpha1.FleetNode{
+		node := &meithealv1alpha1.FleetNode{
 			ObjectMeta: metav1.ObjectMeta{Name: r.NodeName, Labels: cloneLabels(r.Labels)},
 			Spec:       r.Spec,
 		}
@@ -245,9 +245,9 @@ func mergeManagedLabels(existing, managed map[string]string) (map[string]string,
 // self-update after a successful Ready heartbeat, ensuring the operator
 // always sees the node as Ready before the flip rather than getting a
 // stale version in a post-flip Ready heartbeat.
-func (r *Registrar) PatchHeartbeat(ctx context.Context, phase foremanv1alpha1.FleetNodePhase) (*foremanv1alpha1.FleetNodeUpdateRequest, error) { //nolint:lll
+func (r *Registrar) PatchHeartbeat(ctx context.Context, phase meithealv1alpha1.FleetNodePhase) (*meithealv1alpha1.FleetNodeUpdateRequest, error) { //nolint:lll
 	log := logf.FromContext(ctx)
-	var node foremanv1alpha1.FleetNode
+	var node meithealv1alpha1.FleetNode
 	if err := r.Client.Get(ctx, types.NamespacedName{Name: r.NodeName}, &node); err != nil {
 		return nil, fmt.Errorf("get FleetNode for heartbeat: %w", err)
 	}
@@ -275,7 +275,7 @@ func (r *Registrar) PatchHeartbeat(ctx context.Context, phase foremanv1alpha1.Fl
 	// "unbounded".
 	if r.Watcher != nil {
 		if current, maximum := r.Watcher.SupervisionCapacity(); maximum != nil {
-			node.Status.SupervisionCapacity = &foremanv1alpha1.SupervisionCapacity{
+			node.Status.SupervisionCapacity = &meithealv1alpha1.SupervisionCapacity{
 				Current: current,
 				Maximum: maximum,
 			}
@@ -285,7 +285,7 @@ func (r *Registrar) PatchHeartbeat(ctx context.Context, phase foremanv1alpha1.Fl
 		node.Status.AgentVersion = r.Version
 	}
 	if r.Kind != "" {
-		node.Status.AgentKind = foremanv1alpha1.FleetNodeAgentKind(r.Kind)
+		node.Status.AgentKind = meithealv1alpha1.FleetNodeAgentKind(r.Kind)
 	}
 	if r.OS != "" {
 		node.Status.OS = r.OS
@@ -325,13 +325,13 @@ var ErrSelfUpdateRestart = fmt.Errorf("self-update applied: exiting for supervis
 // the old version in a Ready state after the flip.
 func (r *Registrar) Run(ctx context.Context) error {
 	log := logf.FromContext(ctx)
-	if _, err := r.PatchHeartbeat(ctx, foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := r.PatchHeartbeat(ctx, meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("FleetNode missing on initial heartbeat; re-registering", "name", r.NodeName)
 			if uerr := r.Upsert(ctx); uerr != nil {
 				return fmt.Errorf("initial upsert on not found: %w", uerr)
 			}
-			if _, err := r.PatchHeartbeat(ctx, foremanv1alpha1.FleetNodePhaseReady); err != nil {
+			if _, err := r.PatchHeartbeat(ctx, meithealv1alpha1.FleetNodePhaseReady); err != nil {
 				return fmt.Errorf("initial heartbeat after upsert: %w", err)
 			}
 		} else {
@@ -353,7 +353,7 @@ func (r *Registrar) Run(ctx context.Context) error {
 			// Best-effort drain. A short fresh timeout keeps us from
 			// hanging on a dead apiserver during shutdown.
 			drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_, err := r.PatchHeartbeat(drainCtx, foremanv1alpha1.FleetNodePhaseDraining)
+			_, err := r.PatchHeartbeat(drainCtx, meithealv1alpha1.FleetNodePhaseDraining)
 			cancel()
 			if err != nil {
 				log.Error(err, "drain heartbeat failed")
@@ -362,7 +362,7 @@ func (r *Registrar) Run(ctx context.Context) error {
 			}
 			return nil
 		case <-ticker.C:
-			updateReq, err := r.PatchHeartbeat(ctx, foremanv1alpha1.FleetNodePhaseReady)
+			updateReq, err := r.PatchHeartbeat(ctx, meithealv1alpha1.FleetNodePhaseReady)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					// The FleetNode CR was reaped or deleted while this agent was
@@ -374,7 +374,7 @@ func (r *Registrar) Run(ctx context.Context) error {
 						log.Error(uerr, "re-registration failed; will retry next tick", "name", r.NodeName)
 						continue
 					}
-					updateReq, err = r.PatchHeartbeat(ctx, foremanv1alpha1.FleetNodePhaseReady)
+					updateReq, err = r.PatchHeartbeat(ctx, meithealv1alpha1.FleetNodePhaseReady)
 					if err != nil {
 						log.Error(err, "post-re-registration heartbeat patch failed; will retry", "name", r.NodeName)
 						continue
@@ -397,7 +397,7 @@ func (r *Registrar) Run(ctx context.Context) error {
 				// stops routing tasks to us. A short timeout prevents
 				// blocking indefinitely on a slow apiserver.
 				drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				_, derr := r.PatchHeartbeat(drainCtx, foremanv1alpha1.FleetNodePhaseDraining)
+				_, derr := r.PatchHeartbeat(drainCtx, meithealv1alpha1.FleetNodePhaseDraining)
 				cancel()
 				if derr != nil {
 					log.Error(derr, "self-update drain heartbeat failed; exiting anyway")
@@ -418,7 +418,7 @@ func (r *Registrar) Run(ctx context.Context) error {
 //   - r.Updater is nil (PR3 / pre-PR4 deployments)
 //   - req is nil (no update request from the operator)
 //   - the binary is not running from the managed install root (dev builds)
-func (r *Registrar) maybeApplySelfUpdate(ctx context.Context, req *foremanv1alpha1.FleetNodeUpdateRequest) bool {
+func (r *Registrar) maybeApplySelfUpdate(ctx context.Context, req *meithealv1alpha1.FleetNodeUpdateRequest) bool {
 	if r.Updater == nil || req == nil {
 		return false
 	}
@@ -433,7 +433,7 @@ func (r *Registrar) maybeApplySelfUpdate(ctx context.Context, req *foremanv1alph
 	return restarting
 }
 
-func specEqual(a, b foremanv1alpha1.FleetNodeSpec) bool {
+func specEqual(a, b meithealv1alpha1.FleetNodeSpec) bool {
 	if a.NodeName != b.NodeName || a.TailscaleAddr != b.TailscaleAddr {
 		return false
 	}

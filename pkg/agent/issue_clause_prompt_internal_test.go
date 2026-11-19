@@ -23,14 +23,14 @@ import (
 	"strings"
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
-func clausePromptTask(body string) *foremanv1alpha1.AgenticTask {
-	return &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+func clausePromptTask(body string) *meithealv1alpha1.AgenticTask {
+	return &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  1554,
 				Prompt: body,

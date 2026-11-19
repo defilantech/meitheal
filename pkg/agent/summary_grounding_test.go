@@ -97,7 +97,7 @@ func TestUngroundedSummaryClaims_NoFalsePositives(t *testing.T) {
 		{
 			name:    "path claim grounds on the changed-file list by basename",
 			summary: "Rewrites `agent/loop.go` to drain the channel.",
-			g:       diffGroundTruth{text: "@@\n+x := 1\n", files: []string{"pkg/foreman/agent/loop.go"}},
+			g:       diffGroundTruth{text: "@@\n+x := 1\n", files: []string{"pkg/agent/loop.go"}},
 		},
 		{
 			name:    "no ground truth means no check",
@@ -120,22 +120,22 @@ func TestUngroundedSummaryClaims_NoFalsePositives(t *testing.T) {
 // workspace, not only on the diff, keeps that out of the warning.
 func TestUngroundedSummaryClaims_UnchangedButRealFileIsGrounded(t *testing.T) {
 	ws := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(ws, "pkg", "foreman"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(ws, "pkg", "helpers"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	real := filepath.Join(ws, "pkg", "foreman", "existing_helper.go")
-	if err := os.WriteFile(real, []byte("package foreman\n"), 0o644); err != nil {
+	real := filepath.Join(ws, "pkg", "helpers", "existing_helper.go")
+	if err := os.WriteFile(real, []byte("package helpers\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	g := diffGroundTruth{workspace: ws, text: "@@\n+x := 1\n", files: []string{"other.go"}}
 
-	summary := "Follows the pattern in `pkg/foreman/existing_helper.go`."
+	summary := "Follows the pattern in `pkg/helpers/existing_helper.go`."
 	if got := ungroundedSummaryClaims(summary, g); len(got) != 0 {
 		t.Errorf("a real (if unchanged) path must not be flagged; got %v", got)
 	}
 
-	summary = "Follows the pattern in `pkg/foreman/invented_helper.go`."
-	if got := ungroundedSummaryClaims(summary, g); len(got) != 1 || got[0] != "pkg/foreman/invented_helper.go" {
+	summary = "Follows the pattern in `pkg/helpers/invented_helper.go`."
+	if got := ungroundedSummaryClaims(summary, g); len(got) != 1 || got[0] != "pkg/helpers/invented_helper.go" {
 		t.Errorf("an invented path must be flagged; got %v", got)
 	}
 }
@@ -145,12 +145,12 @@ func TestUngroundedSummaryClaims_UnchangedButRealFileIsGrounded(t *testing.T) {
 // almost every diff of this repo.
 func TestUngroundedSummaryClaims_PathAtomsDoNotGround(t *testing.T) {
 	g := diffGroundTruth{
-		text:  "diff --git a/pkg/foreman/agent/loop.go b/pkg/foreman/agent/loop.go\n@@\n+x := 1\n",
-		files: []string{"pkg/foreman/agent/loop.go"},
+		text:  "diff --git a/pkg/agent/loop.go b/pkg/agent/loop.go\n@@\n+x := 1\n",
+		files: []string{"pkg/agent/loop.go"},
 	}
-	summary := "Adds the retry to `pkg/foreman/agent/nonexistent_gate.go`."
+	summary := "Adds the retry to `pkg/agent/nonexistent_gate.go`."
 	got := ungroundedSummaryClaims(summary, g)
-	if len(got) != 1 || got[0] != "pkg/foreman/agent/nonexistent_gate.go" {
+	if len(got) != 1 || got[0] != "pkg/agent/nonexistent_gate.go" {
 		t.Fatalf("fabricated path must be flagged, got %v", got)
 	}
 }
@@ -166,7 +166,7 @@ func TestClassifySummaryClaim(t *testing.T) {
 	}{
 		{"/health", claimRoute, "/health"},
 		{"/api/v1/models", claimRoute, "/api/v1/models"},
-		{"pkg/foreman/agent/loop.go", claimPath, "pkg/foreman/agent/loop.go"},
+		{"pkg/agent/loop.go", claimPath, "pkg/agent/loop.go"},
 		{"README.md", claimPath, "README.md"},
 		{"submit_result", claimIdent, "submit_result"},
 		{"logger.info()", claimIdent, "logger.info()"},

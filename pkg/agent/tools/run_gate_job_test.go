@@ -169,8 +169,8 @@ func TestRunGateJob_SucceededProducesGATEPASS(t *testing.T) {
 	defer cancel()
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-gate-fake-pass"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-gate-fake-pass"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 
 	go flipStatusOnce(ctx, c, key, 1, 0)
 
@@ -186,7 +186,7 @@ func TestRunGateJob_SucceededProducesGATEPASS(t *testing.T) {
 		},
 	}
 
-	res, err := tool.Execute(ctx, argsJSON(t, "defilantech/LLMKube", "foreman/issue-503"))
+	res, err := tool.Execute(ctx, argsJSON(t, "defilantech/LLMKube", "meitheal/issue-503"))
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestRunGateJob_SucceededProducesGATEPASS(t *testing.T) {
 	if err := c.Get(ctx, key, &job); err != nil {
 		t.Fatalf("Job should exist on apiserver: %v", err)
 	}
-	if job.Labels["app.kubernetes.io/name"] != "foreman-gate" {
+	if job.Labels["app.kubernetes.io/name"] != "meitheal-gate" {
 		t.Errorf("missing canonical label: %#v", job.Labels)
 	}
 }
@@ -222,8 +222,8 @@ func TestRunGateJob_FailedProducesGATEFAIL(t *testing.T) {
 	defer cancel()
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-gate-fake-fail"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-gate-fake-fail"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 
 	go flipStatusOnce(ctx, c, key, 0, 1)
 
@@ -261,8 +261,8 @@ func TestRunGateJob_DeadlineExceededProducesGATEERROR(t *testing.T) {
 	defer cancel()
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-gate-fake-deadline"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-gate-fake-deadline"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 
 	go flipDeadlineOnce(ctx, c, key)
 
@@ -308,7 +308,7 @@ func TestRunGateJob_PollTimeoutProducesGATEERROR(t *testing.T) {
 	tool := &RunGateJobTool{
 		Client: c,
 		Cfg: RunGateJobToolConfig{
-			NameFn:       pinName("foreman-gate-stuck"),
+			NameFn:       pinName("meitheal-gate-stuck"),
 			PollInterval: 5 * time.Millisecond,
 			PollTimeout:  50 * time.Millisecond,
 			LogTailFn:    func(context.Context, string, string) string { return "(no logs)" },
@@ -336,7 +336,7 @@ func TestRunGateJob_DuplicateCreateProducesGATEERROR(t *testing.T) {
 	defer cancel()
 
 	seeded := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: "foreman-gate-collide", Namespace: "foreman-system"},
+		ObjectMeta: metav1.ObjectMeta{Name: "meitheal-gate-collide", Namespace: "meitheal-system"},
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(gateScheme(t)).
@@ -346,7 +346,7 @@ func TestRunGateJob_DuplicateCreateProducesGATEERROR(t *testing.T) {
 	tool := &RunGateJobTool{
 		Client: c,
 		Cfg: RunGateJobToolConfig{
-			NameFn:       pinName("foreman-gate-collide"),
+			NameFn:       pinName("meitheal-gate-collide"),
 			PollInterval: 5 * time.Millisecond,
 			PollTimeout:  500 * time.Millisecond,
 		},
@@ -365,7 +365,7 @@ func TestRunGateJob_DuplicateCreateProducesGATEERROR(t *testing.T) {
 	// Sanity check the AlreadyExists shape on the underlying client so
 	// we are not relying on a brittle string comparison.
 	if err := c.Create(ctx, &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: "foreman-gate-collide", Namespace: "foreman-system"},
+		ObjectMeta: metav1.ObjectMeta{Name: "meitheal-gate-collide", Namespace: "meitheal-system"},
 	}); !apierrors.IsAlreadyExists(err) {
 		t.Errorf("expected AlreadyExists; got %v", err)
 	}
@@ -380,7 +380,7 @@ func TestApplyConfigDefaults_FillsEveryField(t *testing.T) {
 	}
 	// PVCName is deliberately NOT defaulted (#1538). A hardcoded claim name
 	// is what broke named agent pools: the chart creates the claim per agent
-	// as foreman-<agentKey>-gate-cache, so any fixed fallback names a claim
+	// as meitheal-<agentKey>-gate-cache, so any fixed fallback names a claim
 	// that need not exist. Empty means "no cache volume", which the renderer
 	// honours, and the chart supplies the real name via --gate-cache-pvc.
 	if c.PVCName != "" {
@@ -448,13 +448,13 @@ func TestSanitizeName(t *testing.T) {
 func renderGateArgsForTest(t *testing.T, in map[string]any) string {
 	t.Helper()
 	rin := rendererInput{
-		Name:                    "foreman-gate-test",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-gate-test",
+		Namespace:               "meitheal-system",
 		Image:                   "golang:1.26",
 		Repo:                    "defilantech/LLMKube",
-		Branch:                  "foreman/x",
+		Branch:                  "meitheal/x",
 		Checks:                  []string{"fmt", "test"},
-		PVCName:                 "foreman-gate-cache",
+		PVCName:                 "meitheal-gate-cache",
 		ActiveDeadlineSeconds:   1800,
 		TTLSecondsAfterFinished: 86400,
 		CPURequest:              "2",
@@ -505,7 +505,7 @@ func renderGateArgsForTest(t *testing.T, in map[string]any) string {
 func TestGateJobCopyrightCheckRunsAfterBaseResolution(t *testing.T) {
 	args := renderGateArgsForTest(t, map[string]any{
 		"repo":        "defilantech/LLMKube",
-		"branch":      "foreman/issue-2298",
+		"branch":      "meitheal/issue-2298",
 		"baseBranch":  "main",
 		"upstreamURL": "https://github.com/defilantech/llmkube.git",
 	})
@@ -542,7 +542,7 @@ func TestGateJobCopyrightCheckRunsAfterBaseResolution(t *testing.T) {
 func TestGateJobCopyrightCheckProbesForMergeBase(t *testing.T) {
 	args := renderGateArgsForTest(t, map[string]any{
 		"repo":       "defilantech/LLMKube",
-		"branch":     "foreman/issue-2298",
+		"branch":     "meitheal/issue-2298",
 		"baseBranch": "main",
 	})
 
@@ -574,7 +574,7 @@ func TestGateJobCopyrightCheckProbesForMergeBase(t *testing.T) {
 // false GATE-FAIL on a good branch.
 func TestGateJobBiteCheckUsesUpstreamMergeBase(t *testing.T) {
 	args := renderGateArgsForTest(t, map[string]any{
-		"repo": "defilantech/LLMKube", "branch": "foreman/x", "biteCheck": true,
+		"repo": "defilantech/LLMKube", "branch": "meitheal/x", "biteCheck": true,
 		"upstreamURL": "https://github.com/defilantech/LLMKube.git",
 	})
 	for _, want := range []string{
@@ -605,7 +605,7 @@ func TestGateJobBiteCheckUsesUpstreamMergeBase(t *testing.T) {
 // slug/upstream URL: the base ref is fetched from the fork itself.
 func TestGateJobBiteCheckFallsBackToOriginWithoutUpstreamURL(t *testing.T) {
 	args := renderGateArgsForTest(t, map[string]any{
-		"repo": "defilantech/LLMKube", "branch": "foreman/x", "biteCheck": true,
+		"repo": "defilantech/LLMKube", "branch": "meitheal/x", "biteCheck": true,
 	})
 	if !strings.Contains(args, `git fetch --depth 1 origin "+refs/heads/$BASE:refs/remotes/origin/$BASE"`) {
 		t.Error("origin fallback path missing when upstreamURL is empty")
@@ -617,7 +617,7 @@ func TestGateJobBiteCheckFallsBackToOriginWithoutUpstreamURL(t *testing.T) {
 // the signature of a bad base resolution rather than a real coder diff.
 func TestGateJobBiteCheckSanityCap(t *testing.T) {
 	args := renderGateArgsForTest(t, map[string]any{
-		"repo": "defilantech/LLMKube", "branch": "foreman/x", "biteCheck": true,
+		"repo": "defilantech/LLMKube", "branch": "meitheal/x", "biteCheck": true,
 		"upstreamURL": "https://github.com/defilantech/LLMKube.git",
 	})
 	if !strings.Contains(args, `-gt 200`) {
@@ -648,15 +648,15 @@ func TestRunGateJob_UpstreamURLValidation(t *testing.T) {
 			defer cancel()
 
 			c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-			jobName := "foreman-gate-upstream-" + sanitizeName(tc.name)
-			key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+			jobName := "meitheal-gate-upstream-" + sanitizeName(tc.name)
+			key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 
 			// Only the accepted cases reach the poll loop; the goroutine is
 			// harmless for the rejected ones (nothing to flip, ctx cancels it).
 			go flipStatusOnce(ctx, c, key, 1, 0)
 
 			raw, err := json.Marshal(map[string]any{
-				"repo": "defilantech/LLMKube", "branch": "foreman/x",
+				"repo": "defilantech/LLMKube", "branch": "meitheal/x",
 				"upstreamURL": tc.upstreamURL,
 				"taskRef":     map[string]string{"namespace": "default", "name": "gate"},
 			})
@@ -688,13 +688,13 @@ func TestRunGateJob_UpstreamURLValidation(t *testing.T) {
 
 func TestRenderGateJob_RendersChecksAndPVCMount(t *testing.T) {
 	job, err := renderGateJob(rendererInput{
-		Name:                    "foreman-gate-x",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-gate-x",
+		Namespace:               "meitheal-system",
 		Image:                   "golang:1.26",
 		Repo:                    "defilantech/LLMKube",
-		Branch:                  "foreman/issue-503",
+		Branch:                  "meitheal/issue-503",
 		Checks:                  []string{"fmt", "vet", "test"},
-		PVCName:                 "foreman-gate-cache",
+		PVCName:                 "meitheal-gate-cache",
 		ActiveDeadlineSeconds:   1800,
 		TTLSecondsAfterFinished: 86400,
 		CPURequest:              "2",
@@ -708,7 +708,7 @@ func TestRenderGateJob_RendersChecksAndPVCMount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderGateJob: %v", err)
 	}
-	if job.Name != "foreman-gate-x" {
+	if job.Name != "meitheal-gate-x" {
 		t.Errorf("Name: %q", job.Name)
 	}
 	if got := job.Spec.Template.Spec.Containers[0].Image; got != "golang:1.26" {
@@ -721,28 +721,28 @@ func TestRenderGateJob_RendersChecksAndPVCMount(t *testing.T) {
 		t.Errorf("Args missing one of the requested checks:\n%s", args)
 	}
 	if !strings.Contains(args, "defilantech/LLMKube") ||
-		!strings.Contains(args, "foreman/issue-503") {
+		!strings.Contains(args, "meitheal/issue-503") {
 		t.Errorf("Args missing repo/branch substitution:\n%s", args)
 	}
-	if got := job.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName; got != "foreman-gate-cache" {
+	if got := job.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName; got != "meitheal-gate-cache" {
 		t.Errorf("PVC claim name: %q", got)
 	}
-	if got := job.Labels["foreman.llmkube.dev/task-name"]; got != "gate-503" {
+	if got := job.Labels["meitheal.dev/task-name"]; got != "gate-503" {
 		t.Errorf("task-name label: %q", got)
 	}
 }
 
 func TestRenderGateJob_GenericRunsCommandsNotMakeOrBiteCheck(t *testing.T) {
 	job, err := renderGateJob(rendererInput{
-		Name:                    "foreman-gate-py",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-gate-py",
+		Namespace:               "meitheal-system",
 		Image:                   "python:3.13",
 		Repo:                    "acme/widgets",
-		Branch:                  "foreman/issue-1",
+		Branch:                  "meitheal/issue-1",
 		BiteCheck:               true, // must be ignored on the generic path
 		Generic:                 true,
 		Commands:                []string{"ruff check .", "pytest -q"},
-		PVCName:                 "foreman-gate-cache",
+		PVCName:                 "meitheal-gate-cache",
 		ActiveDeadlineSeconds:   1800,
 		TTLSecondsAfterFinished: 86400,
 		CPURequest:              "2",
@@ -777,13 +777,13 @@ func TestRenderGateJob_GenericRunsCommandsNotMakeOrBiteCheck(t *testing.T) {
 // gate-cache PVC. Regression for #1055.
 func TestRenderGateJob_PodSecurityContextFSGroup(t *testing.T) {
 	job, err := renderGateJob(rendererInput{
-		Name:                    "foreman-gate-fsgroup",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-gate-fsgroup",
+		Namespace:               "meitheal-system",
 		Image:                   "golang:1.26",
 		Repo:                    "defilantech/LLMKube",
-		Branch:                  "foreman/issue-1055",
+		Branch:                  "meitheal/issue-1055",
 		Checks:                  []string{"fmt"},
-		PVCName:                 "foreman-gate-cache",
+		PVCName:                 "meitheal-gate-cache",
 		ActiveDeadlineSeconds:   1800,
 		TTLSecondsAfterFinished: 86400,
 		CPURequest:              "2",
@@ -828,7 +828,7 @@ func TestRenderGateJob_CloneURLOverride(t *testing.T) {
 			cloneURL: "https://github.com/Defilan/LLMKube.git",
 			mustHave: []string{
 				`"https://github.com/Defilan/LLMKube.git"`,
-				"=== clone defilantech/LLMKube @ foreman/issue-510 ===",
+				"=== clone defilantech/LLMKube @ meitheal/issue-510 ===",
 			},
 			mustNotHave: []string{
 				`"https://github.com/defilantech/LLMKube.git"`,
@@ -839,20 +839,20 @@ func TestRenderGateJob_CloneURLOverride(t *testing.T) {
 			cloneURL: "",
 			mustHave: []string{
 				`"https://github.com/defilantech/LLMKube.git"`,
-				"=== clone defilantech/LLMKube @ foreman/issue-510 ===",
+				"=== clone defilantech/LLMKube @ meitheal/issue-510 ===",
 			},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			job, err := renderGateJob(rendererInput{
-				Name:                    "foreman-gate-x",
-				Namespace:               "foreman-system",
+				Name:                    "meitheal-gate-x",
+				Namespace:               "meitheal-system",
 				Image:                   "golang:1.26",
 				Repo:                    "defilantech/LLMKube",
-				Branch:                  "foreman/issue-510",
+				Branch:                  "meitheal/issue-510",
 				Checks:                  []string{"fmt"},
-				PVCName:                 "foreman-gate-cache",
+				PVCName:                 "meitheal-gate-cache",
 				ActiveDeadlineSeconds:   1800,
 				TTLSecondsAfterFinished: 86400,
 				CPURequest:              "2",
@@ -888,14 +888,14 @@ func TestRenderGateJob_CloneURLOverride(t *testing.T) {
 // results. Regression for #799.
 func TestRenderGateJob_BiteCheck_Enabled(t *testing.T) {
 	job, err := renderGateJob(rendererInput{
-		Name:                    "foreman-gate-bite",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-gate-bite",
+		Namespace:               "meitheal-system",
 		Image:                   "golang:1.26",
 		Repo:                    "defilantech/LLMKube",
-		Branch:                  "foreman/issue-799",
+		Branch:                  "meitheal/issue-799",
 		Checks:                  []string{"fmt", "test"},
 		BiteCheck:               true,
-		PVCName:                 "foreman-gate-cache",
+		PVCName:                 "meitheal-gate-cache",
 		ActiveDeadlineSeconds:   1800,
 		TTLSecondsAfterFinished: 86400,
 		CPURequest:              "2",
@@ -971,14 +971,14 @@ func TestRenderGateJob_BiteCheck_Enabled(t *testing.T) {
 // absent when BiteCheck is false (the default). Regression for #799.
 func TestRenderGateJob_BiteCheck_Disabled(t *testing.T) {
 	job, err := renderGateJob(rendererInput{
-		Name:                    "foreman-gate-no-bite",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-gate-no-bite",
+		Namespace:               "meitheal-system",
 		Image:                   "golang:1.26",
 		Repo:                    "defilantech/LLMKube",
-		Branch:                  "foreman/issue-799",
+		Branch:                  "meitheal/issue-799",
 		Checks:                  []string{"fmt", "test"},
 		BiteCheck:               false,
-		PVCName:                 "foreman-gate-cache",
+		PVCName:                 "meitheal-gate-cache",
 		ActiveDeadlineSeconds:   1800,
 		TTLSecondsAfterFinished: 86400,
 		CPURequest:              "2",
@@ -1005,14 +1005,14 @@ func TestRenderGateJob_BiteCheck_Disabled(t *testing.T) {
 // false rejections of PRs that add/modify no test files. Regression for #799.
 func TestRenderGateJob_BiteCheck_SkipsWhenNoTestFiles(t *testing.T) {
 	job, err := renderGateJob(rendererInput{
-		Name:                    "foreman-gate-skip",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-gate-skip",
+		Namespace:               "meitheal-system",
 		Image:                   "golang:1.26",
 		Repo:                    "defilantech/LLMKube",
-		Branch:                  "foreman/issue-799",
+		Branch:                  "meitheal/issue-799",
 		Checks:                  []string{"fmt", "test"},
 		BiteCheck:               true,
-		PVCName:                 "foreman-gate-cache",
+		PVCName:                 "meitheal-gate-cache",
 		ActiveDeadlineSeconds:   1800,
 		TTLSecondsAfterFinished: 86400,
 		CPURequest:              "2",
@@ -1039,14 +1039,14 @@ func TestRenderGateJob_BiteCheck_SkipsWhenNoTestFiles(t *testing.T) {
 // false rejections of PRs that only add tests. Regression for #799.
 func TestRenderGateJob_BiteCheck_SkipsWhenNoProdFiles(t *testing.T) {
 	job, err := renderGateJob(rendererInput{
-		Name:                    "foreman-gate-skip-prod",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-gate-skip-prod",
+		Namespace:               "meitheal-system",
 		Image:                   "golang:1.26",
 		Repo:                    "defilantech/LLMKube",
-		Branch:                  "foreman/issue-799",
+		Branch:                  "meitheal/issue-799",
 		Checks:                  []string{"fmt", "test"},
 		BiteCheck:               true,
-		PVCName:                 "foreman-gate-cache",
+		PVCName:                 "meitheal-gate-cache",
 		ActiveDeadlineSeconds:   1800,
 		TTLSecondsAfterFinished: 86400,
 		CPURequest:              "2",
@@ -1076,15 +1076,15 @@ func TestRenderGateJob_BiteCheck_SkipsWhenNoProdFiles(t *testing.T) {
 // fix.
 func TestRenderGateJob_BiteCheck_FetchesBaseRef(t *testing.T) {
 	job, err := renderGateJob(rendererInput{
-		Name:                    "foreman-gate-base",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-gate-base",
+		Namespace:               "meitheal-system",
 		Image:                   "golang:1.26",
 		Repo:                    "defilantech/LLMKube",
-		Branch:                  "foreman/issue-799",
+		Branch:                  "meitheal/issue-799",
 		BaseBranch:              "main",
 		Checks:                  []string{"fmt", "test"},
 		BiteCheck:               true,
-		PVCName:                 "foreman-gate-cache",
+		PVCName:                 "meitheal-gate-cache",
 		ActiveDeadlineSeconds:   1800,
 		TTLSecondsAfterFinished: 86400,
 		CPURequest:              "2",
@@ -1126,15 +1126,15 @@ func TestRenderGateJob_BaseBranchEnv(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			job, err := renderGateJob(rendererInput{
-				Name:                    "foreman-gate-baseenv",
-				Namespace:               "foreman-system",
+				Name:                    "meitheal-gate-baseenv",
+				Namespace:               "meitheal-system",
 				Image:                   "golang:1.26",
 				Repo:                    "defilantech/LLMKube",
-				Branch:                  "foreman/issue-799",
+				Branch:                  "meitheal/issue-799",
 				BaseBranch:              tc.in,
 				Checks:                  []string{"fmt", "test"},
 				BiteCheck:               true,
-				PVCName:                 "foreman-gate-cache",
+				PVCName:                 "meitheal-gate-cache",
 				ActiveDeadlineSeconds:   1800,
 				TTLSecondsAfterFinished: 86400,
 				CPURequest:              "2",
@@ -1212,14 +1212,14 @@ func TestRunGateJob_ImageOverride(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-			jobName := "foreman-gate-img-" + tc.name
-			key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+			jobName := "meitheal-gate-img-" + tc.name
+			key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 
 			go flipStatusOnce(ctx, c, key, 1, 0)
 
 			args := map[string]any{
 				"repo":   "defilantech/LLMKube",
-				"branch": "foreman/issue-839",
+				"branch": "meitheal/issue-839",
 				"image":  tc.argsImg,
 				"taskRef": map[string]string{
 					"namespace": "default",
@@ -1262,7 +1262,7 @@ func TestRunGateJob_ImageOverride(t *testing.T) {
 }
 
 func TestGateJobNamePreservesUniquenessSuffixWhenTruncated(t *testing.T) {
-	// A long task name whose "foreman-gate-<task>" already exceeds the 63-char
+	// A long task name whose "meitheal-gate-<task>" already exceeds the 63-char
 	// k8s object-name limit. The #768 validation caught a retry's gate Job
 	// colliding with the prior attempt's because the trailing unix-ms
 	// disambiguator was truncated away, so the retry could not re-gate and a
@@ -1274,8 +1274,8 @@ func TestGateJobNamePreservesUniquenessSuffixWhenTruncated(t *testing.T) {
 	if len(n1) > 63 {
 		t.Fatalf("name exceeds the 63-char k8s limit: len=%d %q", len(n1), n1)
 	}
-	if !strings.HasPrefix(n1, "foreman-gate-") {
-		t.Fatalf("lost the foreman-gate- prefix: %q", n1)
+	if !strings.HasPrefix(n1, "meitheal-gate-") {
+		t.Fatalf("lost the meitheal-gate- prefix: %q", n1)
 	}
 	if !strings.HasSuffix(n1, "-1784157000000") {
 		t.Fatalf("uniqueness suffix was truncated away: %q", n1)
@@ -1330,9 +1330,9 @@ func TestRenderGateJob_SingleLineCommandUnchanged(t *testing.T) {
 func TestGateJobInstallsHelmOnlyForChartChecks(t *testing.T) {
 	render := func(checks []string) string {
 		job, err := renderGateJob(rendererInput{
-			Name: "g", Namespace: "foreman-system", Image: "golang:1.26",
+			Name: "g", Namespace: "meitheal-system", Image: "golang:1.26",
 			Repo: "o/r", Branch: "b", BaseBranch: "main", Checks: checks,
-			PVCName: "foreman-gate-cache", CloneURLBase: "https://github.com",
+			PVCName: "meitheal-gate-cache", CloneURLBase: "https://github.com",
 			ActiveDeadlineSeconds: 1800, TTLSecondsAfterFinished: 86400,
 			CPURequest: "1", CPULimit: "2", MemRequest: "1Gi", MemLimit: "2Gi",
 			HelmVersion: helmVersionFor(checks), HelmUnittestVersion: HelmUnittestVersion,
@@ -1389,9 +1389,9 @@ func TestNeedsHelm(t *testing.T) {
 func TestGateJobInstallsJQOnlyForB200Harness(t *testing.T) {
 	render := func(checks []string) string {
 		job, err := renderGateJob(rendererInput{
-			Name: "g", Namespace: "foreman-system", Image: "golang:1.26",
+			Name: "g", Namespace: "meitheal-system", Image: "golang:1.26",
 			Repo: "o/r", Branch: "b", BaseBranch: "main", Checks: checks,
-			PVCName: "foreman-gate-cache", CloneURLBase: "https://github.com",
+			PVCName: "meitheal-gate-cache", CloneURLBase: "https://github.com",
 			ActiveDeadlineSeconds: 1800, TTLSecondsAfterFinished: 86400,
 			CPURequest: "1", CPULimit: "2", MemRequest: "1Gi", MemLimit: "2Gi",
 			HelmVersion: helmVersionFor(checks), HelmUnittestVersion: HelmUnittestVersion,
@@ -1436,17 +1436,17 @@ func TestNeedsJQ(t *testing.T) {
 // Regression for #1538. The field's contract has always said "empty disables
 // the volume mount", but the template rendered `claimName: {{ .PVCName }}`
 // unconditionally and the config defaulted an empty name back to a hardcoded
-// "foreman-gate-cache". With named agent pools that claim does not exist, so
+// "meitheal-gate-cache". With named agent pools that claim does not exist, so
 // the Job mounted a PVC nobody created: the pod never binds, never schedules,
 // and the Job dies at activeDeadlineSeconds looking like a slow gate rather
 // than a misconfigured one.
 func TestGateJobCacheVolumeOmittedWhenPVCNameEmpty(t *testing.T) {
 	job, err := renderGateJob(rendererInput{
-		Name:                    "foreman-gate-nocache",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-gate-nocache",
+		Namespace:               "meitheal-system",
 		Image:                   "golang:1.26",
 		Repo:                    "defilantech/LLMKube",
-		Branch:                  "foreman/issue-1538",
+		Branch:                  "meitheal/issue-1538",
 		Checks:                  []string{"fmt"},
 		ActiveDeadlineSeconds:   1800,
 		TTLSecondsAfterFinished: 86400,
@@ -1475,11 +1475,11 @@ func TestGateJobCacheVolumeOmittedWhenPVCNameEmpty(t *testing.T) {
 // mounts exactly that claim, and never a hardcoded fallback (#1538).
 func TestGateJobCacheVolumeUsesGivenPVCName(t *testing.T) {
 	job, err := renderGateJob(rendererInput{
-		Name:                    "foreman-gate-cached",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-gate-cached",
+		Namespace:               "meitheal-system",
 		Image:                   "golang:1.26",
 		Repo:                    "defilantech/LLMKube",
-		Branch:                  "foreman/issue-1538",
+		Branch:                  "meitheal/issue-1538",
 		Checks:                  []string{"fmt"},
 		ActiveDeadlineSeconds:   1800,
 		TTLSecondsAfterFinished: 86400,
@@ -1488,14 +1488,14 @@ func TestGateJobCacheVolumeUsesGivenPVCName(t *testing.T) {
 		MemRequest:              "4Gi",
 		MemLimit:                "8Gi",
 		CloneURLBase:            "https://github.com",
-		PVCName:                 "foreman-multirepo-gate-cache",
+		PVCName:                 "meitheal-multirepo-gate-cache",
 	})
 	if err != nil {
 		t.Fatalf("renderGateJob: %v", err)
 	}
 	vols := job.Spec.Template.Spec.Volumes
 	if len(vols) != 1 || vols[0].PersistentVolumeClaim == nil ||
-		vols[0].PersistentVolumeClaim.ClaimName != "foreman-multirepo-gate-cache" {
+		vols[0].PersistentVolumeClaim.ClaimName != "meitheal-multirepo-gate-cache" {
 		t.Fatalf("want the per-agent claim mounted, got %+v", vols)
 	}
 	var found bool

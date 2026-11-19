@@ -1,29 +1,29 @@
-# Foreman v0.1 coder Agent for the M5 Max running Carnice-Qwen3.6-MoE-
+# Meitheal v0.1 coder Agent for the M5 Max running Carnice-Qwen3.6-MoE-
 # 35B-A3B-APEX-MTP-I-Balanced on llama.cpp via metal-agent.
 #
 # The system prompt below is the inline copy of
-# config/foreman/system-prompts/coder.md; edit the .md, then re-paste
+# config/system-prompts/coder.md; edit the .md, then re-paste
 # here so git history shows the change.
 #
 # Apply this manifest with kubectl into the same namespace as the
 # referenced InferenceService:
 #
-#   kubectl apply -f config/foreman/agents/qwen36-35b-carnice-mtp-coder.yaml
+#   kubectl apply -f config/agents/qwen36-35b-carnice-mtp-coder.yaml
 #
 # The Agent is namespaced; transcripts produced by tasks referencing
 # it (M3 phase E writes them as ConfigMaps owner-ref'd to the task)
 # land in the same namespace as the task, not as the Agent. The
 # inferenceServiceRef is resolved in the *task's* namespace at run
 # time; v0.1 keeps both objects in `default`.
-apiVersion: foreman.llmkube.dev/v1alpha1
+apiVersion: meitheal.dev/v1alpha1
 kind: Agent
 metadata:
   name: qwen36-35b-carnice-mtp-coder
   namespace: default
   labels:
-    app.kubernetes.io/part-of: foreman
-    foreman.llmkube.dev/role: coder
-    foreman.llmkube.dev/milestone: m3
+    app.kubernetes.io/part-of: meitheal
+    meitheal.dev/role: coder
+    meitheal.dev/milestone: m3
 spec:
   role: coder
   model: carnice-qwen3.6-moe-35b-a3b-apex-mtp-i-balanced
@@ -38,7 +38,7 @@ spec:
   maxTurns: 80
   maxRetries: 3
   # Stuck-loop detector (#544). Same numbers as DefaultProgressConfig
-  # in pkg/foreman/agent/progress.go; spelled out here so operators can
+  # in pkg/agent/progress.go; spelled out here so operators can
   # see and tune them without reading Go source. Empirically motivated
   # by the v0.3 batch on 2026-05-26 where Carnice repeated the same
   # `git log | grep "449"` call 58 times before MaxTurns; with these
@@ -81,7 +81,7 @@ spec:
     minContextTokens: 131072
   systemPrompt: |-
     You fix one LLMKube issue per run. The repository is already cloned in
-    your workspace and checked out on a foreman-authored branch the
+    your workspace and checked out on a meitheal-authored branch the
     executor created for you. Read `AGENTS.md` at the repo root first: it
     has the build and test commands, the code style, and the standards you
     must follow.
@@ -129,7 +129,7 @@ spec:
       redesign.
     - The issue is already resolved on the branch or upstream base.
       Common evidence: a commit since `BaseBranch` with a `Fixes #<N>`
-      trailer, or an existing `foreman/.../issue-<N>` branch with the fix
+      trailer, or an existing `meitheal/.../issue-<N>` branch with the fix
       already pushed. Emit `verdict="NO-GO"` with
       `extra.outcome="ALREADY-RESOLVED"` and cite the resolving SHA or
       branch in `extra.resolvedBy`. This is the honest "already done" bail
@@ -175,13 +175,12 @@ spec:
       or `go vet` yourself. The coder workspace cannot run envtest
       (KUBEBUILDER_ASSETS is unavailable), so `make test` hangs on the
       envtest-backed controller packages (`internal/controller`,
-      `internal/foreman/controller`) and burns your turn budget for no result.
+      `internal/controller`) and burns your turn budget for no result.
       The deterministic clean-room gate runs `fmt`, `vet`, `lint`, and the full
       `test` suite AFTER you submit GO and returns any failures for you to fix,
       so a single `go build ./...` is the only self-check you need.
-      - If you changed `api/v1alpha1/` or `api/foreman/v1alpha1/`, also run
-        `make manifests`, `make generate`, and `make chart-crds` (or
-        `make foreman-chart-crds` for the foreman group); then confirm
+      - If you changed `api/v1alpha1/`, also run `make manifests`,
+        `make generate`, and `make chart-crds`; then confirm
         `git status --porcelain` is empty. (These regenerate CRDs and do not
         need envtest.)
 
@@ -312,7 +311,7 @@ spec:
         generic model-decided bail.
       - `resolvedBy` (paired with `outcome="ALREADY-RESOLVED"`):
         the resolving commit SHA or branch (e.g. `"e97d0ca"` or
-        `"foreman/<workload>/issue-129"`). Surfaced to the operator
+        `"meitheal/<workload>/issue-129"`). Surfaced to the operator
         who decides whether to close the issue on GitHub.
       - `unverified` (paired with `outcome="NEEDS-VERIFICATION"`): a list of
         `{fact, whyItMatters, howToVerify}` objects, one per external fact

@@ -113,7 +113,7 @@ func TestCheckImportGraph_PreexistingEdgeDoesNotFail(t *testing.T) {
 func TestCheckImportGraph_AllowedEdgeDoesNotFail(t *testing.T) {
 	dir := t.TempDir()
 
-	diskSrc := "package cli\n\nimport \"github.com/defilantech/llmkube/pkg/foreman/agent\"\n"
+	diskSrc := "package cli\n\nimport \"github.com/defilantech/llmkube/pkg/agent\"\n"
 	writeGoFile(t, dir, "pkg/cli/cache.go", diskSrc)
 
 	run := importGraphFakeRunner(map[string]string{

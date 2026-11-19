@@ -41,7 +41,7 @@ limitations under the License.
 // cites a grounded blocking finding (real supporting evidence), the verdict
 // is left untouched.
 //
-// Disabled by FOREMAN_EMPTY_CLAIM=0.
+// Disabled by MEITHEAL_EMPTY_CLAIM=0.
 package agent
 
 import (
@@ -52,7 +52,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/reviewer"
 )
 
@@ -73,9 +73,9 @@ var emptyClaimPatterns = []*regexp.Regexp{
 }
 
 // emptyClaimDisabled reports whether the rail is off via
-// FOREMAN_EMPTY_CLAIM=0. Default (unset) is enabled.
+// MEITHEAL_EMPTY_CLAIM=0. Default (unset) is enabled.
 func emptyClaimDisabled() bool {
-	return os.Getenv("FOREMAN_EMPTY_CLAIM") == "0"
+	return os.Getenv("MEITHEAL_EMPTY_CLAIM") == "0"
 }
 
 // assertsEmptyBranch reports whether the reviewer's free-text (summary and
@@ -110,8 +110,8 @@ func emptyClaimTexts(summary string, extra map[string]any) []string {
 func runEmptyClaimRail(
 	ctx context.Context, log logr.Logger, workspace, base string,
 	diff []string, diffErr error, extra map[string]any, summary string,
-	verdict foremanv1alpha1.AgenticTaskVerdict,
-) (foremanv1alpha1.AgenticTaskVerdict, foremanv1alpha1.AgenticTaskFailureReason) {
+	verdict meithealv1alpha1.AgenticTaskVerdict,
+) (meithealv1alpha1.AgenticTaskVerdict, meithealv1alpha1.AgenticTaskFailureReason) {
 	var changed func(string) map[int]bool
 	if diffErr == nil {
 		changed = reviewerGroundedChangedLines(ctx, log, workspace, base, diff, diffErr)
@@ -137,11 +137,11 @@ func enforceReviewerEmptyClaim(
 	log logr.Logger,
 	extra map[string]any,
 	summary string,
-	verdict foremanv1alpha1.AgenticTaskVerdict,
+	verdict meithealv1alpha1.AgenticTaskVerdict,
 	changedLines func(string) map[int]bool,
-) (foremanv1alpha1.AgenticTaskVerdict, foremanv1alpha1.AgenticTaskFailureReason) {
+) (meithealv1alpha1.AgenticTaskVerdict, meithealv1alpha1.AgenticTaskFailureReason) {
 	if emptyClaimDisabled() ||
-		verdict != foremanv1alpha1.AgenticTaskVerdictNoGo ||
+		verdict != meithealv1alpha1.AgenticTaskVerdictNoGo ||
 		extra == nil {
 		return verdict, ""
 	}
@@ -172,5 +172,5 @@ func enforceReviewerEmptyClaim(
 	log.Info("reviewer empty-claim: unsupported emptiness/unreadability NO-GO "+
 		"remapped to ERROR (non-empty diff, no grounded finding)",
 		"summary", summary)
-	return foremanv1alpha1.AgenticTaskVerdictIncomplete, foremanv1alpha1.FailureModelReportedError
+	return meithealv1alpha1.AgenticTaskVerdictIncomplete, meithealv1alpha1.FailureModelReportedError
 }

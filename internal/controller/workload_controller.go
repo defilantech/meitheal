@@ -33,8 +33,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	llmkubemetrics "github.com/defilantech/meitheal/internal/metrics"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealmetrics "github.com/defilantech/meitheal/internal/metrics"
 )
 
 // WorkloadReconciler turns a Workload into a set of AgenticTask objects
@@ -78,20 +78,20 @@ type WorkloadReconciler struct {
 	// AllowCloudReviewers gating). False makes the reconciler drop
 	// any step whose Agent has a non-local provider and surface a
 	// CloudReviewersSuppressed condition naming the dropped Agents.
-	// Wired from the --allow-cloud-providers flag on foreman-operator
-	// (charts/foreman value foreman.allowCloudProviders).
+	// Wired from the --allow-cloud-providers flag on meitheal-operator
+	// (charts/meitheal value meitheal.allowCloudProviders).
 	AllowCloudProviders bool
 }
 
 // labelWorkload is the label the reconciler stamps on rendered AgenticTasks
 // so we can List them efficiently when rolling up status without scanning
 // every AgenticTask in the namespace.
-const labelWorkload = "foreman.llmkube.dev/workload"
+const labelWorkload = "meitheal.dev/workload"
 
 // labelStep records the PipelineStep.Name on rendered AgenticTasks for
 // observability. Not load-bearing for the controller; useful for kubectl
 // label selectors when debugging a batch.
-const labelStep = "foreman.llmkube.dev/step"
+const labelStep = "meitheal.dev/step"
 
 // conditionTypePlanned signals the reconciler successfully rendered the
 // initial AgenticTask set. Stays True once set.
@@ -147,11 +147,11 @@ const conditionTypeCoderAlreadyResolved = "CoderAlreadyResolved"
 // a perpetual "0 contradictions" noise condition).
 const conditionTypeCrossStageContradiction = "CrossStageContradiction"
 
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=workloads,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=workloads/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=workloads/finalizers,verbs=update
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agentictasks,verbs=create;get;list;watch
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agents,verbs=get;list;watch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=workloads,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=meitheal.dev,resources=workloads/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=workloads/finalizers,verbs=update
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agentictasks,verbs=create;get;list;watch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agents,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
@@ -160,7 +160,7 @@ const conditionTypeCrossStageContradiction = "CrossStageContradiction"
 func (r *WorkloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithName("workload").WithValues("workload", req.NamespacedName.String())
 
-	var workload foremanv1alpha1.Workload
+	var workload meithealv1alpha1.Workload
 	if err := r.Get(ctx, req.NamespacedName, &workload); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -270,15 +270,15 @@ func (r *WorkloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 // Fast path: when both gates are open, returns the input slice
 // unmodified and skips Agent API lookups entirely.
 func (r *WorkloadReconciler) filterCloudProviders(
-	ctx context.Context, w *foremanv1alpha1.Workload, steps []foremanv1alpha1.PipelineStep,
-) ([]foremanv1alpha1.PipelineStep, []string, error) {
+	ctx context.Context, w *meithealv1alpha1.Workload, steps []meithealv1alpha1.PipelineStep,
+) ([]meithealv1alpha1.PipelineStep, []string, error) {
 	operatorAllows := r.AllowCloudProviders
 	workloadAllows := w.Spec.AllowCloudReviewers == nil || *w.Spec.AllowCloudReviewers
 	if operatorAllows && workloadAllows {
 		return steps, nil, nil
 	}
 
-	kept := make([]foremanv1alpha1.PipelineStep, 0, len(steps))
+	kept := make([]meithealv1alpha1.PipelineStep, 0, len(steps))
 	var suppressed []string
 	for _, step := range steps {
 		// Only inspect reviewer steps. Coder + verifier are local by
@@ -287,16 +287,16 @@ func (r *WorkloadReconciler) filterCloudProviders(
 		// also keeps the filter's API calls bounded (one Get per
 		// reviewer Agent, not per task) and avoids fetching the same
 		// coder/gate Agent N times per batch.
-		if step.Kind != foremanv1alpha1.AgenticTaskKindReview {
+		if step.Kind != meithealv1alpha1.AgenticTaskKindReview {
 			kept = append(kept, step)
 			continue
 		}
-		var agent foremanv1alpha1.Agent
+		var agent meithealv1alpha1.Agent
 		key := types.NamespacedName{Name: step.AgentRef.Name, Namespace: w.Namespace}
 		if err := r.Get(ctx, key, &agent); err != nil {
 			return nil, nil, fmt.Errorf("get agent %s: %w", key, err)
 		}
-		if agent.Spec.Provider == "" || agent.Spec.Provider == foremanv1alpha1.AgentProviderLocal {
+		if agent.Spec.Provider == "" || agent.Spec.Provider == meithealv1alpha1.AgentProviderLocal {
 			kept = append(kept, step)
 			continue
 		}
@@ -325,7 +325,7 @@ func (r *WorkloadReconciler) filterCloudProviders(
 // We deliberately do NOT call into a planner in v0.1; the LLM-driven path
 // returns a clear "deferred to v0.2" failure so the operator can see the
 // CRD is reachable but the mode they wanted is not implemented yet.
-func (r *WorkloadReconciler) chooseSteps(w *foremanv1alpha1.Workload) (steps []foremanv1alpha1.PipelineStep, truncated bool, modeErr error) {
+func (r *WorkloadReconciler) chooseSteps(w *meithealv1alpha1.Workload) (steps []meithealv1alpha1.PipelineStep, truncated bool, modeErr error) {
 	switch {
 	case len(w.Spec.Pipeline) > 0:
 		steps = append(steps, w.Spec.Pipeline...)
@@ -360,14 +360,14 @@ func (r *WorkloadReconciler) chooseSteps(w *foremanv1alpha1.Workload) (steps []f
 //     verifier there is no gate to reject the branch; the cascade
 //     still fails reviews when code-<N> itself fails.
 //
-// Payload.Branch is "foreman/<workload-name>/issue-<N>" in all stages
+// Payload.Branch is "meitheal/<workload-name>/issue-<N>" in all stages
 // so each task clones the branch the coder produced (the cloneURL
 // passthrough from #528 makes the gate hit the fork, not upstream).
 //
 // Including the workload name in the branch makes the branch unique
 // across reruns on the same issue set: a second Workload on the same
 // issues produces a distinct branch, the executor can push without
-// fast-forward conflicts, and the empirical artifact (the foreman-
+// fast-forward conflicts, and the empirical artifact (the meitheal-
 // authored branch) survives even when an earlier run already produced
 // a branch on the same issue. See #573 for the motivating trace.
 // intentPromptPrefix renders Workload.spec.intent as the operator-scope
@@ -376,7 +376,7 @@ func (r *WorkloadReconciler) chooseSteps(w *foremanv1alpha1.Workload) (steps []f
 // intent was a required-but-write-only field: the coder only ever saw the
 // issue body, so operator scoping ("change only these files", "X is out of
 // scope") was silently discarded (#1201).
-func intentPromptPrefix(w *foremanv1alpha1.Workload) string {
+func intentPromptPrefix(w *meithealv1alpha1.Workload) string {
 	intent := strings.TrimSpace(w.Spec.Intent)
 	if intent == "" {
 		return ""
@@ -398,21 +398,21 @@ func joinPromptSections(sections ...string) string {
 	return strings.Join(parts, "\n\n")
 }
 
-func synthesizeIssueBatch(w *foremanv1alpha1.Workload) []foremanv1alpha1.PipelineStep {
+func synthesizeIssueBatch(w *meithealv1alpha1.Workload) []meithealv1alpha1.PipelineStep {
 	tasksPerIssue := 1 + len(w.Spec.ReviewerAgentRefs)
 	if w.Spec.VerifierAgentRef != nil {
 		tasksPerIssue++
 	}
-	steps := make([]foremanv1alpha1.PipelineStep, 0, len(w.Spec.Issues)*tasksPerIssue)
+	steps := make([]meithealv1alpha1.PipelineStep, 0, len(w.Spec.Issues)*tasksPerIssue)
 	for _, n := range w.Spec.Issues {
 		codeName := fmt.Sprintf("code-%d", n)
-		branch := fmt.Sprintf("foreman/%s/issue-%d", w.Name, n)
+		branch := fmt.Sprintf("meitheal/%s/issue-%d", w.Name, n)
 		steps = append(steps,
-			foremanv1alpha1.PipelineStep{
+			meithealv1alpha1.PipelineStep{
 				Name:     codeName,
-				Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+				Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 				AgentRef: *w.Spec.CoderAgentRef,
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:           w.Spec.Repo,
 					Issue:          n,
 					Branch:         branch,
@@ -430,12 +430,12 @@ func synthesizeIssueBatch(w *foremanv1alpha1.Workload) []foremanv1alpha1.Pipelin
 		if w.Spec.VerifierAgentRef != nil {
 			verifyName := fmt.Sprintf("verify-%d", n)
 			reviewDep = verifyName
-			steps = append(steps, foremanv1alpha1.PipelineStep{
+			steps = append(steps, meithealv1alpha1.PipelineStep{
 				Name:      verifyName,
-				Kind:      foremanv1alpha1.AgenticTaskKindVerify,
+				Kind:      meithealv1alpha1.AgenticTaskKindVerify,
 				AgentRef:  *w.Spec.VerifierAgentRef,
 				DependsOn: []string{codeName},
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:   w.Spec.Repo,
 					Issue:  n,
 					Branch: branch,
@@ -446,12 +446,12 @@ func synthesizeIssueBatch(w *foremanv1alpha1.Workload) []foremanv1alpha1.Pipelin
 		// a PR; spec.openPullRequest=false opts out (#937).
 		openPR := w.Spec.OpenPullRequest == nil || *w.Spec.OpenPullRequest
 		for i, reviewerRef := range w.Spec.ReviewerAgentRefs {
-			steps = append(steps, foremanv1alpha1.PipelineStep{
+			steps = append(steps, meithealv1alpha1.PipelineStep{
 				Name:      fmt.Sprintf("review-%d-%d", n, i),
-				Kind:      foremanv1alpha1.AgenticTaskKindReview,
+				Kind:      meithealv1alpha1.AgenticTaskKindReview,
 				AgentRef:  reviewerRef,
 				DependsOn: []string{reviewDep},
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:            w.Spec.Repo,
 					Issue:           n,
 					Branch:          branch,
@@ -467,10 +467,10 @@ func synthesizeIssueBatch(w *foremanv1alpha1.Workload) []foremanv1alpha1.Pipelin
 // the Workload. Step-local DependsOn names are rewritten to absolute task
 // names ("<workload>-<step>"). Already-existing tasks (idempotent re-run)
 // are detected and skipped.
-func (r *WorkloadReconciler) renderAndCreate(ctx context.Context, w *foremanv1alpha1.Workload, steps []foremanv1alpha1.PipelineStep) ([]corev1.ObjectReference, error) {
+func (r *WorkloadReconciler) renderAndCreate(ctx context.Context, w *meithealv1alpha1.Workload, steps []meithealv1alpha1.PipelineStep) ([]corev1.ObjectReference, error) {
 	log := logf.FromContext(ctx).WithName("workload").WithValues("workload", client.ObjectKeyFromObject(w))
 
-	rendered := make([]*foremanv1alpha1.AgenticTask, 0, len(steps))
+	rendered := make([]*meithealv1alpha1.AgenticTask, 0, len(steps))
 	refs := make([]corev1.ObjectReference, 0, len(steps))
 
 	for _, step := range steps {
@@ -480,7 +480,7 @@ func (r *WorkloadReconciler) renderAndCreate(ctx context.Context, w *foremanv1al
 			deps = append(deps, absoluteTaskName(w.Name, dep))
 		}
 
-		task := &foremanv1alpha1.AgenticTask{
+		task := &meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      taskName,
 				Namespace: w.Namespace,
@@ -489,7 +489,7 @@ func (r *WorkloadReconciler) renderAndCreate(ctx context.Context, w *foremanv1al
 					labelStep:     step.Name,
 				},
 			},
-			Spec: foremanv1alpha1.AgenticTaskSpec{
+			Spec: meithealv1alpha1.AgenticTaskSpec{
 				Kind:           step.Kind,
 				AgentRef:       step.AgentRef.DeepCopy(),
 				Payload:        *step.Payload.DeepCopy(),
@@ -517,7 +517,7 @@ func (r *WorkloadReconciler) renderAndCreate(ctx context.Context, w *foremanv1al
 			}
 		}
 		refs = append(refs, corev1.ObjectReference{
-			APIVersion: foremanv1alpha1.GroupVersion.String(),
+			APIVersion: meithealv1alpha1.GroupVersion.String(),
 			Kind:       "AgenticTask",
 			Namespace:  task.Namespace,
 			Name:       task.Name,
@@ -542,7 +542,7 @@ func absoluteTaskName(workloadName, stepName string) string {
 // step's own profile when set, otherwise the Workload-level default. A nil
 // result (both unset) leaves AgenticTaskSpec.GateProfile nil, which resolves
 // to the "go" preset — the behavior before Workloads carried a profile.
-func effectiveGateProfile(step foremanv1alpha1.PipelineStep, w *foremanv1alpha1.Workload) *foremanv1alpha1.GateProfile {
+func effectiveGateProfile(step meithealv1alpha1.PipelineStep, w *meithealv1alpha1.Workload) *meithealv1alpha1.GateProfile {
 	if step.GateProfile != nil {
 		return step.GateProfile
 	}
@@ -555,7 +555,7 @@ func effectiveGateProfile(step foremanv1alpha1.PipelineStep, w *foremanv1alpha1.
 // treats as "no scan gate" — the behavior before Workloads carried one.
 // Presence is the declaration signal: a present-but-empty gate propagates
 // as present and arms the scan at the CI defaults.
-func effectiveScanGate(step foremanv1alpha1.PipelineStep, w *foremanv1alpha1.Workload) *foremanv1alpha1.ScanGate {
+func effectiveScanGate(step meithealv1alpha1.PipelineStep, w *meithealv1alpha1.Workload) *meithealv1alpha1.ScanGate {
 	if step.ScanGate != nil {
 		return step.ScanGate
 	}
@@ -565,8 +565,8 @@ func effectiveScanGate(step foremanv1alpha1.PipelineStep, w *foremanv1alpha1.Wor
 // listChildren returns the AgenticTasks already owner-ref'd to this
 // Workload, looked up by the labelWorkload selector. Stable ordering by
 // name so callers can iterate predictably.
-func (r *WorkloadReconciler) listChildren(ctx context.Context, w *foremanv1alpha1.Workload) ([]foremanv1alpha1.AgenticTask, error) {
-	var list foremanv1alpha1.AgenticTaskList
+func (r *WorkloadReconciler) listChildren(ctx context.Context, w *meithealv1alpha1.Workload) ([]meithealv1alpha1.AgenticTask, error) {
+	var list meithealv1alpha1.AgenticTaskList
 	if err := r.List(ctx, &list,
 		client.InNamespace(w.Namespace),
 		client.MatchingLabels{labelWorkload: w.Name},
@@ -613,8 +613,8 @@ func (r *WorkloadReconciler) listChildren(ctx context.Context, w *foremanv1alpha
 // the wiring.
 func (r *WorkloadReconciler) rollup(
 	ctx context.Context,
-	w *foremanv1alpha1.Workload,
-	children []foremanv1alpha1.AgenticTask,
+	w *meithealv1alpha1.Workload,
+	children []meithealv1alpha1.AgenticTask,
 	missingPlanned []string,
 ) (ctrl.Result, error) {
 	cls := classifyChildren(children)
@@ -645,14 +645,14 @@ func (r *WorkloadReconciler) rollup(
 	r.emitAlreadyResolvedCondition(w, cls, now)
 	r.emitCrossStageContradictionCondition(w, cls, now)
 
-	if (w.Status.Phase == foremanv1alpha1.WorkloadPhaseCompleted ||
-		w.Status.Phase == foremanv1alpha1.WorkloadPhaseFailed) &&
+	if (w.Status.Phase == meithealv1alpha1.WorkloadPhaseCompleted ||
+		w.Status.Phase == meithealv1alpha1.WorkloadPhaseFailed) &&
 		w.Status.Phase != prevPhase {
 		outcome := "completed"
-		if w.Status.Phase == foremanv1alpha1.WorkloadPhaseFailed {
+		if w.Status.Phase == meithealv1alpha1.WorkloadPhaseFailed {
 			outcome = "failed"
 		}
-		llmkubemetrics.RecordWorkloadOutcome(outcome)
+		meithealmetrics.RecordWorkloadOutcome(outcome)
 	}
 
 	if err := r.Status().Patch(ctx, w, patch); err != nil {
@@ -682,7 +682,7 @@ type childCounts struct {
 // observed child that is not a planned ref, so synthetic placeholder
 // children (escalation / iteration / informer-lag) never read as a
 // missing child (#1738).
-func missingPlannedTasks(planned []corev1.ObjectReference, children []foremanv1alpha1.AgenticTask) []string {
+func missingPlannedTasks(planned []corev1.ObjectReference, children []meithealv1alpha1.AgenticTask) []string {
 	observed := make(map[string]struct{}, len(children))
 	for i := range children {
 		observed[children[i].Name] = struct{}{}
@@ -710,14 +710,14 @@ func missingPlannedTasks(planned []corev1.ObjectReference, children []foremanv1a
 // diagnostic condition that fires because the API hiccuped is exactly the
 // cry-wolf this report exists to avoid.
 func (r *WorkloadReconciler) confirmMissing(
-	ctx context.Context, w *foremanv1alpha1.Workload, suspects []string,
+	ctx context.Context, w *meithealv1alpha1.Workload, suspects []string,
 ) []string {
 	if len(suspects) == 0 || r.APIReader == nil {
 		return suspects
 	}
 	confirmed := make([]string, 0, len(suspects))
 	for _, name := range suspects {
-		var task foremanv1alpha1.AgenticTask
+		var task meithealv1alpha1.AgenticTask
 		err := r.APIReader.Get(ctx,
 			types.NamespacedName{Namespace: w.Namespace, Name: name}, &task)
 		if apierrors.IsNotFound(err) {
@@ -744,8 +744,8 @@ func (r *WorkloadReconciler) confirmMissing(
 // this call: a ref and its child appear together, so neither a
 // just-planned nor a not-yet-planned task reads as missing here.
 func observeChildren(
-	w *foremanv1alpha1.Workload, children []foremanv1alpha1.AgenticTask,
-) ([]foremanv1alpha1.AgenticTask, []string) {
+	w *meithealv1alpha1.Workload, children []meithealv1alpha1.AgenticTask,
+) ([]meithealv1alpha1.AgenticTask, []string) {
 	missing := missingPlannedTasks(w.Status.Tasks, children)
 	return activeChildren(w, children), missing
 }
@@ -786,7 +786,7 @@ func observeChildren(
 // Plain sort.Slice(resolvedIssues, ...) would leave the parallel slice
 // out of sync, attributing the wrong SHA to issues in any multi-issue
 // Workload (Defilan review on #970).
-func classifyChildren(children []foremanv1alpha1.AgenticTask) childCounts {
+func classifyChildren(children []meithealv1alpha1.AgenticTask) childCounts {
 	var c childCounts
 	for i := range children {
 		// Contradiction is orthogonal to success: it counts into the
@@ -816,9 +816,9 @@ func classifyChildren(children []foremanv1alpha1.AgenticTask) childCounts {
 			// (ad-hoc AgenticTasks); the per-issue condition + events
 			// can't name them, so they don't show up in either list.
 			// The counter is incremented either way.
-		case children[i].Status.Phase == foremanv1alpha1.AgenticTaskPhaseSucceeded:
+		case children[i].Status.Phase == meithealv1alpha1.AgenticTaskPhaseSucceeded:
 			c.incomplete++
-		case children[i].Status.Phase == foremanv1alpha1.AgenticTaskPhaseFailed:
+		case children[i].Status.Phase == meithealv1alpha1.AgenticTaskPhaseFailed:
 			c.failed++
 		default:
 			c.inFlight++
@@ -865,11 +865,11 @@ func classifyChildren(children []foremanv1alpha1.AgenticTask) childCounts {
 // the downstream dependents Skipped, and the upstream ALREADY-RESOLVED coder
 // is counted in `alreadyResolved`, which the all-on-target case would
 // otherwise match and report "0/N on-target".
-func computeTerminalState(w *foremanv1alpha1.Workload, c childCounts, now metav1.Time) {
+func computeTerminalState(w *meithealv1alpha1.Workload, c childCounts, now metav1.Time) {
 	switch {
 	case c.inFlight == 0 && c.failed == 0 && c.incomplete == 0 && c.alreadyResolved == 0:
 		// All on-target.
-		w.Status.Phase = foremanv1alpha1.WorkloadPhaseCompleted
+		w.Status.Phase = meithealv1alpha1.WorkloadPhaseCompleted
 		setCondition(&w.Status.Conditions, metav1.Condition{
 			Type:               conditionTypeCompleted,
 			Status:             metav1.ConditionTrue,
@@ -880,7 +880,7 @@ func computeTerminalState(w *foremanv1alpha1.Workload, c childCounts, now metav1
 		setDispatchedTerminal(&w.Status.Conditions, "AllChildrenSucceeded", now)
 	case c.inFlight == 0 && c.failed == 0 && c.incomplete == 0 && c.succeeded == 0 && c.alreadyResolved > 0:
 		// Pure ALREADY-RESOLVED workload — nothing actually attempted.
-		w.Status.Phase = foremanv1alpha1.WorkloadPhaseCompleted
+		w.Status.Phase = meithealv1alpha1.WorkloadPhaseCompleted
 		msg := fmt.Sprintf("%d issue(s) already resolved at run time (no fix attempted): #%s",
 			c.alreadyResolved, joinInt32(c.resolvedIssues))
 		setCondition(&w.Status.Conditions, metav1.Condition{
@@ -894,7 +894,7 @@ func computeTerminalState(w *foremanv1alpha1.Workload, c childCounts, now metav1
 	case c.inFlight == 0 && c.failed == 0 && c.incomplete == 0:
 		// Mixed: at least one on-target succeeded AND at least one
 		// already-resolved. Still Completed; mention both.
-		w.Status.Phase = foremanv1alpha1.WorkloadPhaseCompleted
+		w.Status.Phase = meithealv1alpha1.WorkloadPhaseCompleted
 		msg := fmt.Sprintf("%d/%d child tasks on-target Succeeded; %d already-resolved (no fix attempted)",
 			c.succeeded, c.total, c.alreadyResolved)
 		setCondition(&w.Status.Conditions, metav1.Condition{
@@ -909,7 +909,7 @@ func computeTerminalState(w *foremanv1alpha1.Workload, c childCounts, now metav1
 		// Any incomplete OR failed child rolls the Workload to Failed
 		// terminal state. ALREADY-RESOLVED and Skipped children do not
 		// contribute to this — they are excluded from `incomplete`.
-		w.Status.Phase = foremanv1alpha1.WorkloadPhaseFailed
+		w.Status.Phase = meithealv1alpha1.WorkloadPhaseFailed
 		reason := "ChildrenFailed"
 		if c.failed == 0 {
 			reason = "ChildrenIncomplete"
@@ -924,7 +924,7 @@ func computeTerminalState(w *foremanv1alpha1.Workload, c childCounts, now metav1
 		})
 		setDispatchedTerminal(&w.Status.Conditions, reason, now)
 	default:
-		w.Status.Phase = foremanv1alpha1.WorkloadPhaseDispatched
+		w.Status.Phase = meithealv1alpha1.WorkloadPhaseDispatched
 		reason := "ChildrenInFlight"
 		message := fmt.Sprintf("%d in-flight, %d on-target, %d incomplete, %d failed, %d already-resolved",
 			c.inFlight, c.succeeded, c.incomplete, c.failed, c.alreadyResolved)
@@ -967,7 +967,7 @@ func setDispatchedTerminal(conds *[]metav1.Condition, reason string, now metav1.
 // is zero, the condition is set to False (an anti-stale guard — a
 // stale True condition would mislead operators reading later
 // reconciles). Events fire only when alreadyResolved > 0.
-func (r *WorkloadReconciler) emitAlreadyResolvedCondition(w *foremanv1alpha1.Workload, c childCounts, now metav1.Time) {
+func (r *WorkloadReconciler) emitAlreadyResolvedCondition(w *meithealv1alpha1.Workload, c childCounts, now metav1.Time) {
 	if c.alreadyResolved == 0 {
 		setCondition(&w.Status.Conditions, metav1.Condition{
 			Type:               conditionTypeCoderAlreadyResolved,
@@ -1013,7 +1013,7 @@ func (r *WorkloadReconciler) emitAlreadyResolvedCondition(w *foremanv1alpha1.Wor
 // anti-stale guard). The count is orthogonal to success: it does not
 // change terminal state, so a contradicting task that Succeeded still
 // counts as succeeded.
-func (r *WorkloadReconciler) emitCrossStageContradictionCondition(w *foremanv1alpha1.Workload, c childCounts, now metav1.Time) {
+func (r *WorkloadReconciler) emitCrossStageContradictionCondition(w *meithealv1alpha1.Workload, c childCounts, now metav1.Time) {
 	if c.contradicted == 0 {
 		setCondition(&w.Status.Conditions, metav1.Condition{
 			Type:               conditionTypeCrossStageContradiction,
@@ -1042,14 +1042,14 @@ func (r *WorkloadReconciler) emitCrossStageContradictionCondition(w *foremanv1al
 // markPlanning patches phase=Planning the first time we touch the
 // Workload. Idempotent: an Already-Planning workload stays planning until
 // renderAndCreate flips it to Planned.
-func (r *WorkloadReconciler) markPlanning(ctx context.Context, w *foremanv1alpha1.Workload) error {
-	if w.Status.Phase == foremanv1alpha1.WorkloadPhasePlanning ||
-		w.Status.Phase == foremanv1alpha1.WorkloadPhasePlanned ||
-		w.Status.Phase == foremanv1alpha1.WorkloadPhaseDispatched {
+func (r *WorkloadReconciler) markPlanning(ctx context.Context, w *meithealv1alpha1.Workload) error {
+	if w.Status.Phase == meithealv1alpha1.WorkloadPhasePlanning ||
+		w.Status.Phase == meithealv1alpha1.WorkloadPhasePlanned ||
+		w.Status.Phase == meithealv1alpha1.WorkloadPhaseDispatched {
 		return nil
 	}
 	patch := client.MergeFrom(w.DeepCopy())
-	w.Status.Phase = foremanv1alpha1.WorkloadPhasePlanning
+	w.Status.Phase = meithealv1alpha1.WorkloadPhasePlanning
 	if w.Spec.PlannerModel != "" {
 		w.Status.PlannerModel = w.Spec.PlannerModel
 	} else {
@@ -1079,7 +1079,7 @@ func (r *WorkloadReconciler) markPlanning(ctx context.Context, w *foremanv1alpha
 //     already used for the cloud-provider resolve terminal path.
 func (r *WorkloadReconciler) markPlanned(
 	ctx context.Context,
-	w *foremanv1alpha1.Workload,
+	w *meithealv1alpha1.Workload,
 	created []corev1.ObjectReference,
 	truncated bool,
 	suppressed []string,
@@ -1107,7 +1107,7 @@ func (r *WorkloadReconciler) markPlanned(
 			LastTransitionTime: now,
 		})
 	} else {
-		w.Status.Phase = foremanv1alpha1.WorkloadPhasePlanned
+		w.Status.Phase = meithealv1alpha1.WorkloadPhasePlanned
 		setCondition(&w.Status.Conditions, metav1.Condition{
 			Type:               conditionTypePlanned,
 			Status:             metav1.ConditionTrue,
@@ -1145,10 +1145,10 @@ func (r *WorkloadReconciler) markPlanned(
 
 // failWorkload marks the Workload Failed with a reason + message. Used for
 // the intent-only / no-planner case in v0.1.
-func (r *WorkloadReconciler) failWorkload(ctx context.Context, w *foremanv1alpha1.Workload, reason, message string) (ctrl.Result, error) {
+func (r *WorkloadReconciler) failWorkload(ctx context.Context, w *meithealv1alpha1.Workload, reason, message string) (ctrl.Result, error) {
 	patch := client.MergeFrom(w.DeepCopy())
 	now := metav1.Now()
-	w.Status.Phase = foremanv1alpha1.WorkloadPhaseFailed
+	w.Status.Phase = meithealv1alpha1.WorkloadPhaseFailed
 	setCondition(&w.Status.Conditions, metav1.Condition{
 		Type:               conditionTypePlanned,
 		Status:             metav1.ConditionFalse,
@@ -1163,8 +1163,8 @@ func (r *WorkloadReconciler) failWorkload(ctx context.Context, w *foremanv1alpha
 // child status changes for rollup.
 func (r *WorkloadReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&foremanv1alpha1.Workload{}).
-		Owns(&foremanv1alpha1.AgenticTask{}).
+		For(&meithealv1alpha1.Workload{}).
+		Owns(&meithealv1alpha1.AgenticTask{}).
 		Named("workload").
 		Complete(r)
 }

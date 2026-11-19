@@ -23,9 +23,9 @@ agents:
     commitAuthorName: "Jory Dogfood"
     commitAuthorEmail: "jory-dogfood@example.com"
     githubToken:
-      secretName: foreman-agent-fork
+      secretName: meitheal-agent-fork
       secretKey: GITHUB_TOKEN
-    coderGitSecret: foreman-fork-credentials
+    coderGitSecret: meitheal-fork-credentials
     coderGitSecretKey: token
     gateCache:
       enabled: false

@@ -22,7 +22,7 @@ import (
 	"math"
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func TestBytesToGB(t *testing.T) {
@@ -60,7 +60,7 @@ func TestNewCapability_Darwin_DefaultsAcceleratorToMetal(t *testing.T) {
 
 func TestNewCapability_Darwin_HonorsExplicitAcceleratorOverride(t *testing.T) {
 	p := NewCapability(CapabilityOptions{
-		Accelerator: foremanv1alpha1.FleetNodeAccelerator("none"),
+		Accelerator: meithealv1alpha1.FleetNodeAccelerator("none"),
 	})
 	cap := p.Capability()
 	if string(cap.Accelerator) != "none" {

@@ -28,8 +28,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	llmkubemetrics "github.com/defilantech/meitheal/internal/metrics"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealmetrics "github.com/defilantech/meitheal/internal/metrics"
 )
 
 // TestTaskOutcomeLabels verifies the bounded label extraction the operator uses
@@ -40,10 +40,10 @@ import (
 // never returned — it is unbounded and would break cardinality.
 func TestTaskOutcomeLabels(t *testing.T) {
 	t.Run("full envelope with agentRef", func(t *testing.T) {
-		task := &foremanv1alpha1.AgenticTask{}
-		task.Spec.Kind = foremanv1alpha1.AgenticTaskKindIssueFix
+		task := &meithealv1alpha1.AgenticTask{}
+		task.Spec.Kind = meithealv1alpha1.AgenticTaskKindIssueFix
 		task.Spec.AgentRef = &corev1.LocalObjectReference{Name: "coder"}
-		task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+		task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 		task.Status.Result = &runtime.RawExtension{Raw: []byte(
 			`{"elapsedSec":42.5,"extra":{"outcome":"ALREADY-RESOLVED","turnCount":17}}`)}
 
@@ -69,9 +69,9 @@ func TestTaskOutcomeLabels(t *testing.T) {
 	})
 
 	t.Run("no agentRef and no result envelope", func(t *testing.T) {
-		task := &foremanv1alpha1.AgenticTask{}
-		task.Spec.Kind = foremanv1alpha1.AgenticTaskKindVerify
-		task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGatePass
+		task := &meithealv1alpha1.AgenticTask{}
+		task.Spec.Kind = meithealv1alpha1.AgenticTaskKindVerify
+		task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGatePass
 
 		agent, kind, verdict, outcome, elapsed, turns := taskOutcomeLabels(task)
 		if agent != "" {
@@ -90,10 +90,10 @@ func TestTaskOutcomeLabels(t *testing.T) {
 	})
 
 	t.Run("unparseable result yields no fabricated values", func(t *testing.T) {
-		task := &foremanv1alpha1.AgenticTask{}
-		task.Spec.Kind = foremanv1alpha1.AgenticTaskKindFreeform
+		task := &meithealv1alpha1.AgenticTask{}
+		task.Spec.Kind = meithealv1alpha1.AgenticTaskKindFreeform
 		task.Spec.AgentRef = &corev1.LocalObjectReference{Name: "freeform-agent"}
-		task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictIncomplete
+		task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictIncomplete
 		task.Status.Result = &runtime.RawExtension{Raw: []byte(`{not-json`)}
 
 		_, _, _, outcome, elapsed, turns := taskOutcomeLabels(task)
@@ -118,27 +118,27 @@ func TestTaskOutcomeLabels(t *testing.T) {
 // RecordTerminal: there, both reconciles pass the unset-annotation guard and
 // each emits, so the counter moves by 2 across the two passes.
 func TestTerminalMetricEmittedAtMostOnceOnAuditFailure(t *testing.T) {
-	// Foreman-only scheme (no corev1.ConfigMap registered). This is deliberate:
+	// Meitheal-only scheme (no corev1.ConfigMap registered). This is deliberate:
 	// audit.RecordTerminal writes its durable record to a ConfigMap, and with
 	// the type absent from the scheme that write fails ("no kind registered
 	// for v1.ConfigMap"), so RecordTerminal returns an error and never stamps
 	// the audited annotation — exactly the audit-failure path under test.
 	scheme := runtime.NewScheme()
-	if err := foremanv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("add foreman scheme: %v", err)
+	if err := meithealv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add meitheal scheme: %v", err)
 	}
 
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 	task := newTask("dedup-audit-fail")
-	task.Spec.Kind = foremanv1alpha1.AgenticTaskKindIssueFix
+	task.Spec.Kind = meithealv1alpha1.AgenticTaskKindIssueFix
 	task.Spec.AgentRef = &corev1.LocalObjectReference{Name: "dedup-agent"}
 	// Terminal state the FleetAgent would have written. A populated result
 	// envelope makes the emitted labels deterministic and distinct from the
 	// label set used by TestTaskOutcomeLabels.
 	finished := metav1.Now()
-	task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-	task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+	task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+	task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 	task.Status.FinishedAt = &finished
 	task.Status.Result = &runtime.RawExtension{Raw: []byte(
 		`{"elapsedSec":42.5,"extra":{"outcome":"MODEL-DECIDED","turnCount":17}}`)}
@@ -154,7 +154,7 @@ func TestTerminalMetricEmittedAtMostOnceOnAuditFailure(t *testing.T) {
 	readCounter := func() float64 {
 		t.Helper()
 		var m dto.Metric
-		if err := llmkubemetrics.ForemanTaskCompletedTotal.WithLabelValues(labels...).Write(&m); err != nil {
+		if err := meithealmetrics.MeithealTaskCompletedTotal.WithLabelValues(labels...).Write(&m); err != nil {
 			t.Fatalf("read counter: %v", err)
 		}
 		return m.GetCounter().GetValue()
@@ -183,17 +183,17 @@ func TestTerminalMetricAndAuditOncePerAttempt(t *testing.T) {
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
-	_ = foremanv1alpha1.AddToScheme(scheme)
+	_ = meithealv1alpha1.AddToScheme(scheme)
 	task := newTask("attempt-audit")
-	task.Spec.Kind = foremanv1alpha1.AgenticTaskKindIssueFix
+	task.Spec.Kind = meithealv1alpha1.AgenticTaskKindIssueFix
 	task.Spec.AgentRef = &corev1.LocalObjectReference{Name: "attempt-metric-agent"}
-	task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-	task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+	task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+	task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(task).WithStatusSubresource(task).Build()
 	r := &AgenticTaskReconciler{Client: c, Scheme: scheme}
 	key := client.ObjectKeyFromObject(task)
 	agent, kind, verdict, outcome, _, _ := taskOutcomeLabels(task)
-	counter := llmkubemetrics.ForemanTaskCompletedTotal.WithLabelValues(agent, kind, verdict, outcome)
+	counter := meithealmetrics.MeithealTaskCompletedTotal.WithLabelValues(agent, kind, verdict, outcome)
 	read := func() float64 {
 		t.Helper()
 		var metric dto.Metric

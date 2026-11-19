@@ -33,7 +33,7 @@ func prServer(t *testing.T, existing []string, createStatus int, createBody stri
 	var posts []string
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /repos/o/r/pulls", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("head") != "o:foreman/wl-x/issue-7" {
+		if r.URL.Query().Get("head") != "o:meitheal/wl-x/issue-7" {
 			t.Errorf("head filter: got %q", r.URL.Query().Get("head"))
 		}
 		items := make([]map[string]string, 0, len(existing))
@@ -59,7 +59,7 @@ func TestEnsurePR_CreatesWhenAbsent(t *testing.T) {
 	c, posts := prServer(t, nil, http.StatusCreated, `{"html_url":"https://github.com/o/r/pull/9"}`)
 
 	res, err := c.EnsurePR(context.Background(), "o", "r",
-		"foreman/wl-x/issue-7", "main", "Fix the thing", "Fixes #7", true, "tok")
+		"meitheal/wl-x/issue-7", "main", "Fix the thing", "Fixes #7", true, "tok")
 	if err != nil {
 		t.Fatalf("EnsurePR: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestEnsurePR_CreatesWhenAbsent(t *testing.T) {
 	}
 	var req map[string]string
 	_ = json.Unmarshal([]byte((*posts)[0]), &req)
-	if req["head"] != "foreman/wl-x/issue-7" || req["base"] != "main" || req["title"] != "Fix the thing" {
+	if req["head"] != "meitheal/wl-x/issue-7" || req["base"] != "main" || req["title"] != "Fix the thing" {
 		t.Errorf("create payload wrong: %v", req)
 	}
 }
@@ -99,7 +99,7 @@ func draftServer(t *testing.T) (*string, *Client) {
 }
 
 // TestEnsurePR_PayloadDraftFlag pins the draft flag in the create payload
-// (#1701): a Foreman PR opens as a draft (draft=true) so it is reviewable
+// (#1701): a Meitheal PR opens as a draft (draft=true) so it is reviewable
 // on arrival rather than inviting review before a human has looked at it,
 // while a non-draft caller threads false through. The payload is decoded
 // from the raw request body so we assert the exact JSON sent, not just the
@@ -116,7 +116,7 @@ func TestEnsurePR_PayloadDraftFlag(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			raw, c := draftServer(t)
 			if _, err := c.EnsurePR(context.Background(), "o", "r",
-				"foreman/wl-x/issue-7", "main", "t", "b", tc.draft, "tok"); err != nil {
+				"meitheal/wl-x/issue-7", "main", "t", "b", tc.draft, "tok"); err != nil {
 				t.Fatalf("EnsurePR: %v", err)
 			}
 			var payload map[string]any
@@ -134,7 +134,7 @@ func TestEnsurePR_ReusesExisting(t *testing.T) {
 	c, posts := prServer(t, []string{"https://github.com/o/r/pull/4"}, http.StatusCreated, `{}`)
 
 	res, err := c.EnsurePR(context.Background(), "o", "r",
-		"foreman/wl-x/issue-7", "main", "t", "b", true, "tok")
+		"meitheal/wl-x/issue-7", "main", "t", "b", true, "tok")
 	if err != nil {
 		t.Fatalf("EnsurePR: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestEnsurePR_ForkQualifiedHeadUsedVerbatim(t *testing.T) {
 	var posts []string
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /repos/o/r/pulls", func(w http.ResponseWriter, r *http.Request) {
-		if got := r.URL.Query().Get("head"); got != "forker:foreman/wl-x/issue-7" {
+		if got := r.URL.Query().Get("head"); got != "forker:meitheal/wl-x/issue-7" {
 			t.Errorf("head filter: got %q, want fork-qualified", got)
 		}
 		_, _ = w.Write([]byte("[]"))
@@ -174,7 +174,7 @@ func TestEnsurePR_ForkQualifiedHeadUsedVerbatim(t *testing.T) {
 	c := &Client{HTTPClient: srv.Client(), BaseURL: srv.URL}
 
 	res, err := c.EnsurePR(context.Background(), "o", "r",
-		"forker:foreman/wl-x/issue-7", "main", "t", "b", true, "tok")
+		"forker:meitheal/wl-x/issue-7", "main", "t", "b", true, "tok")
 	if err != nil {
 		t.Fatalf("EnsurePR: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestEnsurePR_ForkQualifiedHeadUsedVerbatim(t *testing.T) {
 	}
 	var req map[string]string
 	_ = json.Unmarshal([]byte(posts[0]), &req)
-	if req["head"] != "forker:foreman/wl-x/issue-7" {
+	if req["head"] != "forker:meitheal/wl-x/issue-7" {
 		t.Errorf("create head: got %q, want fork-qualified", req["head"])
 	}
 }
@@ -214,14 +214,14 @@ func TestUpdatePR_PatchesExistingPR(t *testing.T) {
 	c := &Client{HTTPClient: srv.Client(), BaseURL: srv.URL}
 
 	url, err := c.UpdatePR(context.Background(), "o", "r",
-		"foreman/wl-x/issue-7", "Fixes #7 (revised)", "tok")
+		"meitheal/wl-x/issue-7", "Fixes #7 (revised)", "tok")
 	if err != nil {
 		t.Fatalf("UpdatePR: %v", err)
 	}
 	if url != "https://github.com/o/r/pull/42" {
 		t.Fatalf("want PR 42, got %q", url)
 	}
-	if listHead != "o:foreman/wl-x/issue-7" {
+	if listHead != "o:meitheal/wl-x/issue-7" {
 		t.Errorf("list head filter: got %q", listHead)
 	}
 	if patchBody != "Fixes #7 (revised)" {
@@ -247,7 +247,7 @@ func TestUpdatePR_ReturnsEmptyWhenNoOpenPR(t *testing.T) {
 	c := &Client{HTTPClient: srv.Client(), BaseURL: srv.URL}
 
 	url, err := c.UpdatePR(context.Background(), "o", "r",
-		"foreman/wl-x/issue-7", "Fixes #7 (revised)", "tok")
+		"meitheal/wl-x/issue-7", "Fixes #7 (revised)", "tok")
 	if err != nil {
 		t.Fatalf("UpdatePR: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestEnsurePR_FindByHeadStateLogic(t *testing.T) {
 			c := &Client{HTTPClient: srv.Client(), BaseURL: srv.URL}
 
 			res, err := c.EnsurePR(context.Background(), "o", "r",
-				"foreman/wl-x/issue-7", "main", "t", "b", true, "tok")
+				"meitheal/wl-x/issue-7", "main", "t", "b", true, "tok")
 			if err != nil {
 				t.Fatalf("EnsurePR: %v", err)
 			}
@@ -344,14 +344,14 @@ func TestEnsurePR_ResolvesCreateRace(t *testing.T) {
 	})
 	mux.HandleFunc("POST /repos/o/r/pulls", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		_, _ = w.Write([]byte(`{"errors":[{"message":"A pull request already exists for o:foreman/wl-x/issue-7."}]}`))
+		_, _ = w.Write([]byte(`{"errors":[{"message":"A pull request already exists for o:meitheal/wl-x/issue-7."}]}`))
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	c := &Client{HTTPClient: srv.Client(), BaseURL: srv.URL}
 
 	res, err := c.EnsurePR(context.Background(), "o", "r",
-		"foreman/wl-x/issue-7", "main", "t", "b", true, "tok")
+		"meitheal/wl-x/issue-7", "main", "t", "b", true, "tok")
 	if err != nil {
 		t.Fatalf("EnsurePR after race: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestEnsurePR_SurfacesAuthFailure(t *testing.T) {
 
 func TestHeadCommitSubject(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /repos/o/r/commits/foreman/wl-x/issue-7", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /repos/o/r/commits/meitheal/wl-x/issue-7", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"commit":{"message":"feat: add the thing\n\nLonger body.\nFixes #7"}}`))
 	})
 	srv := httptest.NewServer(mux)
@@ -387,7 +387,7 @@ func TestHeadCommitSubject(t *testing.T) {
 
 	// Note: the ref is path-escaped by the client; httptest's mux
 	// matches the unescaped path.
-	got := c.HeadCommitSubject(context.Background(), "o", "r", "foreman/wl-x/issue-7", "tok")
+	got := c.HeadCommitSubject(context.Background(), "o", "r", "meitheal/wl-x/issue-7", "tok")
 	if got != "feat: add the thing" {
 		t.Fatalf("subject: got %q", got)
 	}
@@ -399,7 +399,7 @@ func TestHeadCommitSubject(t *testing.T) {
 // the base repo.
 func TestHeadCommitSubject_ReadsFromForkRepo(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /repos/forker/r/commits/foreman/wl-x/issue-7",
+	mux.HandleFunc("GET /repos/forker/r/commits/meitheal/wl-x/issue-7",
 		func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`{"commit":{"message":"fix: fork-side subject"}}`))
 		})
@@ -407,7 +407,7 @@ func TestHeadCommitSubject_ReadsFromForkRepo(t *testing.T) {
 	t.Cleanup(srv.Close)
 	c := &Client{HTTPClient: srv.Client(), BaseURL: srv.URL}
 
-	got := c.HeadCommitSubject(context.Background(), "forker", "r", "foreman/wl-x/issue-7", "tok")
+	got := c.HeadCommitSubject(context.Background(), "forker", "r", "meitheal/wl-x/issue-7", "tok")
 	if got != "fix: fork-side subject" {
 		t.Fatalf("subject: got %q", got)
 	}

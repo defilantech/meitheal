@@ -18,7 +18,7 @@ limitations under the License.
 //
 // It targets the subset of the v1 chat-completions API that llama.cpp's
 // OAI-compatible /v1/chat/completions endpoint implements. We do not use
-// the official SDK because Foreman needs exactly one HTTP shape, we want
+// the official SDK because Meitheal needs exactly one HTTP shape, we want
 // llama.cpp-specific retry semantics (#22072 truncated tool_call args),
 // and the SDK pulls a large transitive cone we would rather avoid for
 // v0.1.
@@ -112,7 +112,7 @@ type Message struct {
 //
 // The OpenAI v1 chat-completions spec requires content on system,
 // user, and tool roles. llama.cpp's OAI surface accepts the field
-// either missing or empty; that's why this never bit Foreman against
+// either missing or empty; that's why this never bit Meitheal against
 // Carnice or other Qwen-family backends. Stricter implementations
 // (Devstral / Mistral / DeepSeek and the OpenAI API itself) reject
 // HTTP 400 with `"All non-assistant messages must contain 'content'"`

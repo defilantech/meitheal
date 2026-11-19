@@ -28,7 +28,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // validateAgentConfig is the config-floor check behind the Validated
@@ -39,13 +39,13 @@ import (
 func TestValidateAgentConfig(t *testing.T) {
 	cases := []struct {
 		name       string
-		spec       foremanv1alpha1.AgentSpec
+		spec       meithealv1alpha1.AgentSpec
 		wantValid  bool
 		wantReason string
 	}{
 		{
 			name: "reviewer with prompt and full tools is valid",
-			spec: foremanv1alpha1.AgentSpec{
+			spec: meithealv1alpha1.AgentSpec{
 				Role:         "reviewer",
 				SystemPrompt: "# reviewer instructions",
 				Tools:        []string{"read_file", "grep", "bash", "fetch_issue", "submit_result"},
@@ -57,53 +57,53 @@ func TestValidateAgentConfig(t *testing.T) {
 			// NoSystemPrompt floor applies to the model path, not the
 			// deterministic path (#1613).
 			name: "empty systemPrompt fails for any role",
-			spec: foremanv1alpha1.AgentSpec{
+			spec: meithealv1alpha1.AgentSpec{
 				Role:                "coder",
-				Provider:            foremanv1alpha1.AgentProviderLocal,
+				Provider:            meithealv1alpha1.AgentProviderLocal,
 				InferenceServiceRef: corev1.LocalObjectReference{Name: "svc"},
 				Tools:               []string{"read_file", "bash", "submit_result"},
 			},
 			wantValid:  false,
-			wantReason: foremanv1alpha1.AgentConfigReasonNoSystemPrompt,
+			wantReason: meithealv1alpha1.AgentConfigReasonNoSystemPrompt,
 		},
 		{
 			name: "whitespace-only systemPrompt fails",
-			spec: foremanv1alpha1.AgentSpec{
+			spec: meithealv1alpha1.AgentSpec{
 				Role:                "reviewer",
-				Provider:            foremanv1alpha1.AgentProviderLocal,
+				Provider:            meithealv1alpha1.AgentProviderLocal,
 				InferenceServiceRef: corev1.LocalObjectReference{Name: "svc"},
 				SystemPrompt:        "  \n\t ",
 				Tools:               []string{"fetch_issue", "submit_result"},
 			},
 			wantValid:  false,
-			wantReason: foremanv1alpha1.AgentConfigReasonNoSystemPrompt,
+			wantReason: meithealv1alpha1.AgentConfigReasonNoSystemPrompt,
 		},
 		{
 			name: "reviewer without fetch_issue fails",
-			spec: foremanv1alpha1.AgentSpec{
+			spec: meithealv1alpha1.AgentSpec{
 				Role:         "reviewer",
 				SystemPrompt: "# reviewer instructions",
 				Tools:        []string{"read_file", "grep", "bash", "submit_result"},
 			},
 			wantValid:  false,
-			wantReason: foremanv1alpha1.AgentConfigReasonMissingRoleTools,
+			wantReason: meithealv1alpha1.AgentConfigReasonMissingRoleTools,
 		},
 		{
 			// LLM reviewer (endpoint set) missing both prompt and
 			// fetch_issue: the prompt failure is reported first.
 			name: "missing prompt reported before missing tools",
-			spec: foremanv1alpha1.AgentSpec{
+			spec: meithealv1alpha1.AgentSpec{
 				Role:                "reviewer",
-				Provider:            foremanv1alpha1.AgentProviderLocal,
+				Provider:            meithealv1alpha1.AgentProviderLocal,
 				InferenceServiceRef: corev1.LocalObjectReference{Name: "svc"},
 				Tools:               []string{"bash", "submit_result"},
 			},
 			wantValid:  false,
-			wantReason: foremanv1alpha1.AgentConfigReasonNoSystemPrompt,
+			wantReason: meithealv1alpha1.AgentConfigReasonNoSystemPrompt,
 		},
 		{
 			name: "coder does not need fetch_issue",
-			spec: foremanv1alpha1.AgentSpec{
+			spec: meithealv1alpha1.AgentSpec{
 				Role:         "coder",
 				SystemPrompt: "# coder instructions",
 				Tools:        []string{"read_file", "write_file", "bash", "submit_result"},
@@ -112,7 +112,7 @@ func TestValidateAgentConfig(t *testing.T) {
 		},
 		{
 			name: "verifier role has no tool floor",
-			spec: foremanv1alpha1.AgentSpec{
+			spec: meithealv1alpha1.AgentSpec{
 				Role:         "verifier",
 				SystemPrompt: "# gate",
 				Tools:        []string{"run_gate_job"},
@@ -139,7 +139,7 @@ func TestValidateAgentConfig(t *testing.T) {
 // The reconciler must publish the result as the reserved Validated condition.
 func TestAgentReconcilerWritesValidatedCondition(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := foremanv1alpha1.AddToScheme(scheme); err != nil {
+	if err := meithealv1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 	// The incident: a hand-created LLM reviewer ran with no systemPrompt
@@ -147,11 +147,11 @@ func TestAgentReconcilerWritesValidatedCondition(t *testing.T) {
 	// it could not read the issue under review (#1609). An LLM reviewer
 	// (endpoint set), not a deterministic one, so the prompt requirement
 	// applies (#1613).
-	agent := &foremanv1alpha1.Agent{
+	agent := &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "blind-reviewer", Namespace: "default", Generation: 3},
-		Spec: foremanv1alpha1.AgentSpec{
+		Spec: meithealv1alpha1.AgentSpec{
 			Role:                "reviewer",
-			Provider:            foremanv1alpha1.AgentProviderLocal,
+			Provider:            meithealv1alpha1.AgentProviderLocal,
 			InferenceServiceRef: corev1.LocalObjectReference{Name: "svc"},
 			Tools:               []string{"read_file", "grep", "bash", "submit_result"},
 		},
@@ -165,7 +165,7 @@ func TestAgentReconcilerWritesValidatedCondition(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	var got foremanv1alpha1.Agent
+	var got meithealv1alpha1.Agent
 	if err := cl.Get(context.Background(),
 		types.NamespacedName{Name: "blind-reviewer", Namespace: "default"}, &got); err != nil {
 		t.Fatal(err)
@@ -174,8 +174,8 @@ func TestAgentReconcilerWritesValidatedCondition(t *testing.T) {
 	if cond == nil {
 		t.Fatal("want a Validated condition, got none")
 	}
-	if cond.Status != metav1.ConditionFalse || cond.Reason != foremanv1alpha1.AgentConfigReasonNoSystemPrompt {
-		t.Fatalf("want False/%s, got %s/%s", foremanv1alpha1.AgentConfigReasonNoSystemPrompt, cond.Status, cond.Reason)
+	if cond.Status != metav1.ConditionFalse || cond.Reason != meithealv1alpha1.AgentConfigReasonNoSystemPrompt {
+		t.Fatalf("want False/%s, got %s/%s", meithealv1alpha1.AgentConfigReasonNoSystemPrompt, cond.Status, cond.Reason)
 	}
 	if got.Status.ObservedGeneration != 3 {
 		t.Fatalf("want observedGeneration=3, got %d", got.Status.ObservedGeneration)

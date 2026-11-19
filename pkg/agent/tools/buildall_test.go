@@ -71,7 +71,7 @@ func TestBuildAll_ThreadsGateActiveDeadlineSeconds(t *testing.T) {
 //
 // The previous guard could not catch it. It compared catalog against a
 // hand-written canonicalToolSet() in the test, while the real registration
-// lived in a third copy inside cmd/foreman-agent/main.go. Both mirrors stayed
+// lived in a third copy inside cmd/meitheal-agent/main.go. Both mirrors stayed
 // stale together and the test kept passing.
 //
 // This derives one side from BuildAll, the same function main.go calls, so the

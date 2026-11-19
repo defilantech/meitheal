@@ -14,12 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Command hunkcheck is the thin CLI wrapper the Foreman gate Job runs with
+// Command hunkcheck is the thin CLI wrapper the Meitheal gate Job runs with
 // `go run ./cmd/hunkcheck` to perform the per-hunk mutation-coverage pass for
 // envtest packages. It exists so the bash gate template does not reimplement
 // the diff parsing the in-agent gate already owns: the CLI resolves the
 // fork-point merge-base the bash side already computed, then delegates to the
-// pure pkg/foreman/agent core, which reverts each added hunk in an envtest
+// pure pkg/agent core, which reverts each added hunk in an envtest
 // package and runs that package's tests.
 //
 // A hunk whose revert leaves the package's tests green is uncovered; a clean

@@ -15,32 +15,32 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
-func coderTask() *foremanv1alpha1.AgenticTask {
+func coderTask() *meithealv1alpha1.AgenticTask {
 	loc := metav1.Now().Location()
 	finished := metav1.Date(2026, 6, 25, 1, 29, 0, 0, loc)
 	started := metav1.Date(2026, 6, 25, 0, 39, 20, 0, loc)
-	return &foremanv1alpha1.AgenticTask{
+	return &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "coder-89", Namespace: "default", UID: types.UID("uid-1")},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 			AgentRef: &corev1.LocalObjectReference{Name: "gateway-coder-amd"},
-			Payload:  foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 89},
+			Payload:  meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 89},
 		},
-		Status: foremanv1alpha1.AgenticTaskStatus{
-			Phase:         foremanv1alpha1.AgenticTaskPhaseSucceeded,
+		Status: meithealv1alpha1.AgenticTaskStatus{
+			Phase:         meithealv1alpha1.AgenticTaskPhaseSucceeded,
 			AssignedNode:  "m5max-coder",
 			StartedAt:     &started,
 			FinishedAt:    &finished,
-			Verdict:       foremanv1alpha1.AgenticTaskVerdictGo,
-			Branch:        "foreman/issue-89",
+			Verdict:       meithealv1alpha1.AgenticTaskVerdictGo,
+			Branch:        "meitheal/issue-89",
 			CommitSHA:     "71f4343",
-			TranscriptRef: "foreman-transcript-coder-89",
+			TranscriptRef: "meitheal-transcript-coder-89",
 			Result: &runtime.RawExtension{Raw: []byte(`{
 				"verdict":"GO","elapsedSec":2980,
-				"extra":{"branch":"foreman/issue-89","commitSHA":"71f4343","turnCount":38,
+				"extra":{"branch":"meitheal/issue-89","commitSHA":"71f4343","turnCount":38,
 					"turnsWithCompletion":36,"turnsWithToolCall":30,
 					"modelExtra":{"gateAttempts":1,"outcome":"","scopeDriftDetected":false,
 						"scopeMatched":["internal/router"],"filesChanged":["internal/router/pure_test.go"],
@@ -49,14 +49,14 @@ func coderTask() *foremanv1alpha1.AgenticTask {
 	}
 }
 
-func coderAgent() *foremanv1alpha1.Agent {
-	return &foremanv1alpha1.Agent{
+func coderAgent() *meithealv1alpha1.Agent {
+	return &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "gateway-coder-amd", Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:           foremanv1alpha1.AgentRoleCoder,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:           meithealv1alpha1.AgentRoleCoder,
 			Model:          "coder-amd",
-			Provider:       foremanv1alpha1.AgentProviderCloudProxy,
-			ProviderConfig: &foremanv1alpha1.ProviderConfig{BaseURL: "http://gw/v1"},
+			Provider:       meithealv1alpha1.AgentProviderCloudProxy,
+			ProviderConfig: &meithealv1alpha1.ProviderConfig{BaseURL: "http://gw/v1"},
 		},
 	}
 }
@@ -112,8 +112,8 @@ func TestBuildRecordTurnAccountingAbsent(t *testing.T) {
 	task.Status.Result = &runtime.RawExtension{Raw: []byte(`{
 		"verdict":"INCOMPLETE","elapsedSec":65,
 		"extra":{"turnCount":160,"reason":"MaxTurnsExhausted"}}`)}
-	task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictIncomplete
-	task.Status.FailureReason = foremanv1alpha1.FailureMaxTurnsExhausted
+	task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictIncomplete
+	task.Status.FailureReason = meithealv1alpha1.FailureMaxTurnsExhausted
 	rec := BuildRecord(task, coderAgent())
 	if rec.TurnCount != 160 {
 		t.Errorf("turnCount = %d, want 160", rec.TurnCount)

@@ -38,8 +38,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/githubissue"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
@@ -51,12 +51,12 @@ import (
 // agentRef, or one whose Agent is missing from the client, passes nil --
 // the same "absent" signal the watcher sends when an Agent has been deleted.
 func execWithAgent(
-	t *testing.T, e *foremanagent.NativeAgentLoopExecutor, task *foremanv1alpha1.AgenticTask,
-) (*foremanagent.Result, error) {
+	t *testing.T, e *meithealagent.NativeAgentLoopExecutor, task *meithealv1alpha1.AgenticTask,
+) (*meithealagent.Result, error) {
 	t.Helper()
-	var agent *foremanv1alpha1.Agent
+	var agent *meithealv1alpha1.Agent
 	if task.Spec.AgentRef != nil && task.Spec.AgentRef.Name != "" {
-		var got foremanv1alpha1.Agent
+		var got meithealv1alpha1.Agent
 		key := types.NamespacedName{Namespace: task.Namespace, Name: task.Spec.AgentRef.Name}
 		err := e.Client.Get(context.Background(), key, &got)
 		switch {
@@ -185,10 +185,10 @@ func chatJSONBodyToSSE(t *testing.T, body string) string {
 	return sb.String()
 }
 
-// fakeRegistry implements foremanagent.ToolRegistry for the executor
+// fakeRegistry implements meithealagent.ToolRegistry for the executor
 // tests. It returns canned ToolResult values keyed by name.
 type fakeRegistry struct {
-	results map[string]*foremanagent.ToolResult
+	results map[string]*meithealagent.ToolResult
 	// touch is invoked once per dispatch so a test can assert which
 	// tool was called and write a file to the workspace if it wants
 	// to drive the commit path.
@@ -207,7 +207,7 @@ func (r *fakeRegistry) Schemas() []oai.Tool { return nil }
 
 func (r *fakeRegistry) Dispatch(
 	_ context.Context, name string, args json.RawMessage,
-) (*foremanagent.ToolResult, error) {
+) (*meithealagent.ToolResult, error) {
 	if r.touch != nil {
 		r.touch(name, r.workspace)
 	}
@@ -230,26 +230,26 @@ func fakeAuth(t *testing.T) func() (*repo.Auth, error) {
 	}
 }
 
-// newScheme returns the fake-client scheme with foreman + inference + corev1 types.
+// newScheme returns the fake-client scheme with meitheal + inference + corev1 types.
 func newScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
 	if err := corev1.AddToScheme(s); err != nil {
 		t.Fatalf("corev1: %v", err)
 	}
-	if err := foremanv1alpha1.AddToScheme(s); err != nil {
-		t.Fatalf("foreman: %v", err)
+	if err := meithealv1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("meitheal: %v", err)
 	}
 	return s
 }
 
 // taskAndAgent returns a matched pair: an Agent CR and an AgenticTask
 // referencing it via spec.agentRef.
-func taskAndAgent(name string) (*foremanv1alpha1.Agent, *foremanv1alpha1.AgenticTask) {
-	a := &foremanv1alpha1.Agent{
+func taskAndAgent(name string) (*meithealv1alpha1.Agent, *meithealv1alpha1.AgenticTask) {
+	a := &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "coder-" + name, Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:                foremanv1alpha1.AgentRoleCoder,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:                meithealv1alpha1.AgentRoleCoder,
 			Model:               "test-model",
 			InferenceServiceRef: corev1.LocalObjectReference{Name: "test-svc"},
 			SystemPrompt:        "you are a test coder",
@@ -257,13 +257,13 @@ func taskAndAgent(name string) (*foremanv1alpha1.Agent, *foremanv1alpha1.Agentic
 			MaxTurns:            5,
 		},
 	}
-	t := &foremanv1alpha1.AgenticTask{
+	t := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name, Namespace: "default", UID: types.UID("test-uid-" + name),
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  9999,
 				Prompt: "test issue",
@@ -280,12 +280,12 @@ func TestNativeExecutor_AgentNotFound(t *testing.T) {
 	_, task := taskAndAgent("no-agent")
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(task).Build()
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:       c,
 		GitRemoteURL: "file:///nope",
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return &fakeRegistry{}, nil
 		},
 		AuthFactory: fakeAuth(t),
@@ -294,7 +294,7 @@ func TestNativeExecutor_AgentNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res == nil || res.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if res == nil || res.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Fatalf("expected INCOMPLETE result, got %+v", res)
 	}
 	if got := res.Extra["reason"]; got != "AgentNotFound" {
@@ -303,8 +303,8 @@ func TestNativeExecutor_AgentNotFound(t *testing.T) {
 	// v0.3 #559: same value should also surface on the structured
 	// Result.FailureReason field (which the watcher writes to
 	// Status.FailureReason for downstream consumers).
-	if got := res.FailureReason; got != foremanv1alpha1.FailureAgentNotFound {
-		t.Errorf("FailureReason: want %q got %q", foremanv1alpha1.FailureAgentNotFound, got)
+	if got := res.FailureReason; got != meithealv1alpha1.FailureAgentNotFound {
+		t.Errorf("FailureReason: want %q got %q", meithealv1alpha1.FailureAgentNotFound, got)
 	}
 }
 
@@ -315,15 +315,15 @@ func TestNativeExecutor_NoAgentRefIsHardError(t *testing.T) {
 	task.Spec.AgentRef = nil
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(task).Build()
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client: c,
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return &fakeRegistry{}, nil
 		},
 	}
-	if _, err := execWithAgent(t, e, task); !errors.Is(err, foremanagent.ErrNoAgentRef) {
+	if _, err := execWithAgent(t, e, task); !errors.Is(err, meithealagent.ErrNoAgentRef) {
 		t.Errorf("expected ErrNoAgentRef, got %v", err)
 	}
 }
@@ -341,7 +341,7 @@ func TestNativeExecutor_FreeformNoRepoSkipsAuthAndClone(t *testing.T) {
 	oaiSrv := scriptedOAI(t, []string{submitGoBody})
 
 	agent, task := taskAndAgent("freeform-no-repo")
-	task.Spec.Kind = foremanv1alpha1.AgenticTaskKindFreeform
+	task.Spec.Kind = meithealv1alpha1.AgenticTaskKindFreeform
 	task.Spec.Payload.Repo = ""
 	task.Spec.Payload.Prompt = "Reply by calling submit_result immediately."
 
@@ -351,7 +351,7 @@ func TestNativeExecutor_FreeformNoRepoSkipsAuthAndClone(t *testing.T) {
 		Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "GO", Summary: "received",
 			},
@@ -359,7 +359,7 @@ func TestNativeExecutor_FreeformNoRepoSkipsAuthAndClone(t *testing.T) {
 	}
 
 	workspaceRoot := filepath.Join(root, "ws")
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            workspaceRoot,
 		KeepWorkspace:            true,
@@ -367,8 +367,8 @@ func TestNativeExecutor_FreeformNoRepoSkipsAuthAndClone(t *testing.T) {
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -384,7 +384,7 @@ func TestNativeExecutor_FreeformNoRepoSkipsAuthAndClone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO got %s; result=%+v", res.Verdict, res)
 	}
 	// No commit SHA: there was no repo to commit to.
@@ -432,7 +432,7 @@ func TestNativeExecutor_HappyPathPushesBranch(t *testing.T) {
 	// actually has something to add (otherwise we'd hit
 	// ErrNothingToCommit and the test would assert the wrong path).
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "GO", Summary: "fixed",
 				CommitMessage: "fix: trivial change\n\nSigned-off-by trailer added by `git commit -s`.\n",
@@ -440,22 +440,22 @@ func TestNativeExecutor_HappyPathPushesBranch(t *testing.T) {
 		},
 		touch: func(name string, ws string) {
 			if name == "submit_result" {
-				_ = os.WriteFile(filepath.Join(ws, "fix.txt"), []byte("foreman touched this\n"), 0o644)
+				_ = os.WriteFile(filepath.Join(ws, "fix.txt"), []byte("meitheal touched this\n"), 0o644)
 			}
 		},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -466,10 +466,10 @@ func TestNativeExecutor_HappyPathPushesBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO got %s; result=%+v", res.Verdict, res)
 	}
-	if got, want := res.Extra["branch"], "foreman/issue-9999"; got != want {
+	if got, want := res.Extra["branch"], "meitheal/issue-9999"; got != want {
 		t.Errorf("branch: want %q got %v", want, got)
 	}
 	if got := res.Extra["commitSHA"]; got == nil || got == "" {
@@ -477,11 +477,11 @@ func TestNativeExecutor_HappyPathPushesBranch(t *testing.T) {
 	}
 
 	// Branch should be present on the bare remote.
-	out, err := exec.Command("git", "-C", bare, "branch", "--list", "foreman/issue-9999").CombinedOutput()
+	out, err := exec.Command("git", "-C", bare, "branch", "--list", "meitheal/issue-9999").CombinedOutput()
 	if err != nil {
 		t.Fatalf("post-push branch list: %v: %s", err, out)
 	}
-	if !strings.Contains(string(out), "foreman/issue-9999") {
+	if !strings.Contains(string(out), "meitheal/issue-9999") {
 		t.Errorf("branch not on remote: %s", out)
 	}
 
@@ -489,7 +489,7 @@ func TestNativeExecutor_HappyPathPushesBranch(t *testing.T) {
 	var cm corev1.ConfigMap
 	key := types.NamespacedName{
 		Namespace: task.Namespace,
-		Name:      audit.ConfigMapName("foreman-transcript-", task.Name, string(task.UID), task.Status.Attempt),
+		Name:      audit.ConfigMapName("meitheal-transcript-", task.Name, string(task.UID), task.Status.Attempt),
 	}
 	if err := c.Get(context.Background(), key, &cm); err != nil {
 		t.Fatalf("get transcript cm: %v", err)
@@ -497,7 +497,7 @@ func TestNativeExecutor_HappyPathPushesBranch(t *testing.T) {
 	if _, ok := cm.Data["transcript.json"]; !ok {
 		t.Errorf("transcript.json key missing from cm data")
 	}
-	if got := cm.Labels["foreman.llmkube.dev/transcript-of"]; got != task.Name {
+	if got := cm.Labels["meitheal.dev/transcript-of"]; got != task.Name {
 		t.Errorf("transcript label: want %q got %q", task.Name, got)
 	}
 	if len(cm.OwnerReferences) != 0 {
@@ -544,18 +544,18 @@ func TestNativeExecutor_TruncatedMapsToIncomplete(t *testing.T) {
 		WithObjects(agent, task).
 		Build()
 
-	reg := &fakeRegistry{results: map[string]*foremanagent.ToolResult{}}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	reg := &fakeRegistry{results: map[string]*meithealagent.ToolResult{}}
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -566,11 +566,11 @@ func TestNativeExecutor_TruncatedMapsToIncomplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute returned a hard error; truncation must map to INCOMPLETE: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Fatalf("verdict: want INCOMPLETE got %s; result=%+v", res.Verdict, res)
 	}
-	if res.FailureReason != foremanv1alpha1.FailureModelMisunderstood {
-		t.Errorf("FailureReason: want %q got %q", foremanv1alpha1.FailureModelMisunderstood, res.FailureReason)
+	if res.FailureReason != meithealv1alpha1.FailureModelMisunderstood {
+		t.Errorf("FailureReason: want %q got %q", meithealv1alpha1.FailureModelMisunderstood, res.FailureReason)
 	}
 	if !strings.Contains(res.Summary, "truncated by the token cap") {
 		t.Errorf("summary should describe the truncation; got %q", res.Summary)
@@ -597,7 +597,7 @@ func TestNativeExecutor_MultiRepoClonesTaskRepoWhenNoStaticRemote(t *testing.T) 
 		Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "GO", Summary: "fixed",
 				CommitMessage: "fix: trivial change\n",
@@ -605,23 +605,23 @@ func TestNativeExecutor_MultiRepoClonesTaskRepoWhenNoStaticRemote(t *testing.T) 
 		},
 		touch: func(name string, ws string) {
 			if name == "submit_result" {
-				_ = os.WriteFile(filepath.Join(ws, "fix.txt"), []byte("foreman touched this\n"), 0o644)
+				_ = os.WriteFile(filepath.Join(ws, "fix.txt"), []byte("meitheal touched this\n"), 0o644)
 			}
 		},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:        c,
 		WorkspaceRoot: filepath.Join(root, "ws"),
 		// No static fork remote: payload.repo drives clone + push.
 		GitRemoteURL:             "",
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -632,16 +632,16 @@ func TestNativeExecutor_MultiRepoClonesTaskRepoWhenNoStaticRemote(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO got %s; result=%+v", res.Verdict, res)
 	}
 	// Branch pushed to the task's repo (the override target), proving the
 	// clone+push used payload.repo rather than a static --git-remote-url.
-	out, err := exec.Command("git", "-C", bare, "branch", "--list", "foreman/issue-9999").CombinedOutput()
+	out, err := exec.Command("git", "-C", bare, "branch", "--list", "meitheal/issue-9999").CombinedOutput()
 	if err != nil {
 		t.Fatalf("post-push branch list: %v: %s", err, out)
 	}
-	if !strings.Contains(string(out), "foreman/issue-9999") {
+	if !strings.Contains(string(out), "meitheal/issue-9999") {
 		t.Errorf("branch not pushed to task repo: %s", out)
 	}
 }
@@ -660,7 +660,7 @@ func TestNativeExecutor_NoStaticRemoteAndNoRepoIsHardError(t *testing.T) {
 		WithObjects(agent, task).
 		Build()
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:        c,
 		WorkspaceRoot: filepath.Join(root, "ws"),
 		GitRemoteURL:  "", // and no repo -> cannot clone
@@ -670,8 +670,8 @@ func TestNativeExecutor_NoStaticRemoteAndNoRepoIsHardError(t *testing.T) {
 		AuthFactory:              fakeAuth(t),
 		// Required precondition; never exercised — the clone fails first.
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return &fakeRegistry{}, nil
 		},
 	}
@@ -680,11 +680,11 @@ func TestNativeExecutor_NoStaticRemoteAndNoRepoIsHardError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute returned a system error, want a data-shaped fail: %v", err)
 	}
-	if res == nil || res.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if res == nil || res.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Fatalf("verdict: want INCOMPLETE got %+v", res)
 	}
-	if res.FailureReason != foremanv1alpha1.FailureGitRemoteNotConfigured {
-		t.Errorf("FailureReason: want %q got %q", foremanv1alpha1.FailureGitRemoteNotConfigured, res.FailureReason)
+	if res.FailureReason != meithealv1alpha1.FailureGitRemoteNotConfigured {
+		t.Errorf("FailureReason: want %q got %q", meithealv1alpha1.FailureGitRemoteNotConfigured, res.FailureReason)
 	}
 }
 
@@ -736,22 +736,22 @@ func TestNativeExecutor_UnsuccessfulLoopPreservesWorkspace(t *testing.T) {
 	// fakeRegistry's touch writes a file to the workspace on every dispatch,
 	// simulating a coder that produced real work before the loop became
 	// unsuccessful.
-	reg := &fakeRegistry{results: map[string]*foremanagent.ToolResult{}}
+	reg := &fakeRegistry{results: map[string]*meithealagent.ToolResult{}}
 	reg.touch = func(name string, ws string) {
 		_ = os.WriteFile(filepath.Join(ws, "half-done.go"), []byte("package coder\n"), 0o644)
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -762,31 +762,31 @@ func TestNativeExecutor_UnsuccessfulLoopPreservesWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute returned a hard error; an unsuccessful loop must map to INCOMPLETE: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Fatalf("verdict: want INCOMPLETE got %s; result=%+v", res.Verdict, res)
 	}
 	// Must NOT be GO.
-	if res.Verdict == foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict == meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict must not be GO on an unsuccessful loop")
 	}
 	// The branch must exist on the remote with the workspace's contents.
-	out, err := exec.Command("git", "-C", bare, "branch", "--list", "foreman/issue-9999").CombinedOutput()
+	out, err := exec.Command("git", "-C", bare, "branch", "--list", "meitheal/issue-9999").CombinedOutput()
 	if err != nil {
 		t.Fatalf("post-preserve branch list: %v: %s", err, out)
 	}
-	if !strings.Contains(string(out), "foreman/issue-9999") {
+	if !strings.Contains(string(out), "meitheal/issue-9999") {
 		t.Errorf("branch not pushed to remote: %s", out)
 	}
 	// The preserved branch is recorded for observability, but must NOT be
 	// marked reviewable (no gateFailedBranch key).
-	if got := res.Extra["preservedBranch"]; got != "foreman/issue-9999" {
-		t.Errorf("preservedBranch = %v; want foreman/issue-9999", got)
+	if got := res.Extra["preservedBranch"]; got != "meitheal/issue-9999" {
+		t.Errorf("preservedBranch = %v; want meitheal/issue-9999", got)
 	}
 	if _, ok := res.Extra["gateFailedBranch"]; ok {
 		t.Errorf("unsuccessful-loop branch must not be marked reviewable (gateFailedBranch set)")
 	}
 	// The branch should carry the half-done work.
-	_, err = exec.Command("git", "-C", bare, "show", "foreman/issue-9999:half-done.go").CombinedOutput()
+	_, err = exec.Command("git", "-C", bare, "show", "meitheal/issue-9999:half-done.go").CombinedOutput()
 	if err != nil {
 		t.Errorf("half-done.go not present on the pushed branch: %v", err)
 	}
@@ -811,19 +811,19 @@ func TestNativeExecutor_UnsuccessfulLoopCleanWorkspaceNoError(t *testing.T) {
 		Build()
 
 	// No touch: the workspace stays clean, so there is nothing to commit.
-	reg := &fakeRegistry{results: map[string]*foremanagent.ToolResult{}}
+	reg := &fakeRegistry{results: map[string]*meithealagent.ToolResult{}}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -834,7 +834,7 @@ func TestNativeExecutor_UnsuccessfulLoopCleanWorkspaceNoError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute returned an error on a clean unsuccessful loop; nothing-to-commit is expected: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Fatalf("verdict: want INCOMPLETE got %s; result=%+v", res.Verdict, res)
 	}
 	// Must not become NO-CHANGES.
@@ -842,11 +842,11 @@ func TestNativeExecutor_UnsuccessfulLoopCleanWorkspaceNoError(t *testing.T) {
 		t.Errorf("nothing-to-commit on an unsuccessful loop must keep the loop-error verdict, not NO-CHANGES")
 	}
 	// Nothing to push: no branch should have landed.
-	out, err := exec.Command("git", "-C", bare, "branch", "--list", "foreman/issue-9999").CombinedOutput()
+	out, err := exec.Command("git", "-C", bare, "branch", "--list", "meitheal/issue-9999").CombinedOutput()
 	if err != nil {
 		t.Fatalf("branch list: %v: %s", err, out)
 	}
-	if strings.Contains(string(out), "foreman/issue-9999") {
+	if strings.Contains(string(out), "meitheal/issue-9999") {
 		t.Errorf("branch should not be pushed when the workspace is clean")
 	}
 }
@@ -865,12 +865,12 @@ func TestNativeExecutor_ModelEmitsGoButNoChanges(t *testing.T) {
 	// No touch this time: registry succeeds, but no files change, so
 	// Commit returns ErrNothingToCommit and we expect NO-CHANGES path.
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {Terminal: true, Verdict: "GO", Summary: "nothing"},
 		},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -879,8 +879,8 @@ func TestNativeExecutor_ModelEmitsGoButNoChanges(t *testing.T) {
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -890,7 +890,7 @@ func TestNativeExecutor_ModelEmitsGoButNoChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Errorf("verdict: want NO-GO got %s", res.Verdict)
 	}
 	if got := res.Extra["outcome"]; got != "NO-CHANGES" {
@@ -942,13 +942,13 @@ func TestNativeExecutor_ModelEmitsNoGo(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "NO-GO", Summary: "already fixed upstream",
 			},
 		},
 	}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -957,8 +957,8 @@ func TestNativeExecutor_ModelEmitsNoGo(t *testing.T) {
 		CommitAuthor:             repo.Identity{Name: "B", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "B", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return reg, nil
 		},
 		AuthFactory: fakeAuth(t),
@@ -967,7 +967,7 @@ func TestNativeExecutor_ModelEmitsNoGo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Errorf("verdict: want NO-GO got %s", res.Verdict)
 	}
 	if got := res.Extra["outcome"]; got != "MODEL-DECIDED" {
@@ -975,15 +975,15 @@ func TestNativeExecutor_ModelEmitsNoGo(t *testing.T) {
 	}
 
 	// No branch should have landed on the remote.
-	out, _ := exec.Command("git", "-C", bare, "branch", "--list", "foreman/issue-9999").CombinedOutput()
-	if strings.Contains(string(out), "foreman/issue-9999") {
+	out, _ := exec.Command("git", "-C", bare, "branch", "--list", "meitheal/issue-9999").CombinedOutput()
+	if strings.Contains(string(out), "meitheal/issue-9999") {
 		t.Errorf("NO-GO path should not push; bare repo has branch: %s", out)
 	}
 
 	// Transcript still written.
 	cmKey := types.NamespacedName{
 		Namespace: task.Namespace,
-		Name:      audit.ConfigMapName("foreman-transcript-", task.Name, string(task.UID), task.Status.Attempt),
+		Name:      audit.ConfigMapName("meitheal-transcript-", task.Name, string(task.UID), task.Status.Attempt),
 	}
 	var cm corev1.ConfigMap
 	if err := c.Get(context.Background(), cmKey, &cm); err != nil {
@@ -999,7 +999,7 @@ func TestNativeExecutor_ModelEmitsNoGo(t *testing.T) {
 // submit_result envelope with `extra.outcome="ALREADY-RESOLVED"` and
 // (optionally) `extra.resolvedBy=<sha|branch>`. The controller's
 // coderResultEnvelope parser in
-// internal/foreman/controller/workload_coder_escalation.go reads
+// internal/controller/workload_coder_escalation.go reads
 // exactly these fields. This test locks the JSON contract: any change
 // to the field names or nesting would break the parser.
 //
@@ -1018,7 +1018,7 @@ func TestNativeExecutor_ModelEmitsNoGo(t *testing.T) {
 func TestAlreadyResolvedEnvelopeShape(t *testing.T) {
 	// Construct the JSON the model would produce via submit_result.
 	submitted := map[string]any{
-		"schemaVersion": "foreman.v1",
+		"schemaVersion": "meitheal.v1",
 		"kind":          "issue-fix",
 		"verdict":       "NO-GO",
 		"summary":       "Issue #152 is already resolved by prior fix e97d0ca (Fixes #129)",
@@ -1034,7 +1034,7 @@ func TestAlreadyResolvedEnvelopeShape(t *testing.T) {
 
 	// Parse the shape the controller later reads (mirrors
 	// coderResultEnvelope.Extra in
-	// internal/foreman/controller/workload_coder_escalation.go).
+	// internal/controller/workload_coder_escalation.go).
 	var env struct {
 		Summary string `json:"summary"`
 		Extra   struct {
@@ -1063,12 +1063,12 @@ func TestAlreadyResolvedEnvelopeShape(t *testing.T) {
 // unresolvable evidence base is produced. Returns the executor Result.
 func executeCoderTask(
 	t *testing.T,
-	agent *foremanv1alpha1.Agent,
-	task *foremanv1alpha1.AgenticTask,
+	agent *meithealv1alpha1.Agent,
+	task *meithealv1alpha1.AgenticTask,
 	reg *fakeRegistry,
 	oaiBody string,
 	noUpstream bool,
-) *foremanagent.Result {
+) *meithealagent.Result {
 	t.Helper()
 	gitOrSkip(t)
 	root := t.TempDir()
@@ -1082,13 +1082,13 @@ func executeCoderTask(
 // they create the repo, resolve the SHA, and pass the bare path here.
 func executeCoderTaskInRepo(
 	t *testing.T,
-	agent *foremanv1alpha1.Agent,
-	task *foremanv1alpha1.AgenticTask,
+	agent *meithealv1alpha1.Agent,
+	task *meithealv1alpha1.AgenticTask,
 	reg *fakeRegistry,
 	oaiBody string,
 	noUpstream bool,
 	bare string,
-) *foremanagent.Result {
+) *meithealagent.Result {
 	t.Helper()
 	root := filepath.Dir(bare)
 	oaiSrv := scriptedOAI(t, []string{oaiBody})
@@ -1098,7 +1098,7 @@ func executeCoderTaskInRepo(
 	if noUpstream {
 		upstreamFor = func(string) string { return "" }
 	}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -1107,8 +1107,8 @@ func executeCoderTaskInRepo(
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -1128,7 +1128,7 @@ func executeCoderTaskInRepo(
 // outcome=NEEDS-VERIFICATION (#1033) plus an unverified list, and asserts
 // the executor promotes both to the TOP-LEVEL Result.Extra, where the
 // controller's escalation classifier (see shouldEscalateCoder in
-// internal/foreman/controller/workload_coder_escalation.go, not imported
+// internal/controller/workload_coder_escalation.go, not imported
 // here) reads them to skip escalation. Without the promotion the outcome
 // stayed buried under modelExtra and the task classified as a generic
 // MODEL-DECIDED NO-GO, which escalates.
@@ -1140,7 +1140,7 @@ func TestNativeExecutor_PromotesNeedsVerificationOutcome(t *testing.T) {
 		"howToVerify":  "measure on the target hardware or cite an existing in-repo source",
 	}}
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "NO-GO", Summary: "cannot ground the claimed throughput",
 				Extra: map[string]any{
@@ -1152,7 +1152,7 @@ func TestNativeExecutor_PromotesNeedsVerificationOutcome(t *testing.T) {
 	}
 	res := executeCoderTask(t, agent, task, reg, submitNoGoBody, false)
 
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("verdict: want NO-GO got %s", res.Verdict)
 	}
 	if got := res.Extra["outcome"]; got != "NEEDS-VERIFICATION" {
@@ -1184,7 +1184,7 @@ func TestNativeExecutor_PromotesAlreadyResolvedOutcome(t *testing.T) {
 	agent, task := taskAndAgent("already-resolved")
 	seedSHA := seedCommitSHA(t, bare)
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "NO-GO", Summary: "already resolved by prior fix " + seedSHA,
 				Extra: map[string]any{
@@ -1196,7 +1196,7 @@ func TestNativeExecutor_PromotesAlreadyResolvedOutcome(t *testing.T) {
 	}
 	res := executeCoderTaskInRepo(t, agent, task, reg, submitNoGoBody, false, bare)
 
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("verdict: want NO-GO got %s", res.Verdict)
 	}
 	if got := res.Extra["outcome"]; got != "ALREADY-RESOLVED" {
@@ -1218,7 +1218,7 @@ func TestNativeExecutor_PromotesAlreadyResolvedOutcome(t *testing.T) {
 // with the given terminal extra.
 func submitGoWithChange(file string, extra map[string]any) *fakeRegistry {
 	return &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "GO", Summary: "fixed",
 				CommitMessage: "fix: change\n",
@@ -1243,7 +1243,7 @@ func TestNativeExecutor_WorkClassPolicy_GoStandsAndRecordsClasses(t *testing.T) 
 	reg := submitGoWithChange("fix.go", map[string]any{"workClass": "code-fix"})
 	res := executeCoderTask(t, agent, task, reg, submitGoBody, false)
 
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO got %s; result=%+v", res.Verdict, res)
 	}
 	if got := res.Extra["actualWorkClass"]; got != "code-fix" {
@@ -1265,7 +1265,7 @@ func TestNativeExecutor_WorkClassPolicy_CIPolicyFootprintDowngrades(t *testing.T
 	reg := submitGoWithChange(".github/workflows/release.yml", nil)
 	res := executeCoderTask(t, agent, task, reg, submitGoBody, false)
 
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("verdict: want NO-GO downgrade got %s; result=%+v", res.Verdict, res)
 	}
 	if got := res.Extra["outcome"]; got != "NEEDS-VERIFICATION" {
@@ -1287,11 +1287,11 @@ func TestNativeExecutor_WorkClassPolicy_CIPolicyFootprintDowngrades(t *testing.T
 // classified and not downgraded.
 func TestNativeExecutor_WorkClassPolicy_SkipsNonIssueFixKind(t *testing.T) {
 	agent, task := taskAndAgent("wc-freeform")
-	task.Spec.Kind = foremanv1alpha1.AgenticTaskKindFreeform
+	task.Spec.Kind = meithealv1alpha1.AgenticTaskKindFreeform
 	reg := submitGoWithChange(".github/workflows/release.yml", nil)
 	res := executeCoderTask(t, agent, task, reg, submitGoBody, false)
 
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO (policy must not fire) got %s; result=%+v", res.Verdict, res)
 	}
 	if _, ok := res.Extra["actualWorkClass"]; ok {
@@ -1311,7 +1311,7 @@ func TestNativeExecutor_WorkClassPolicy_FailsOpenWhenBaseUnresolved(t *testing.T
 	reg := submitGoWithChange(".github/workflows/release.yml", nil)
 	res := executeCoderTask(t, agent, task, reg, submitGoBody, true)
 
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO (fail open) got %s; result=%+v", res.Verdict, res)
 	}
 	if got := res.Extra["workClassUnknown"]; got != true {
@@ -1333,13 +1333,13 @@ func TestNativeExecutor_WorkClassPolicy_FailsOpenWhenBaseUnresolved(t *testing.T
 // identical footprint to NO-GO.
 func TestNativeExecutor_WorkClassPolicy_TaskVerdictPolicyOptsInCIPolicy(t *testing.T) {
 	agent, task := taskAndAgent("wc-ci-optin")
-	task.Spec.VerdictPolicy = &foremanv1alpha1.VerdictPolicy{
+	task.Spec.VerdictPolicy = &meithealv1alpha1.VerdictPolicy{
 		SelfGO: []string{"code-fix", "ci-policy"},
 	}
 	reg := submitGoWithChange(".github/workflows/release.yml", nil)
 	res := executeCoderTask(t, agent, task, reg, submitGoBody, false)
 
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO (task VerdictPolicy opts ci-policy in) got %s; result=%+v",
 			res.Verdict, res)
 	}
@@ -1359,11 +1359,11 @@ func TestNativeExecutor_WorkClassPolicy_TaskVerdictPolicyOptsInCIPolicy(t *testi
 // reviewerTaskAndAgent builds a reviewer-role Agent and a freeform
 // AgenticTask pointing at it. Distinct from taskAndAgent because the
 // role bit is exactly what this test exercises.
-func reviewerTaskAndAgent(name string) (*foremanv1alpha1.Agent, *foremanv1alpha1.AgenticTask) {
-	a := &foremanv1alpha1.Agent{
+func reviewerTaskAndAgent(name string) (*meithealv1alpha1.Agent, *meithealv1alpha1.AgenticTask) {
+	a := &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "reviewer-" + name, Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:                foremanv1alpha1.AgentRoleReviewer,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:                meithealv1alpha1.AgentRoleReviewer,
 			Model:               "test-model",
 			InferenceServiceRef: corev1.LocalObjectReference{Name: "test-svc"},
 			SystemPrompt:        "you are a test reviewer",
@@ -1372,13 +1372,13 @@ func reviewerTaskAndAgent(name string) (*foremanv1alpha1.Agent, *foremanv1alpha1
 			MaxTurns: 5,
 		},
 	}
-	t := &foremanv1alpha1.AgenticTask{
+	t := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name, Namespace: "default", UID: types.UID("test-uid-" + name),
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindFreeform,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindFreeform,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  9999,
 				Prompt: "review the branch",
@@ -1426,7 +1426,7 @@ func TestNativeExecutor_ReviewerGoIsApproveNotCommit(t *testing.T) {
 			map[string]any{
 				"severity": "info",
 				"area":     "style-consistency",
-				"message":  "New goreleaser entries mirror the existing controller + foreman-operator patterns.",
+				"message":  "New goreleaser entries mirror the existing controller + meitheal-operator patterns.",
 			},
 		},
 		"filesTouched": []any{".goreleaser.yaml", "charts/llmkube/values.yaml", "docs/site/concepts/model-router.md"},
@@ -1434,7 +1434,7 @@ func TestNativeExecutor_ReviewerGoIsApproveNotCommit(t *testing.T) {
 		"testsAdded":   0,
 	}
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true,
 				Verdict:  "GO",
@@ -1443,7 +1443,7 @@ func TestNativeExecutor_ReviewerGoIsApproveNotCommit(t *testing.T) {
 			},
 		},
 	}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -1452,8 +1452,8 @@ func TestNativeExecutor_ReviewerGoIsApproveNotCommit(t *testing.T) {
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return reg, nil
 		},
 		AuthFactory: fakeAuth(t),
@@ -1464,7 +1464,7 @@ func TestNativeExecutor_ReviewerGoIsApproveNotCommit(t *testing.T) {
 	}
 
 	// Verdict stays GO (not downgraded to NO-GO by noChangesResult).
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO got %s; full result=%+v", res.Verdict, res)
 	}
 	// Outcome is MODEL-DECIDED (the no-commit reviewer path), not
@@ -1488,15 +1488,15 @@ func TestNativeExecutor_ReviewerGoIsApproveNotCommit(t *testing.T) {
 	}
 
 	// No branch should have landed on the remote: reviewers do not push.
-	out, _ := exec.Command("git", "-C", bare, "branch", "--list", "foreman/issue-9999").CombinedOutput()
-	if strings.Contains(string(out), "foreman/issue-9999") {
+	out, _ := exec.Command("git", "-C", bare, "branch", "--list", "meitheal/issue-9999").CombinedOutput()
+	if strings.Contains(string(out), "meitheal/issue-9999") {
 		t.Errorf("reviewer path should not push; bare repo has branch: %s", out)
 	}
 
 	// Transcript still written.
 	cmKey := types.NamespacedName{
 		Namespace: task.Namespace,
-		Name:      audit.ConfigMapName("foreman-transcript-", task.Name, string(task.UID), task.Status.Attempt),
+		Name:      audit.ConfigMapName("meitheal-transcript-", task.Name, string(task.UID), task.Status.Attempt),
 	}
 	var cm corev1.ConfigMap
 	if err := c.Get(context.Background(), cmKey, &cm); err != nil {
@@ -1525,7 +1525,7 @@ func TestNativeExecutor_ReviewerGoWithoutDiffIsFlaggedUngrounded(t *testing.T) {
 	// The reviewer's only tool call is submit_result: no bash tool result
 	// carries a diff, so the transcript is ungrounded.
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true,
 				Verdict:  "GO",
@@ -1534,7 +1534,7 @@ func TestNativeExecutor_ReviewerGoWithoutDiffIsFlaggedUngrounded(t *testing.T) {
 			},
 		},
 	}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -1543,8 +1543,8 @@ func TestNativeExecutor_ReviewerGoWithoutDiffIsFlaggedUngrounded(t *testing.T) {
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return reg, nil
 		},
 		AuthFactory: fakeAuth(t),
@@ -1555,7 +1555,7 @@ func TestNativeExecutor_ReviewerGoWithoutDiffIsFlaggedUngrounded(t *testing.T) {
 	}
 
 	// It is a FLAG, not a block: the verdict stands as the model returned it.
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict must stay GO (the rail is a flag, not a block); got %s; result=%+v", res.Verdict, res)
 	}
 
@@ -1589,7 +1589,7 @@ func TestNativeExecutor_ReviewerERRORMapsToIncompleteWithModelReportedError(t *t
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true,
 				Verdict:  "ERROR",
@@ -1597,7 +1597,7 @@ func TestNativeExecutor_ReviewerERRORMapsToIncompleteWithModelReportedError(t *t
 			},
 		},
 	}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -1606,8 +1606,8 @@ func TestNativeExecutor_ReviewerERRORMapsToIncompleteWithModelReportedError(t *t
 		CommitAuthor:             repo.Identity{Name: "B", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "B", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return reg, nil
 		},
 		AuthFactory: fakeAuth(t),
@@ -1616,10 +1616,10 @@ func TestNativeExecutor_ReviewerERRORMapsToIncompleteWithModelReportedError(t *t
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Errorf("verdict: want INCOMPLETE got %s", res.Verdict)
 	}
-	if res.FailureReason != foremanv1alpha1.FailureModelReportedError {
+	if res.FailureReason != meithealv1alpha1.FailureModelReportedError {
 		t.Errorf("failureReason: want ModelReportedError got %s", res.FailureReason)
 	}
 }
@@ -1739,7 +1739,7 @@ func TestNativeExecutor_CoderPromptHasRepoMapPrefix(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "GO", Summary: "ok",
 				CommitMessage: "fix: trivial\n",
@@ -1752,7 +1752,7 @@ func TestNativeExecutor_CoderPromptHasRepoMapPrefix(t *testing.T) {
 		},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -1761,8 +1761,8 @@ func TestNativeExecutor_CoderPromptHasRepoMapPrefix(t *testing.T) {
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -1854,7 +1854,7 @@ func TestNativeExecutor_FetchesIssueBodyWhenPromptEmpty(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "GO", Summary: "ok",
 				CommitMessage: "fix: trivial\n",
@@ -1874,11 +1874,11 @@ func TestNativeExecutor_FetchesIssueBodyWhenPromptEmpty(t *testing.T) {
 			Title:  "[BUG] Foo widget breaks on input X",
 			Body:   "The widget panics when given X. Steps to reproduce: ...",
 			State:  "open",
-			Labels: []string{"bug", "area/foreman"},
+			Labels: []string{"bug", "area/meitheal"},
 		},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -1887,8 +1887,8 @@ func TestNativeExecutor_FetchesIssueBodyWhenPromptEmpty(t *testing.T) {
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -1918,7 +1918,7 @@ func TestNativeExecutor_FetchesIssueBodyWhenPromptEmpty(t *testing.T) {
 		"# Issue #9999",
 		"Foo widget breaks on input X",
 		"State: open",
-		"Labels: bug, area/foreman",
+		"Labels: bug, area/meitheal",
 		"The widget panics when given X",
 	} {
 		if !strings.Contains(first, want) {
@@ -1944,7 +1944,7 @@ func TestNativeExecutor_NoFetcherFallsBackToEmptyBody(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "GO", Summary: "ok",
 				CommitMessage: "fix: trivial\n",
@@ -1957,7 +1957,7 @@ func TestNativeExecutor_NoFetcherFallsBackToEmptyBody(t *testing.T) {
 		},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -1966,8 +1966,8 @@ func TestNativeExecutor_NoFetcherFallsBackToEmptyBody(t *testing.T) {
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -2002,24 +2002,24 @@ func TestNativeExecutor_DeterministicGateAgent(t *testing.T) {
 	// Gate Agent: no inferenceServiceRef, no systemPrompt, tools list
 	// names the deterministic worker tool first. The executor should
 	// dispatch that tool directly without spinning up the OAI loop.
-	agent := &foremanv1alpha1.Agent{
+	agent := &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "coder-gate", Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:               foremanv1alpha1.AgentRoleVerifier,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:               meithealv1alpha1.AgentRoleVerifier,
 			Tools:              []string{"run_gate_job"},
-			RequiredCapability: foremanv1alpha1.RequiredCapability{Roles: []string{"verifier"}},
+			RequiredCapability: meithealv1alpha1.RequiredCapability{Roles: []string{"verifier"}},
 		},
 	}
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gate", Namespace: "default", UID: types.UID("test-uid-gate"),
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindVerify,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindVerify,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  9999,
-				Branch: "foreman/issue-9999",
+				Branch: "meitheal/issue-9999",
 			},
 			AgentRef: &corev1.LocalObjectReference{Name: agent.Name},
 		},
@@ -2027,19 +2027,19 @@ func TestNativeExecutor_DeterministicGateAgent(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			// Synthesizes the M4 gate tool's expected envelope.
 			"run_gate_job": {
 				Terminal: true,
 				Verdict:  "GATE-PASS",
 				Summary:  "all checks green",
-				Output:   map[string]any{"jobName": "foreman-gate-fake-001"},
+				Output:   map[string]any{"jobName": "meitheal-gate-fake-001"},
 			},
 		},
 	}
 
 	dispatched := 0
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:             c,
 		WorkspaceRoot:      filepath.Join(root, "ws"),
 		GitRemoteURL:       bare,
@@ -2047,8 +2047,8 @@ func TestNativeExecutor_DeterministicGateAgent(t *testing.T) {
 		CommitAuthor:       repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:    repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			dispatched++
 			return reg, nil
 		},
@@ -2059,7 +2059,7 @@ func TestNativeExecutor_DeterministicGateAgent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdict("GATE-PASS") {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdict("GATE-PASS") {
 		t.Errorf("verdict: want GATE-PASS got %s", res.Verdict)
 	}
 	if got := res.Extra["deterministic"]; got != true {
@@ -2077,7 +2077,7 @@ func TestNativeExecutor_DeterministicGateAgent(t *testing.T) {
 	var cm corev1.ConfigMap
 	cmKey := types.NamespacedName{
 		Namespace: task.Namespace,
-		Name:      audit.ConfigMapName("foreman-transcript-", task.Name, string(task.UID), task.Status.Attempt),
+		Name:      audit.ConfigMapName("meitheal-transcript-", task.Name, string(task.UID), task.Status.Attempt),
 	}
 	getErr := c.Get(context.Background(), cmKey, &cm)
 	if getErr == nil {
@@ -2095,8 +2095,8 @@ func TestNativeExecutor_DeterministicGateAgent(t *testing.T) {
 	if err := json.Unmarshal(reg.lastArgs, &got); err != nil {
 		t.Fatalf("decode dispatched args: %v", err)
 	}
-	if got["branch"] != "foreman/issue-9999" {
-		t.Errorf("dispatched branch: want foreman/issue-9999 got %v", got["branch"])
+	if got["branch"] != "meitheal/issue-9999" {
+		t.Errorf("dispatched branch: want meitheal/issue-9999 got %v", got["branch"])
 	}
 	if got["cloneURL"] != bare {
 		t.Errorf("dispatched cloneURL: want %q got %v", bare, got["cloneURL"])
@@ -2113,14 +2113,14 @@ func TestNativeExecutor_DeterministicGateAgent(t *testing.T) {
 // to the coder-Job path without standing up a real Job.
 type fakeCoderJobSubmitter struct {
 	called bool
-	gotReq foremanagent.CoderJobRequest
-	result foremanagent.CoderJobResult
+	gotReq meithealagent.CoderJobRequest
+	result meithealagent.CoderJobResult
 	err    error
 }
 
 func (f *fakeCoderJobSubmitter) Submit(
-	ctx context.Context, req foremanagent.CoderJobRequest,
-) (foremanagent.CoderJobResult, error) {
+	ctx context.Context, req meithealagent.CoderJobRequest,
+) (meithealagent.CoderJobResult, error) {
 	f.called = true
 	f.gotReq = req
 	// Mirror the real submitter: once the Job "exists", fire the
@@ -2142,31 +2142,31 @@ func TestNativeExecutor_JobModeDispatchesToCoderJob(t *testing.T) {
 	task.UID = "job-task-uid"
 	task.Status.Attempt = 2
 	deadline := int64(1800)
-	agent.Spec.Execution = &foremanv1alpha1.ExecutionSpec{
-		Mode:                  foremanv1alpha1.ExecutionModeJob,
-		Image:                 "ghcr.io/defilantech/foreman-agent:dev",
-		ServiceAccountName:    "foreman-coder",
+	agent.Spec.Execution = &meithealv1alpha1.ExecutionSpec{
+		Mode:                  meithealv1alpha1.ExecutionModeJob,
+		Image:                 "ghcr.io/defilantech/meitheal-agent:dev",
+		ServiceAccountName:    "meitheal-coder",
 		ActiveDeadlineSeconds: &deadline,
 	}
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 
 	sub := &fakeCoderJobSubmitter{
-		result: foremanagent.CoderJobResult{
+		result: meithealagent.CoderJobResult{
 			Verdict:   "GO",
 			Summary:   "fixed in a Job",
-			Branch:    "foreman/issue-9999",
+			Branch:    "meitheal/issue-9999",
 			CommitSHA: "deadbeef",
-			JobName:   "foreman-coder-job-mode-1",
+			JobName:   "meitheal-coder-job-mode-1",
 		},
 	}
 
 	// RegistryFactory is set but should never be invoked on the Job path;
 	// a t.Fatal here proves the in-process path was not taken.
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client: c,
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			t.Fatalf("RegistryFactory must NOT be called on the Job path")
 			return nil, nil
 		},
@@ -2186,10 +2186,10 @@ func TestNativeExecutor_JobModeDispatchesToCoderJob(t *testing.T) {
 	if sub.gotReq.AttemptKey != "job-task-uid-attempt-2" {
 		t.Fatalf("request lost execution identity: %+v", sub.gotReq)
 	}
-	if sub.gotReq.Image != "ghcr.io/defilantech/foreman-agent:dev" {
+	if sub.gotReq.Image != "ghcr.io/defilantech/meitheal-agent:dev" {
 		t.Errorf("request image: got %q", sub.gotReq.Image)
 	}
-	if sub.gotReq.ServiceAccountName != "foreman-coder" {
+	if sub.gotReq.ServiceAccountName != "meitheal-coder" {
 		t.Errorf("request SA: got %q", sub.gotReq.ServiceAccountName)
 	}
 	if sub.gotReq.ActiveDeadlineSeconds == nil || *sub.gotReq.ActiveDeadlineSeconds != deadline {
@@ -2215,10 +2215,10 @@ func TestNativeExecutor_JobModeDispatchesToCoderJob(t *testing.T) {
 	if ref.BlockOwnerDeletion != nil {
 		t.Errorf("request ownerReference.BlockOwnerDeletion: want nil (unset), got %v", *ref.BlockOwnerDeletion)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("Verdict: want GO got %s", res.Verdict)
 	}
-	if got, _ := res.Extra["branch"].(string); got != "foreman/issue-9999" {
+	if got, _ := res.Extra["branch"].(string); got != "meitheal/issue-9999" {
 		t.Errorf("Extra.branch: got %v", res.Extra["branch"])
 	}
 	if got, _ := res.Extra["commitSHA"].(string); got != "deadbeef" {
@@ -2239,14 +2239,14 @@ func TestNativeExecutor_JobModeDispatchesToCoderJob(t *testing.T) {
 // with a non-empty jobName.
 func TestNativeExecutor_JobModeStampsJobNameWhileRunning(t *testing.T) {
 	agent, task := taskAndAgent("job-stamp")
-	agent.Spec.Execution = &foremanv1alpha1.ExecutionSpec{
-		Mode:  foremanv1alpha1.ExecutionModeJob,
-		Image: "ghcr.io/defilantech/foreman-agent:dev",
+	agent.Spec.Execution = &meithealv1alpha1.ExecutionSpec{
+		Mode:  meithealv1alpha1.ExecutionModeJob,
+		Image: "ghcr.io/defilantech/meitheal-agent:dev",
 	}
 	// Start the task in the Running phase the way the watcher's claim leaves
 	// it, so the assertion is about a genuinely live task, not a fresh one.
 	claimedAt := metav1.Now()
-	task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseRunning
+	task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseRunning
 	task.Status.AssignedNode = "coder"
 	task.Status.ClaimedAt = &claimedAt
 	task.Status.StartedAt = &claimedAt
@@ -2254,17 +2254,17 @@ func TestNativeExecutor_JobModeStampsJobNameWhileRunning(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(newScheme(t)).
 		WithObjects(agent, task).
-		WithStatusSubresource(&foremanv1alpha1.AgenticTask{}).
+		WithStatusSubresource(&meithealv1alpha1.AgenticTask{}).
 		Build()
 
-	const wantJobName = "foreman-coder-job-stamp-1786665563449"
+	const wantJobName = "meitheal-coder-job-stamp-1786665563449"
 
 	// captureSubmitter mirrors the real submitter's ordering: it records the
 	// task phase right before and right after the on-job-created hook fires,
 	// so we can prove the hook ran while the task was still Running.
 	cap := &jobCreatedCapture{}
 	sub := &capturingCoderJobSubmitter{
-		result: foremanagent.CoderJobResult{
+		result: meithealagent.CoderJobResult{
 			Verdict: "GO",
 			Summary: "fixed in a Job",
 			JobName: wantJobName,
@@ -2274,12 +2274,12 @@ func TestNativeExecutor_JobModeStampsJobNameWhileRunning(t *testing.T) {
 		taskKey: types.NamespacedName{Namespace: task.Namespace, Name: task.Name},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:            c,
 		CoderJobSubmitter: sub,
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			t.Fatalf("RegistryFactory must NOT be called on the Job path")
 			return nil, nil
 		},
@@ -2293,7 +2293,7 @@ func TestNativeExecutor_JobModeStampsJobNameWhileRunning(t *testing.T) {
 	// be the hook that set the field: before the hook fired, jobName was
 	// empty (the terminal-only design left it unset during the run); after
 	// the hook fired, it carried the Job name.
-	if cap.phaseBefore != foremanv1alpha1.AgenticTaskPhaseRunning {
+	if cap.phaseBefore != meithealv1alpha1.AgenticTaskPhaseRunning {
 		t.Fatalf("phase at job-created hook = %q, want Running (the running-window case #1535)", cap.phaseBefore)
 	}
 	if cap.jobNameBefore != "" {
@@ -2305,13 +2305,13 @@ func TestNativeExecutor_JobModeStampsJobNameWhileRunning(t *testing.T) {
 	}
 	// The stamp must not have clobbered the phase: it is a status merge
 	// patch touching only jobName.
-	if cap.phaseAfter != foremanv1alpha1.AgenticTaskPhaseRunning {
+	if cap.phaseAfter != meithealv1alpha1.AgenticTaskPhaseRunning {
 		t.Errorf("phase after hook = %q, want Running (stamp must not clobber phase)", cap.phaseAfter)
 	}
 
 	// And it must persist on the stored object, independent of the terminal
 	// result (which the fake submitter never writes back to the client).
-	var got foremanv1alpha1.AgenticTask
+	var got meithealv1alpha1.AgenticTask
 	gotKey := types.NamespacedName{Namespace: task.Namespace, Name: task.Name}
 	if err := c.Get(context.Background(), gotKey, &got); err != nil {
 		t.Fatalf("get %s: %v", task.Name, err)
@@ -2325,24 +2325,24 @@ func TestNativeExecutor_JobModeStampsJobNameWhileRunning(t *testing.T) {
 // on-job-created hook so a test can assert the hook ran for the running
 // window (#1535).
 type jobCreatedCapture struct {
-	phaseBefore   foremanv1alpha1.AgenticTaskPhase
+	phaseBefore   meithealv1alpha1.AgenticTaskPhase
 	jobNameBefore string
-	phaseAfter    foremanv1alpha1.AgenticTaskPhase
+	phaseAfter    meithealv1alpha1.AgenticTaskPhase
 	jobNameAfter  string
 }
 
 // capturingCoderJobSubmitter is a CoderJobSubmitter test double that, around
 // the on-job-created hook, records the AgenticTask's phase and jobName.
 type capturingCoderJobSubmitter struct {
-	result  foremanagent.CoderJobResult
+	result  meithealagent.CoderJobResult
 	capture *jobCreatedCapture
 	client  client.Client
 	taskKey types.NamespacedName
 }
 
 func (f *capturingCoderJobSubmitter) Submit(
-	ctx context.Context, req foremanagent.CoderJobRequest,
-) (foremanagent.CoderJobResult, error) {
+	ctx context.Context, req meithealagent.CoderJobRequest,
+) (meithealagent.CoderJobResult, error) {
 	f.readCapture(ctx, true)
 	if req.OnJobCreated != nil {
 		req.OnJobCreated(ctx, f.result.JobName)
@@ -2355,7 +2355,7 @@ func (f *capturingCoderJobSubmitter) readCapture(ctx context.Context, before boo
 	if f.capture == nil || f.client == nil {
 		return
 	}
-	var cur foremanv1alpha1.AgenticTask
+	var cur meithealv1alpha1.AgenticTask
 	if err := f.client.Get(ctx, f.taskKey, &cur); err != nil {
 		return
 	}
@@ -2377,19 +2377,19 @@ func (f *capturingCoderJobSubmitter) readCapture(ctx context.Context, before boo
 // InferenceService (no submitter short-circuit happened).
 func TestNativeExecutor_JobModeWithoutSubmitterRunsInProcess(t *testing.T) {
 	agent, task := taskAndAgent("job-no-sub")
-	agent.Spec.Execution = &foremanv1alpha1.ExecutionSpec{
-		Mode:  foremanv1alpha1.ExecutionModeJob,
+	agent.Spec.Execution = &meithealv1alpha1.ExecutionSpec{
+		Mode:  meithealv1alpha1.ExecutionModeJob,
 		Image: "img",
 	}
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 
 	registryCalled := false
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:       c,
 		GitRemoteURL: "file:///nope",
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			registryCalled = true
 			return &fakeRegistry{}, nil
 		},
@@ -2477,8 +2477,8 @@ func TestExecutorNative_SelfCommittedWorkIsRecovered(t *testing.T) {
 	sha, err := repo.Commit(context.Background(), repo.CommitOptions{
 		Workspace: clone,
 		Message:   "fix: resolve issue #982",
-		Author:    repo.Identity{Name: "foreman", Email: "foreman@test.com"},
-		Committer: repo.Identity{Name: "foreman", Email: "foreman@test.com"},
+		Author:    repo.Identity{Name: "meitheal", Email: "meitheal@test.com"},
+		Committer: repo.Identity{Name: "meitheal", Email: "meitheal@test.com"},
 	})
 	if err != nil {
 		t.Fatalf("repo.Commit after soft reset failed: %v", err)
@@ -2556,7 +2556,7 @@ func TestNativeExecutor_ModelNoGoAlreadyResolved_PromotesOutcome(t *testing.T) {
 	// commit is the ancestor of main in this fixture.
 	seedSHA := seedCommitSHA(t, bare)
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "NO-GO",
 				Summary: "already fixed by " + seedSHA,
@@ -2567,7 +2567,7 @@ func TestNativeExecutor_ModelNoGoAlreadyResolved_PromotesOutcome(t *testing.T) {
 			},
 		},
 	}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -2576,8 +2576,8 @@ func TestNativeExecutor_ModelNoGoAlreadyResolved_PromotesOutcome(t *testing.T) {
 		CommitAuthor:             repo.Identity{Name: "B", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "B", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return reg, nil
 		},
 		AuthFactory: fakeAuth(t),
@@ -2586,7 +2586,7 @@ func TestNativeExecutor_ModelNoGoAlreadyResolved_PromotesOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("verdict: want NO-GO got %s", res.Verdict)
 	}
 	if got := res.Extra["outcome"]; got != "ALREADY-RESOLVED" {
@@ -2634,7 +2634,7 @@ func TestNativeExecutor_SynthesizesCommitMessageWhenModelOmitsIt(t *testing.T) {
 	// GO with real edits but no CommitMessage — the shape that used to be
 	// thrown away.
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "GO",
 				Summary:       "Added graceful shutdown and a regression test",
@@ -2648,17 +2648,17 @@ func TestNativeExecutor_SynthesizesCommitMessageWhenModelOmitsIt(t *testing.T) {
 		},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -2669,7 +2669,7 @@ func TestNativeExecutor_SynthesizesCommitMessageWhenModelOmitsIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO got %s; result=%+v", res.Verdict, res)
 	}
 	if got := res.Extra["commitSHA"]; got == nil || got == "" {
@@ -2678,7 +2678,7 @@ func TestNativeExecutor_SynthesizesCommitMessageWhenModelOmitsIt(t *testing.T) {
 
 	// The synthesized message must reference the issue without auto-closing it.
 	out, err := exec.Command("git", "-C", bare, "log", "-1", "--format=%B",
-		"foreman/issue-9999").CombinedOutput()
+		"meitheal/issue-9999").CombinedOutput()
 	if err != nil {
 		t.Fatalf("read commit message: %v: %s", err, out)
 	}
@@ -2708,7 +2708,7 @@ func TestNativeExecutor_SynthesizedMessageOmitsIssueWhenTaskHasNone(t *testing.T
 
 	agent, task := taskAndAgent("noissue")
 	// The shape from #1530: repo set, issue unset.
-	task.Spec.Kind = foremanv1alpha1.AgenticTaskKindFreeform
+	task.Spec.Kind = meithealv1alpha1.AgenticTaskKindFreeform
 	task.Spec.Payload.Issue = 0
 
 	c := fake.NewClientBuilder().
@@ -2717,7 +2717,7 @@ func TestNativeExecutor_SynthesizedMessageOmitsIssueWhenTaskHasNone(t *testing.T
 		Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "GO",
 				Summary:       "Tighten the SSRF allowlist",
@@ -2731,17 +2731,17 @@ func TestNativeExecutor_SynthesizedMessageOmitsIssueWhenTaskHasNone(t *testing.T
 		},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -2781,17 +2781,17 @@ func TestNativeExecutor_SynthesizedMessageOmitsIssueWhenTaskHasNone(t *testing.T
 // accounting cannot drift from the path actually taken (#1559). It does no
 // I/O, which is what lets one Agent read serve both.
 func TestSupervisesAgent(t *testing.T) {
-	jobAgent := &foremanv1alpha1.Agent{}
+	jobAgent := &meithealv1alpha1.Agent{}
 	jobAgent.Name = "coder"
-	jobAgent.Spec.Execution = &foremanv1alpha1.ExecutionSpec{
-		Mode: foremanv1alpha1.ExecutionModeJob,
+	jobAgent.Spec.Execution = &meithealv1alpha1.ExecutionSpec{
+		Mode: meithealv1alpha1.ExecutionModeJob,
 	}
-	inProcAgent := &foremanv1alpha1.Agent{}
+	inProcAgent := &meithealv1alpha1.Agent{}
 	inProcAgent.Name = "inproc"
 
 	tests := []struct {
 		name          string
-		agent         *foremanv1alpha1.Agent
+		agent         *meithealv1alpha1.Agent
 		withSubmitter bool
 		want          bool
 	}{
@@ -2804,7 +2804,7 @@ func TestSupervisesAgent(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			e := &foremanagent.NativeAgentLoopExecutor{}
+			e := &meithealagent.NativeAgentLoopExecutor{}
 			if tc.withSubmitter {
 				e.CoderJobSubmitter = &fakeCoderJobSubmitter{}
 			}
@@ -2838,7 +2838,7 @@ func TestNativeExecutor_ReviewerClauseCoverage(t *testing.T) {
 
 	agent, task := reviewerTaskAndAgent("clause-cov")
 	// The reviewer rails run only for issue-fix review runs.
-	task.Spec.Kind = foremanv1alpha1.AgenticTaskKindIssueFix
+	task.Spec.Kind = meithealv1alpha1.AgenticTaskKindIssueFix
 	task.Spec.Payload.Prompt = "## Acceptance Criteria\n\n" +
 		"1. the enabled path applies the new default\n" +
 		"2. the disabled path preserves the original no-side-effect behaviour\n" +
@@ -2851,7 +2851,7 @@ func TestNativeExecutor_ReviewerClauseCoverage(t *testing.T) {
 	// all appear in the summary) but never mentions clause 2 (the disabled
 	// path), so exactly one gap must be flagged.
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true,
 				Verdict:  "GO",
@@ -2869,7 +2869,7 @@ func TestNativeExecutor_ReviewerClauseCoverage(t *testing.T) {
 			},
 		},
 	}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -2878,8 +2878,8 @@ func TestNativeExecutor_ReviewerClauseCoverage(t *testing.T) {
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return reg, nil
 		},
 		AuthFactory: fakeAuth(t),
@@ -2888,7 +2888,7 @@ func TestNativeExecutor_ReviewerClauseCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GOT got %s", res.Verdict)
 	}
 	findings := extraFindings(res, "findings")
@@ -2927,7 +2927,7 @@ func TestNativeExecutor_ReviewerClauseCoverage(t *testing.T) {
 
 // extraFindings pulls the finding messages out of a Result's modelExtra
 // findings payload, or nil when the model-decided envelope is absent.
-func extraFindings(res *foremanagent.Result, key string) []string {
+func extraFindings(res *meithealagent.Result, key string) []string {
 	if res == nil || res.Extra == nil {
 		return nil
 	}
@@ -2960,7 +2960,7 @@ func extraFindings(res *foremanagent.Result, key string) []string {
 // from its default branch for any infrastructure / transport error, and both
 // preserve call sites enter on `r != nil || err != nil` -- a guard that reads
 // like a nil check but lets nil through. Before the fix this segfaulted in
-// preserveUnsuccessfulLoopBranch at the r.Extra write, crashing foreman-agent.
+// preserveUnsuccessfulLoopBranch at the r.Extra write, crashing meitheal-agent.
 //
 // Driven end to end through Execute rather than by calling the preserve
 // function directly: the defect was in what the call site passes, so a direct
@@ -2988,22 +2988,22 @@ func TestNativeExecutor_TransportErrorAfterWritesDoesNotPanic(t *testing.T) {
 
 	// The tool call writes real work into the workspace before the drop, so
 	// there is something to preserve.
-	reg := &fakeRegistry{results: map[string]*foremanagent.ToolResult{}}
+	reg := &fakeRegistry{results: map[string]*meithealagent.ToolResult{}}
 	reg.touch = func(_ string, ws string) {
 		_ = os.WriteFile(filepath.Join(ws, "half-done.go"), []byte("package coder\n"), 0o644)
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -3018,11 +3018,11 @@ func TestNativeExecutor_TransportErrorAfterWritesDoesNotPanic(t *testing.T) {
 
 	// The work must still be preserved, which is the whole point of #1715:
 	// this is the case where the agent died without warning.
-	out, gitErr := exec.Command("git", "-C", bare, "branch", "--list", "foreman/issue-9999").CombinedOutput()
+	out, gitErr := exec.Command("git", "-C", bare, "branch", "--list", "meitheal/issue-9999").CombinedOutput()
 	if gitErr != nil {
 		t.Fatalf("branch list: %v: %s", gitErr, out)
 	}
-	if !strings.Contains(string(out), "foreman/issue-9999") {
+	if !strings.Contains(string(out), "meitheal/issue-9999") {
 		t.Errorf("branch not preserved after a transport failure: %s", out)
 	}
 }

@@ -34,7 +34,7 @@ limitations under the License.
 // already fixed this issue" before dispatch, this one catches "this diff is
 // removing the fix" after.
 //
-// Disabled by FOREMAN_DELETED_REFERENCE=0.
+// Disabled by MEITHEAL_DELETED_REFERENCE=0.
 package agent
 
 import (
@@ -45,7 +45,7 @@ import (
 	"sort"
 	"strings"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // deletedIssueRefRe matches a full owner/repo#N reference first (so the full
@@ -55,9 +55,9 @@ import (
 var deletedIssueRefRe = regexp.MustCompile(`[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+#\d+|#\d+`)
 
 // deletedReferenceDisabled reports whether this rail is off via
-// FOREMAN_DELETED_REFERENCE=0. Default (unset) is enabled.
+// MEITHEAL_DELETED_REFERENCE=0. Default (unset) is enabled.
 func deletedReferenceDisabled() bool {
-	return os.Getenv("FOREMAN_DELETED_REFERENCE") == "0"
+	return os.Getenv("MEITHEAL_DELETED_REFERENCE") == "0"
 }
 
 // deletedIssueReferences returns the issue/PR references found on the REMOVED
@@ -135,9 +135,9 @@ func recordDeletedIssueReferences(extra map[string]any, unifiedDiff string) {
 // (non-coder-role agent, or the upstream fetch failed) it degrades to the
 // payload base branch name, the pre-#1769 posture.
 func applyDeletedReferenceRailForTask(
-	ctx context.Context, task *foremanv1alpha1.AgenticTask, workspace, base string, loopRes *LoopResult,
+	ctx context.Context, task *meithealv1alpha1.AgenticTask, workspace, base string, loopRes *LoopResult,
 ) {
-	if task.Spec.Kind != foremanv1alpha1.AgenticTaskKindIssueFix {
+	if task.Spec.Kind != meithealv1alpha1.AgenticTaskKindIssueFix {
 		return
 	}
 	if loopRes == nil || loopRes.Terminal == nil {

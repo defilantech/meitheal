@@ -6,7 +6,7 @@ import "context"
 // (envtest, with KUBEBUILDER_ASSETS) on repository@branch cloned from
 // cloneURL, polls to terminal, and reports the outcome. It lives in this
 // package (not tools) because tools imports agent (for ToolResult), so the
-// agent package cannot import tools without a cycle; cmd/foreman-agent wires
+// agent package cannot import tools without a cycle; cmd/meitheal-agent wires
 // a closure over tools.RunGateJobTool into the executor's EnvtestJobRunner
 // field.
 type EnvtestJobRunner interface {
@@ -17,7 +17,7 @@ type EnvtestJobRunner interface {
 	// failure.
 	//
 	// taskNamespace/taskName identify the originating AgenticTask so the
-	// submitted gate Job carries the foreman.llmkube.dev/task-{namespace,name}
+	// submitted gate Job carries the meitheal.dev/task-{namespace,name}
 	// labels and a Job/pod can be traced back to its task (#893). They mirror
 	// the coder Job path's TaskNamespace/TaskName.
 	//

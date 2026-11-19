@@ -19,10 +19,10 @@ limitations under the License.
 package agent
 
 import (
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
-// stubCapability is the v0.1 non-darwin fallback so the foreman-agent
+// stubCapability is the v0.1 non-darwin fallback so the meitheal-agent
 // builds cross-platform. Dynamic memory probing on Linux / NVIDIA lands
 // in M4 when ShadowStack joins the fleet; for now this advertises only
 // the static fields the operator passes via flags.
@@ -31,7 +31,7 @@ type stubCapability struct {
 	maxContext       int32
 	tokensPerSec     int32
 	totalRAMGB       int32
-	acceleratorLabel foremanv1alpha1.FleetNodeAccelerator
+	acceleratorLabel meithealv1alpha1.FleetNodeAccelerator
 }
 
 // NewCapability returns the build-tagged provider.
@@ -45,8 +45,8 @@ func NewCapability(opts CapabilityOptions) CapabilityProvider {
 	}
 }
 
-func (s *stubCapability) Capability() foremanv1alpha1.FleetNodeCapability {
-	return foremanv1alpha1.FleetNodeCapability{
+func (s *stubCapability) Capability() meithealv1alpha1.FleetNodeCapability {
+	return meithealv1alpha1.FleetNodeCapability{
 		Accelerator:      s.acceleratorLabel,
 		TotalRAMGB:       s.totalRAMGB,
 		AvailableRAMGB:   s.totalRAMGB,

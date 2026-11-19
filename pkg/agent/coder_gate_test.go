@@ -53,7 +53,7 @@ func newFakeRunner(responses map[string]fakeCommand) (commandRunner, *[]recorded
 			// runs for these Go-check tests. git status -z stays empty, so
 			// the unit-test tier still sees no changed *packages*.
 			if len(args) >= 2 && args[0] == "diff" && args[1] == "--name-only" {
-				return "pkg/foreman/agent/sample.go\n", nil
+				return "pkg/agent/sample.go\n", nil
 			}
 			return "", nil
 		}
@@ -165,7 +165,7 @@ func TestRunCoderGateAutoAppliesGofmt(t *testing.T) {
 			}
 		}
 		if name == "git" && len(args) >= 2 && args[0] == "diff" && args[1] == "--name-only" {
-			return "pkg/foreman/agent/sample.go\n", nil // Go change: run the Go tier (#1292)
+			return "pkg/agent/sample.go\n", nil // Go change: run the Go tier (#1292)
 		}
 		return "", nil // go vet/build/test and lint all pass
 	}
@@ -187,7 +187,7 @@ func TestRunCoderGateGofmtUnfixableStillFails(t *testing.T) {
 			return "internal/broken/parse_error.go\n", nil // still listed after -w
 		}
 		if name == "git" && len(args) >= 2 && args[0] == "diff" && args[1] == "--name-only" {
-			return "pkg/foreman/agent/sample.go\n", nil // Go change: run the Go tier (#1292)
+			return "pkg/agent/sample.go\n", nil // Go change: run the Go tier (#1292)
 		}
 		return "", nil
 	}
@@ -345,9 +345,9 @@ func TestChangedTestPackages_ExcludesEnvtestAndDedups(t *testing.T) {
 			// git status -z uses NUL-terminated entries.
 			return " M pkg/cli/cache_inspect.go\x00" +
 				" M pkg/cli/cache_inspect_test.go\x00" +
-				"?? pkg/foreman/agent/loop_session_test.go\x00" +
+				"?? pkg/agent/loop_session_test.go\x00" +
 				" M internal/controller/model_controller.go\x00" +
-				" M internal/foreman/controller/agentictask_controller.go\x00" +
+				" M internal/controller/agentictask_controller.go\x00" +
 				" M test/e2e/e2e_test.go\x00" +
 				" M README.md\x00", nil
 		}
@@ -355,7 +355,7 @@ func TestChangedTestPackages_ExcludesEnvtestAndDedups(t *testing.T) {
 	}
 	got := changedTestPackages(context.Background(), "/work", run)
 
-	want := map[string]bool{"./pkg/cli/": true, "./pkg/foreman/agent/": true}
+	want := map[string]bool{"./pkg/cli/": true, "./pkg/agent/": true}
 	if len(got) != len(want) {
 		t.Fatalf("changedTestPackages = %v, want exactly %v", got, want)
 	}
@@ -431,7 +431,7 @@ func TestRunCoderGate_SkipsGoTierOnDocsOnlyDiff(t *testing.T) {
 	run := func(_ context.Context, _ string, _ []string, name string, args ...string) (string, error) {
 		switch {
 		case name == "git" && len(args) >= 2 && args[0] == "diff" && args[1] == "--name-only":
-			return "docs/foreman-gate.md\n", nil // docs-only change
+			return "docs/meitheal-gate.md\n", nil // docs-only change
 		case name == "git":
 			return "", nil // add -A no-op; status -z empty; unified diff empty
 		case name == "gofmt":
@@ -544,9 +544,9 @@ func codegenFake(
 // asked to re-run a mechanical step.
 func TestRunCoderGate_Codegen_AutoResolvesGeneratedDrift(t *testing.T) {
 	const golangciPath = "./bin/golangci-lint"
-	after := " M config/crd/bases/foreman.llmkube.dev_agentictasks.yaml\n" +
-		" M charts/foreman/templates/crds/agentictasks.yaml\n" +
-		" M api/foreman/v1alpha1/zz_generated.deepcopy.go\n"
+	after := " M config/crd/bases/meitheal.dev_agentictasks.yaml\n" +
+		" M charts/meitheal/templates/crds/agentictasks.yaml\n" +
+		" M api/v1alpha1/zz_generated.deepcopy.go\n"
 	run := codegenFake("", after, nil, false)
 	pass, feedback, _ := RunCoderGate(context.Background(), "/work", golangciPath, run, "", "main", nil)
 	if !pass {
@@ -560,16 +560,16 @@ func TestRunCoderGate_Codegen_AutoResolvesGeneratedDrift(t *testing.T) {
 // TestRunCoderGate_Codegen_IgnoresCoderEdits is the #851/#813 case: the coder
 // changed an API type (and other source) but did not run the full codegen
 // sync. The coder's own edits are present before make; regeneration adds the
-// missing foreman chart CRD + deepcopy. Only make-induced drift is evaluated,
+// missing meitheal chart CRD + deepcopy. Only make-induced drift is evaluated,
 // it is all generated, so the gate passes instead of failing on the
 // mechanical step.
 func TestRunCoderGate_Codegen_IgnoresCoderEdits(t *testing.T) {
 	const golangciPath = "./bin/golangci-lint"
-	before := " M api/foreman/v1alpha1/agentictask_types.go\n" +
-		" M pkg/foreman/agent/executor_native.go\n"
+	before := " M api/v1alpha1/agentictask_types.go\n" +
+		" M pkg/agent/executor_native.go\n"
 	after := before +
-		" M charts/foreman/templates/crds/agentictasks.yaml\n" +
-		" M api/foreman/v1alpha1/zz_generated.deepcopy.go\n"
+		" M charts/meitheal/templates/crds/agentictasks.yaml\n" +
+		" M api/v1alpha1/zz_generated.deepcopy.go\n"
 	run := codegenFake(before, after, nil, false)
 	pass, feedback, _ := RunCoderGate(context.Background(), "/work", golangciPath, run, "", "main", nil)
 	if !pass {
@@ -586,7 +586,7 @@ func TestRunCoderGate_Codegen_IgnoresCoderEdits(t *testing.T) {
 // source), and surfaces that file.
 func TestRunCoderGate_Codegen_FailsWhenRegenTouchesNonGenerated(t *testing.T) {
 	const golangciPath = "./bin/golangci-lint"
-	after := " M charts/foreman/templates/crds/agentictasks.yaml\n" +
+	after := " M charts/meitheal/templates/crds/agentictasks.yaml\n" +
 		" M internal/controller/inferenceservice_controller.go\n"
 	run := codegenFake("", after, nil, false)
 	pass, feedback, _ := RunCoderGate(context.Background(), "/work", golangciPath, run, "", "main", nil)
@@ -599,7 +599,7 @@ func TestRunCoderGate_Codegen_FailsWhenRegenTouchesNonGenerated(t *testing.T) {
 	if !strings.Contains(feedback, "internal/controller/inferenceservice_controller.go") {
 		t.Errorf("feedback should list the non-generated file; got:\n%s", feedback)
 	}
-	if strings.Contains(feedback, "charts/foreman/templates/crds/agentictasks.yaml") {
+	if strings.Contains(feedback, "charts/meitheal/templates/crds/agentictasks.yaml") {
 		t.Errorf("feedback should not list generated artifacts; got:\n%s", feedback)
 	}
 }
@@ -651,16 +651,16 @@ func TestIsGeneratedArtifact(t *testing.T) {
 		path string
 		want bool
 	}{
-		{"config/crd/bases/foreman.llmkube.dev_agentictasks.yaml", true},
+		{"config/crd/bases/meitheal.dev_agentictasks.yaml", true},
 		{"config/rbac/role.yaml", true},
 		{"config/webhook/manifests.yaml", true},
 		{"charts/llmkube/templates/crds/inferenceservices.yaml", true},
-		{"charts/foreman/templates/crds/agentictasks.yaml", true},
-		{"api/foreman/v1alpha1/zz_generated.deepcopy.go", true},
+		{"charts/meitheal/templates/crds/agentictasks.yaml", true},
+		{"api/v1alpha1/zz_generated.deepcopy.go", true},
 		{"api/v1alpha1/inferenceservice_types.go", false},
-		{"pkg/foreman/agent/executor_native.go", false},
+		{"pkg/agent/executor_native.go", false},
 		{"config/rbac/kustomization.yaml", false},
-		{"charts/foreman/templates/operator-rbac.yaml", false},
+		{"charts/meitheal/templates/operator-rbac.yaml", false},
 		{"internal/controller/model_controller.go", false},
 	}
 	for _, tc := range cases {
@@ -671,9 +671,9 @@ func TestIsGeneratedArtifact(t *testing.T) {
 }
 
 func TestDirtyPathSet(t *testing.T) {
-	const porcelain = " M api/foreman/v1alpha1/agentictask_types.go\n" +
-		"?? charts/foreman/templates/crds/agentictasks.yaml\n" +
-		"R  old/path.go -> pkg/foreman/agent/renamed.go\n" +
+	const porcelain = " M api/v1alpha1/agentictask_types.go\n" +
+		"?? charts/meitheal/templates/crds/agentictasks.yaml\n" +
+		"R  old/path.go -> pkg/agent/renamed.go\n" +
 		"\n"
 	run := func(_ context.Context, _ string, _ []string, name string, args ...string) (string, error) {
 		if name == "git" && len(args) >= 2 && args[0] == "status" && args[1] == "--porcelain" {
@@ -683,9 +683,9 @@ func TestDirtyPathSet(t *testing.T) {
 	}
 	got := dirtyPathSet(context.Background(), "/work", run)
 	want := []string{
-		"api/foreman/v1alpha1/agentictask_types.go",
-		"charts/foreman/templates/crds/agentictasks.yaml",
-		"pkg/foreman/agent/renamed.go",
+		"api/v1alpha1/agentictask_types.go",
+		"charts/meitheal/templates/crds/agentictasks.yaml",
+		"pkg/agent/renamed.go",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("dirtyPathSet returned %d paths, want %d: %v", len(got), len(want), got)
@@ -716,7 +716,7 @@ func TestChangedEnvtestPackages(t *testing.T) {
 		if name == "git" {
 			return " M pkg/cli/cache_inspect.go\x00" +
 				" M internal/controller/model_controller.go\x00" +
-				" M internal/foreman/controller/agentictask_controller.go\x00" +
+				" M internal/controller/agentictask_controller.go\x00" +
 				" M test/e2e/e2e_test.go\x00" +
 				" M README.md\x00", nil
 		}
@@ -739,9 +739,8 @@ func TestChangedEnvtestPackages(t *testing.T) {
 
 	// Envtest packages should include only envtest paths.
 	wantEnvtest := map[string]bool{
-		"./internal/controller/":         true,
-		"./internal/foreman/controller/": true,
-		"./test/e2e/":                    true,
+		"./internal/controller/": true,
+		"./test/e2e/":            true,
 	}
 	if len(envtest) != len(wantEnvtest) {
 		t.Fatalf("changedEnvtestPackages = %v, want exactly %v", envtest, wantEnvtest)
@@ -771,11 +770,10 @@ func TestIsEnvtestPackage(t *testing.T) {
 	}{
 		{"./internal/controller/", true},
 		{"./internal/controller/foo/", true},
-		{"./internal/foreman/controller/", true},
 		{"./test/", true},
 		{"./test/e2e/", true},
 		{"./pkg/cli/", false},
-		{"./pkg/foreman/agent/", false},
+		{"./pkg/agent/", false},
 		{"./cmd/", false},
 	}
 	for _, tt := range tests {
@@ -887,7 +885,7 @@ func TestCheckScopeOverlap_InScopePasses(t *testing.T) {
 
 func TestCheckScopeOverlap_SkipsNonGoOnlyChanges(t *testing.T) {
 	withScopeRelevant(t, []string{"pkg/agent/endpoint.go"})
-	run := diffRunner("charts/foreman/x.yaml\ndocs/readme.md\n")
+	run := diffRunner("charts/meitheal/x.yaml\ndocs/readme.md\n")
 	if drift, _ := checkScopeOverlap(context.Background(), "/work", run, "x"); drift {
 		t.Error("a yaml/docs-only change must not be flagged by the Go-aware guard")
 	}
@@ -1003,8 +1001,8 @@ func TestReleaseConfigChanged(t *testing.T) {
 			want:  true,
 		},
 		{
-			name:  "Dockerfile.foreman-agent.goreleaser changed",
-			dirty: map[string]bool{"Dockerfile.foreman-agent.goreleaser": true},
+			name:  "Dockerfile.agent.goreleaser changed",
+			dirty: map[string]bool{"Dockerfile.agent.goreleaser": true},
 			want:  true,
 		},
 		{
@@ -1243,7 +1241,7 @@ func TestCheckReferenceGrounding_IgnoresExporterMetricTokens(t *testing.T) {
 func TestBuildFeedback_GocycloAdvisory(t *testing.T) {
 	out := buildFeedback([]checkFailure{{
 		name: "golangci-lint run ./...",
-		output: "pkg/foreman/agent/executor_native.go:407:1: cyclomatic complexity 31 " +
+		output: "pkg/agent/executor_native.go:407:1: cyclomatic complexity 31 " +
 			"of func `(*NativeAgentLoopExecutor).runLLMPath` is high (> 30) (gocyclo)",
 	}})
 	want := "Do not add more branches to `(*NativeAgentLoopExecutor).runLLMPath`."

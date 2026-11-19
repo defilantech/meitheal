@@ -37,8 +37,8 @@ import (
 
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
@@ -168,15 +168,15 @@ func (r *rail1769Registry) Schemas() []oai.Tool { return nil }
 
 func (r *rail1769Registry) Dispatch(
 	_ context.Context, name string, _ json.RawMessage,
-) (*foremanagent.ToolResult, error) {
+) (*meithealagent.ToolResult, error) {
 	switch name {
 	case "mcp__context7__query-docs":
-		return &foremanagent.ToolResult{Output: r.context7Doc}, nil
+		return &meithealagent.ToolResult{Output: r.context7Doc}, nil
 	case "submit_result":
 		if r.workspace != "" {
 			_ = os.WriteFile(filepath.Join(r.workspace, r.file), []byte(r.postBody), 0o644)
 		}
-		return &foremanagent.ToolResult{
+		return &meithealagent.ToolResult{
 			Terminal:      true,
 			Verdict:       "GO",
 			Summary:       "edited a comment line",
@@ -193,7 +193,7 @@ func (r *rail1769Registry) Dispatch(
 // scripts one context7 query before the submit.
 func rail1769Execute(
 	t *testing.T, postBody string, deltaFiles map[string]string, context7Doc string,
-) *foremanagent.Result {
+) *meithealagent.Result {
 	t.Helper()
 	gitOrSkip(t)
 	root := t.TempDir()
@@ -206,7 +206,7 @@ func rail1769Execute(
 	agent, task := taskAndAgent("rail-1769")
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 	reg := &rail1769Registry{file: "legacy.go", postBody: postBody, context7Doc: context7Doc}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             fork,
@@ -215,8 +215,8 @@ func rail1769Execute(
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -232,9 +232,9 @@ func rail1769Execute(
 // rail1769ModelExtra pulls the coder's terminal extra off the result; it is
 // the map the GO-settle rails record onto (goResult serializes it under
 // Extra["modelExtra"]).
-func rail1769ModelExtra(t *testing.T, res *foremanagent.Result) map[string]any {
+func rail1769ModelExtra(t *testing.T, res *meithealagent.Result) map[string]any {
 	t.Helper()
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO (the rails run on the GO-settle path) got %s; result=%+v",
 			res.Verdict, res)
 	}

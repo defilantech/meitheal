@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // TestMarkPlanned_WebhookRejectionIsTerminal proves Fix 2 (#520 webhook
@@ -43,18 +43,18 @@ import (
 // transient NotFound create error must STILL requeue.
 //
 // This is a focused controller-level test using a fake client with a
-// Create interceptor, not envtest: the foreman controller envtest suite
+// Create interceptor, not envtest: the meitheal controller envtest suite
 // does not install the admission webhook, so the IsInvalid rejection
 // cannot be produced through the real API server here. The interceptor
 // reproduces the exact error shape (apierrors.NewInvalid, optionally
 // wrapped the way renderAndCreate wraps it) that the live webhook returns.
 func TestMarkPlanned_WebhookRejectionIsTerminal(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := foremanv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("add foreman scheme: %v", err)
+	if err := meithealv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add meitheal scheme: %v", err)
 	}
 
-	agentGK := schema.GroupKind{Group: foremanv1alpha1.GroupVersion.Group, Kind: "AgenticTask"}
+	agentGK := schema.GroupKind{Group: meithealv1alpha1.GroupVersion.Group, Kind: "AgenticTask"}
 
 	tests := []struct {
 		name         string
@@ -76,22 +76,22 @@ func TestMarkPlanned_WebhookRejectionIsTerminal(t *testing.T) {
 		{
 			name: "NotFound create error is transient and requeues",
 			createErr: fmt.Errorf("create AgenticTask %q: %w", "wl-step-a",
-				apierrors.NewNotFound(schema.GroupResource{Group: foremanv1alpha1.GroupVersion.Group, Resource: "agentictasks"}, "wl-step-a")),
+				apierrors.NewNotFound(schema.GroupResource{Group: meithealv1alpha1.GroupVersion.Group, Resource: "agentictasks"}, "wl-step-a")),
 			wantTerminal: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			wl := newWorkload("wl", foremanv1alpha1.WorkloadSpec{
+			wl := newWorkload("wl", meithealv1alpha1.WorkloadSpec{
 				Intent: "explicit",
 				Repo:   "defilantech/LLMKube",
-				Pipeline: []foremanv1alpha1.PipelineStep{
+				Pipeline: []meithealv1alpha1.PipelineStep{
 					{
 						Name:     "step-a",
-						Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+						Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 						AgentRef: corev1.LocalObjectReference{Name: "ghost"},
-						Payload:  foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1},
+						Payload:  meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1},
 					},
 				},
 			})
@@ -100,10 +100,10 @@ func TestMarkPlanned_WebhookRejectionIsTerminal(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(scheme).
 				WithObjects(wl).
-				WithStatusSubresource(&foremanv1alpha1.Workload{}).
+				WithStatusSubresource(&meithealv1alpha1.Workload{}).
 				WithInterceptorFuncs(interceptor.Funcs{
 					Create: func(_ context.Context, _ client.WithWatch, obj client.Object, _ ...client.CreateOption) error {
-						if _, ok := obj.(*foremanv1alpha1.AgenticTask); ok {
+						if _, ok := obj.(*meithealv1alpha1.AgenticTask); ok {
 							return createErr
 						}
 						return nil
@@ -119,7 +119,7 @@ func TestMarkPlanned_WebhookRejectionIsTerminal(t *testing.T) {
 
 			res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 
-			var fresh foremanv1alpha1.Workload
+			var fresh meithealv1alpha1.Workload
 			if getErr := fakeClient.Get(context.Background(), client.ObjectKeyFromObject(wl), &fresh); getErr != nil {
 				t.Fatalf("get workload: %v", getErr)
 			}
@@ -131,8 +131,8 @@ func TestMarkPlanned_WebhookRejectionIsTerminal(t *testing.T) {
 				if res.RequeueAfter != 0 {
 					t.Fatalf("terminal rejection must not request a requeue, got %+v", res)
 				}
-				if fresh.Status.Phase != foremanv1alpha1.WorkloadPhaseFailed {
-					t.Fatalf("expected Phase=%s, got %s", foremanv1alpha1.WorkloadPhaseFailed, fresh.Status.Phase)
+				if fresh.Status.Phase != meithealv1alpha1.WorkloadPhaseFailed {
+					t.Fatalf("expected Phase=%s, got %s", meithealv1alpha1.WorkloadPhaseFailed, fresh.Status.Phase)
 				}
 			} else {
 				// Transient: the reconcile returns the error so the
@@ -140,7 +140,7 @@ func TestMarkPlanned_WebhookRejectionIsTerminal(t *testing.T) {
 				if err == nil {
 					t.Fatalf("transient create failure must return an error to requeue")
 				}
-				if fresh.Status.Phase == foremanv1alpha1.WorkloadPhaseFailed {
+				if fresh.Status.Phase == meithealv1alpha1.WorkloadPhaseFailed {
 					t.Fatalf("transient create failure must NOT drive the Workload to a terminal Failed phase")
 				}
 			}

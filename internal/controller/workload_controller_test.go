@@ -32,7 +32,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // M6 ships the WorkloadReconciler with a deterministic stub planner.
@@ -60,7 +60,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 	})
 
 	It("fails an intent-only Workload with NoPlannerOrPipeline", func() {
-		wl := newWorkload("intent-only", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("intent-only", meithealv1alpha1.WorkloadSpec{
 			Intent: "do something the v0.2 planner will figure out",
 			Repo:   "defilantech/LLMKube",
 		})
@@ -72,9 +72,9 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhaseFailed))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseFailed))
 		planned := findCondition(fresh.Status.Conditions, conditionTypePlanned)
 		Expect(planned).NotTo(BeNil())
 		Expect(planned.Reason).To(Equal("NoPlannerOrPipeline"))
@@ -82,22 +82,22 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 	})
 
 	It("emits one AgenticTask per PipelineStep in explicit-pipeline mode and rewrites DependsOn", func() {
-		wl := newWorkload("pipeline-explicit", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("pipeline-explicit", meithealv1alpha1.WorkloadSpec{
 			Intent: "explicit",
 			Repo:   "defilantech/LLMKube",
-			Pipeline: []foremanv1alpha1.PipelineStep{
+			Pipeline: []meithealv1alpha1.PipelineStep{
 				{
 					Name:     "step-a",
-					Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+					Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 					AgentRef: corev1.LocalObjectReference{Name: "coder"},
-					Payload:  foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234},
+					Payload:  meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234},
 				},
 				{
 					Name:      "step-b",
-					Kind:      foremanv1alpha1.AgenticTaskKindVerify,
+					Kind:      meithealv1alpha1.AgenticTaskKindVerify,
 					AgentRef:  corev1.LocalObjectReference{Name: "gate"},
 					DependsOn: []string{"step-a"},
-					Payload:   foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234, Branch: "foreman/issue-1234"},
+					Payload:   meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234, Branch: "meitheal/issue-1234"},
 				},
 			},
 		})
@@ -110,15 +110,15 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhasePlanned))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhasePlanned))
 		Expect(fresh.Status.Tasks).To(HaveLen(2))
 		planned := findCondition(fresh.Status.Conditions, conditionTypePlanned)
 		Expect(planned).NotTo(BeNil())
 		Expect(planned.Reason).To(Equal("PlannerSucceeded"))
 
-		var stepB foremanv1alpha1.AgenticTask
+		var stepB meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "pipeline-explicit-step-b"}, &stepB)).To(Succeed())
 		Expect(stepB.Spec.DependsOn).To(ConsistOf("pipeline-explicit-step-a"))
 		Expect(stepB.Labels[labelWorkload]).To(Equal("pipeline-explicit"))
@@ -129,16 +129,16 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 	})
 
 	It("propagates Workload.Spec.MCPEnabled=false verbatim onto rendered AgenticTasks", func() {
-		wl := newWorkload("pipeline-mcp-disabled", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("pipeline-mcp-disabled", meithealv1alpha1.WorkloadSpec{
 			Intent:     "explicit",
 			Repo:       "defilantech/LLMKube",
 			MCPEnabled: ptr.To(false),
-			Pipeline: []foremanv1alpha1.PipelineStep{
+			Pipeline: []meithealv1alpha1.PipelineStep{
 				{
 					Name:     "step-a",
-					Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+					Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 					AgentRef: corev1.LocalObjectReference{Name: "coder"},
-					Payload:  foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234},
+					Payload:  meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234},
 				},
 			},
 		})
@@ -151,22 +151,22 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var stepA foremanv1alpha1.AgenticTask
+		var stepA meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "pipeline-mcp-disabled-step-a"}, &stepA)).To(Succeed())
 		Expect(stepA.Spec.MCPEnabled).NotTo(BeNil())
 		Expect(*stepA.Spec.MCPEnabled).To(BeFalse())
 	})
 
 	It("leaves rendered AgenticTasks' MCPEnabled nil when Workload.Spec.MCPEnabled is unset", func() {
-		wl := newWorkload("pipeline-mcp-unset", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("pipeline-mcp-unset", meithealv1alpha1.WorkloadSpec{
 			Intent: "explicit",
 			Repo:   "defilantech/LLMKube",
-			Pipeline: []foremanv1alpha1.PipelineStep{
+			Pipeline: []meithealv1alpha1.PipelineStep{
 				{
 					Name:     "step-a",
-					Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+					Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 					AgentRef: corev1.LocalObjectReference{Name: "coder"},
-					Payload:  foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234},
+					Payload:  meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234},
 				},
 			},
 		})
@@ -179,24 +179,24 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var stepA foremanv1alpha1.AgenticTask
+		var stepA meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "pipeline-mcp-unset-step-a"}, &stepA)).To(Succeed())
 		Expect(stepA.Spec.MCPEnabled).To(BeNil())
 	})
 
 	It("propagates Workload.Spec.VerdictPolicy verbatim onto rendered AgenticTasks in explicit-pipeline mode", func() {
-		wl := newWorkload("pipeline-verdict-policy", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("pipeline-verdict-policy", meithealv1alpha1.WorkloadSpec{
 			Intent: "explicit",
 			Repo:   "defilantech/LLMKube",
-			VerdictPolicy: &foremanv1alpha1.VerdictPolicy{
+			VerdictPolicy: &meithealv1alpha1.VerdictPolicy{
 				SelfGO: []string{"code-fix", "ci-policy"},
 			},
-			Pipeline: []foremanv1alpha1.PipelineStep{
+			Pipeline: []meithealv1alpha1.PipelineStep{
 				{
 					Name:     "step-a",
-					Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+					Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 					AgentRef: corev1.LocalObjectReference{Name: "coder"},
-					Payload:  foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234},
+					Payload:  meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234},
 				},
 			},
 		})
@@ -209,22 +209,22 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var stepA foremanv1alpha1.AgenticTask
+		var stepA meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "pipeline-verdict-policy-step-a"}, &stepA)).To(Succeed())
 		Expect(stepA.Spec.VerdictPolicy).NotTo(BeNil())
 		Expect(stepA.Spec.VerdictPolicy.SelfGO).To(ConsistOf("code-fix", "ci-policy"))
 	})
 
 	It("leaves rendered AgenticTasks' VerdictPolicy nil when Workload.Spec.VerdictPolicy is unset", func() {
-		wl := newWorkload("pipeline-verdict-policy-unset", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("pipeline-verdict-policy-unset", meithealv1alpha1.WorkloadSpec{
 			Intent: "explicit",
 			Repo:   "defilantech/LLMKube",
-			Pipeline: []foremanv1alpha1.PipelineStep{
+			Pipeline: []meithealv1alpha1.PipelineStep{
 				{
 					Name:     "step-a",
-					Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+					Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 					AgentRef: corev1.LocalObjectReference{Name: "coder"},
-					Payload:  foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234},
+					Payload:  meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 1234},
 				},
 			},
 		})
@@ -237,17 +237,17 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var stepA foremanv1alpha1.AgenticTask
+		var stepA meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "pipeline-verdict-policy-unset-step-a"}, &stepA)).To(Succeed())
 		Expect(stepA.Spec.VerdictPolicy).To(BeNil())
 	})
 
 	It("propagates Workload.Spec.VerdictPolicy verbatim onto rendered AgenticTasks in issue-batch mode", func() {
-		wl := newWorkload("batch-verdict-policy", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("batch-verdict-policy", meithealv1alpha1.WorkloadSpec{
 			Intent: "batch",
 			Repo:   "defilantech/LLMKube",
 			Issues: []int32{531},
-			VerdictPolicy: &foremanv1alpha1.VerdictPolicy{
+			VerdictPolicy: &meithealv1alpha1.VerdictPolicy{
 				SelfGO: []string{"code-fix", "ci-policy"},
 			},
 			CoderAgentRef:    &corev1.LocalObjectReference{Name: "coder"},
@@ -262,19 +262,19 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var code531 foremanv1alpha1.AgenticTask
+		var code531 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "batch-verdict-policy-code-531"}, &code531)).To(Succeed())
 		Expect(code531.Spec.VerdictPolicy).NotTo(BeNil())
 		Expect(code531.Spec.VerdictPolicy.SelfGO).To(ConsistOf("code-fix", "ci-policy"))
 
-		var verify531 foremanv1alpha1.AgenticTask
+		var verify531 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "batch-verdict-policy-verify-531"}, &verify531)).To(Succeed())
 		Expect(verify531.Spec.VerdictPolicy).NotTo(BeNil())
 		Expect(verify531.Spec.VerdictPolicy.SelfGO).To(ConsistOf("code-fix", "ci-policy"))
 	})
 
 	It("expands Issues into code+verify pairs in issue-batch mode", func() {
-		wl := newWorkload("batch-shortcut", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("batch-shortcut", meithealv1alpha1.WorkloadSpec{
 			Intent:           "batch",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{531, 510},
@@ -290,36 +290,36 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhasePlanned))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhasePlanned))
 		Expect(fresh.Status.Tasks).To(HaveLen(4)) // 2 issues * (code + verify)
 
-		var code531 foremanv1alpha1.AgenticTask
+		var code531 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "batch-shortcut-code-531"}, &code531)).To(Succeed())
-		Expect(code531.Spec.Kind).To(Equal(foremanv1alpha1.AgenticTaskKindIssueFix))
+		Expect(code531.Spec.Kind).To(Equal(meithealv1alpha1.AgenticTaskKindIssueFix))
 		Expect(code531.Spec.Payload.Issue).To(Equal(int32(531)))
 		// #573: branch now includes the workload name to disambiguate
 		// reruns on the same issue across Workloads.
-		Expect(code531.Spec.Payload.Branch).To(Equal("foreman/batch-shortcut/issue-531"))
+		Expect(code531.Spec.Payload.Branch).To(Equal("meitheal/batch-shortcut/issue-531"))
 		Expect(code531.Spec.AgentRef.Name).To(Equal("coder"))
 
-		var verify531 foremanv1alpha1.AgenticTask
+		var verify531 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "batch-shortcut-verify-531"}, &verify531)).To(Succeed())
-		Expect(verify531.Spec.Kind).To(Equal(foremanv1alpha1.AgenticTaskKindVerify))
+		Expect(verify531.Spec.Kind).To(Equal(meithealv1alpha1.AgenticTaskKindVerify))
 		Expect(verify531.Spec.DependsOn).To(ConsistOf("batch-shortcut-code-531"))
 		Expect(verify531.Spec.AgentRef.Name).To(Equal("gate"))
 	})
 
 	It("propagates a Workload-level GateProfile to every decomposed task", func() {
-		wl := newWorkload("batch-node-gate", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("batch-node-gate", meithealv1alpha1.WorkloadSpec{
 			Intent:           "batch on a node repo",
 			Repo:             "misospace/miso-chat",
 			Issues:           []int32{42},
 			CoderAgentRef:    &corev1.LocalObjectReference{Name: "coder"},
 			VerifierAgentRef: &corev1.LocalObjectReference{Name: "gate"},
-			GateProfile: &foremanv1alpha1.GateProfile{
-				Language: foremanv1alpha1.GateLanguageNode,
+			GateProfile: &meithealv1alpha1.GateProfile{
+				Language: meithealv1alpha1.GateLanguageNode,
 			},
 		})
 		Expect(k8sClient.Create(ctx, wl)).To(Succeed())
@@ -334,19 +334,19 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// Both the coder task (drives the in-loop self-gate) and the verify
 		// task (the clean-room gate Job) must carry the node profile, or the
 		// pipeline falls back to the Go gate on a non-Go repo.
-		var code42 foremanv1alpha1.AgenticTask
+		var code42 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "batch-node-gate-code-42"}, &code42)).To(Succeed())
 		Expect(code42.Spec.GateProfile).NotTo(BeNil())
-		Expect(code42.Spec.GateProfile.Language).To(Equal(foremanv1alpha1.GateLanguageNode))
+		Expect(code42.Spec.GateProfile.Language).To(Equal(meithealv1alpha1.GateLanguageNode))
 
-		var verify42 foremanv1alpha1.AgenticTask
+		var verify42 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "batch-node-gate-verify-42"}, &verify42)).To(Succeed())
 		Expect(verify42.Spec.GateProfile).NotTo(BeNil())
-		Expect(verify42.Spec.GateProfile.Language).To(Equal(foremanv1alpha1.GateLanguageNode))
+		Expect(verify42.Spec.GateProfile.Language).To(Equal(meithealv1alpha1.GateLanguageNode))
 	})
 
 	It("fans out one review task per ReviewerAgentRef, each depending on the verify task (v0.2)", func() {
-		wl := newWorkload("batch-with-reviewers", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("batch-with-reviewers", meithealv1alpha1.WorkloadSpec{
 			Intent:           "batch + reviewers",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{510, 531},
@@ -367,27 +367,27 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhasePlanned))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhasePlanned))
 		// 2 issues * (code + verify + 3 reviewers) = 10 tasks total.
 		Expect(fresh.Status.Tasks).To(HaveLen(10))
 
 		// review-510-1 (the second reviewer of the first issue): kind +
 		// agentRef + dependsOn must all line up.
-		var review5101 foremanv1alpha1.AgenticTask
+		var review5101 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{
 			Namespace: "default", Name: "batch-with-reviewers-review-510-1",
 		}, &review5101)).To(Succeed())
-		Expect(review5101.Spec.Kind).To(Equal(foremanv1alpha1.AgenticTaskKindReview))
+		Expect(review5101.Spec.Kind).To(Equal(meithealv1alpha1.AgenticTaskKindReview))
 		Expect(review5101.Spec.AgentRef.Name).To(Equal("reviewer-falsification"))
 		Expect(review5101.Spec.DependsOn).To(ConsistOf("batch-with-reviewers-verify-510"))
 		Expect(review5101.Spec.Payload.Issue).To(Equal(int32(510)))
-		Expect(review5101.Spec.Payload.Branch).To(Equal("foreman/batch-with-reviewers/issue-510"))
+		Expect(review5101.Spec.Payload.Branch).To(Equal("meitheal/batch-with-reviewers/issue-510"))
 
 		// review-531-2: the third reviewer of the second issue. Confirms
 		// the cross-product expansion (per-issue x per-reviewer).
-		var review5312 foremanv1alpha1.AgenticTask
+		var review5312 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{
 			Namespace: "default", Name: "batch-with-reviewers-review-531-2",
 		}, &review5312)).To(Succeed())
@@ -396,7 +396,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 
 		// review-510-0 must NOT depend on review-510-1 or any other
 		// reviewer: parallel-after-gate is the whole point.
-		var review5100 foremanv1alpha1.AgenticTask
+		var review5100 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{
 			Namespace: "default", Name: "batch-with-reviewers-review-510-0",
 		}, &review5100)).To(Succeed())
@@ -404,7 +404,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 	})
 
 	It("clips with MaxTasks and sets the Truncated condition", func() {
-		wl := newWorkload("max-tasks-clip", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("max-tasks-clip", meithealv1alpha1.WorkloadSpec{
 			Intent:           "clipped",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{1, 2, 3, 4, 5}, // would expand to 10 tasks (5 pairs)
@@ -421,7 +421,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
 		Expect(fresh.Status.Tasks).To(HaveLen(4))
 		truncated := findCondition(fresh.Status.Conditions, conditionTypeTruncated)
@@ -437,23 +437,23 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		reconciler.AllowCloudProviders = false
 		DeferCleanup(func() { reconciler.AllowCloudProviders = true })
 
-		Expect(k8sClient.Create(ctx, &foremanv1alpha1.Agent{
+		Expect(k8sClient.Create(ctx, &meithealv1alpha1.Agent{
 			ObjectMeta: metav1.ObjectMeta{Name: "local-validator", Namespace: "default"},
-			Spec: foremanv1alpha1.AgentSpec{
-				Role:                foremanv1alpha1.AgentRoleReviewer,
-				Provider:            foremanv1alpha1.AgentProviderLocal,
+			Spec: meithealv1alpha1.AgentSpec{
+				Role:                meithealv1alpha1.AgentRoleReviewer,
+				Provider:            meithealv1alpha1.AgentProviderLocal,
 				InferenceServiceRef: corev1.LocalObjectReference{Name: "test-svc"},
 				SystemPrompt:        "you are a reviewer",
 				Tools:               []string{"submit_result"},
 				MaxTurns:            5,
 			},
 		})).To(Succeed())
-		Expect(k8sClient.Create(ctx, &foremanv1alpha1.Agent{
+		Expect(k8sClient.Create(ctx, &meithealv1alpha1.Agent{
 			ObjectMeta: metav1.ObjectMeta{Name: "cloud-sonnet", Namespace: "default"},
-			Spec: foremanv1alpha1.AgentSpec{
-				Role:     foremanv1alpha1.AgentRoleReviewer,
-				Provider: foremanv1alpha1.AgentProviderCloudProxy,
-				ProviderConfig: &foremanv1alpha1.ProviderConfig{
+			Spec: meithealv1alpha1.AgentSpec{
+				Role:     meithealv1alpha1.AgentRoleReviewer,
+				Provider: meithealv1alpha1.AgentProviderCloudProxy,
+				ProviderConfig: &meithealv1alpha1.ProviderConfig{
 					BaseURL: "http://foundation-router.lan:4000/v1",
 					Model:   "claude-sonnet-4-6",
 				},
@@ -463,11 +463,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 			},
 		})).To(Succeed())
 		DeferCleanup(func() {
-			_ = k8sClient.Delete(ctx, &foremanv1alpha1.Agent{ObjectMeta: metav1.ObjectMeta{Name: "local-validator", Namespace: "default"}})
-			_ = k8sClient.Delete(ctx, &foremanv1alpha1.Agent{ObjectMeta: metav1.ObjectMeta{Name: "cloud-sonnet", Namespace: "default"}})
+			_ = k8sClient.Delete(ctx, &meithealv1alpha1.Agent{ObjectMeta: metav1.ObjectMeta{Name: "local-validator", Namespace: "default"}})
+			_ = k8sClient.Delete(ctx, &meithealv1alpha1.Agent{ObjectMeta: metav1.ObjectMeta{Name: "cloud-sonnet", Namespace: "default"}})
 		})
 
-		wl := newWorkload("cloud-suppressed-operator", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("cloud-suppressed-operator", meithealv1alpha1.WorkloadSpec{
 			Intent:           "should suppress cloud reviewer",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{777},
@@ -487,7 +487,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
 		// code-777 + verify-777 + review-777-0 (local) = 3 tasks; cloud
 		// reviewer was filtered out.
@@ -503,12 +503,12 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// Operator allows cloud; workload explicitly opts out. The
 		// suppression message should name the workload-level gate as
 		// the blocker, not the operator.
-		Expect(k8sClient.Create(ctx, &foremanv1alpha1.Agent{
+		Expect(k8sClient.Create(ctx, &meithealv1alpha1.Agent{
 			ObjectMeta: metav1.ObjectMeta{Name: "cloud-sonnet-w", Namespace: "default"},
-			Spec: foremanv1alpha1.AgentSpec{
-				Role:     foremanv1alpha1.AgentRoleReviewer,
-				Provider: foremanv1alpha1.AgentProviderCloudProxy,
-				ProviderConfig: &foremanv1alpha1.ProviderConfig{
+			Spec: meithealv1alpha1.AgentSpec{
+				Role:     meithealv1alpha1.AgentRoleReviewer,
+				Provider: meithealv1alpha1.AgentProviderCloudProxy,
+				ProviderConfig: &meithealv1alpha1.ProviderConfig{
 					BaseURL: "http://foundation-router.lan:4000/v1",
 					Model:   "claude-sonnet-4-6",
 				},
@@ -518,11 +518,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 			},
 		})).To(Succeed())
 		DeferCleanup(func() {
-			_ = k8sClient.Delete(ctx, &foremanv1alpha1.Agent{ObjectMeta: metav1.ObjectMeta{Name: "cloud-sonnet-w", Namespace: "default"}})
+			_ = k8sClient.Delete(ctx, &meithealv1alpha1.Agent{ObjectMeta: metav1.ObjectMeta{Name: "cloud-sonnet-w", Namespace: "default"}})
 		})
 
 		falseVal := false
-		wl := newWorkload("cloud-suppressed-workload", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("cloud-suppressed-workload", meithealv1alpha1.WorkloadSpec{
 			Intent:              "workload opts out of cloud",
 			Repo:                "defilantech/LLMKube",
 			Issues:              []int32{888},
@@ -540,7 +540,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
 		Expect(fresh.Status.Tasks).To(HaveLen(2)) // code + verify only
 		cond := findCondition(fresh.Status.Conditions, conditionTypeCloudReviewersSuppressed)
@@ -549,7 +549,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 	})
 
 	It("rolls up child task phases into the Workload status", func() {
-		wl := newWorkload("rollup-test", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("rollup-test", meithealv1alpha1.WorkloadSpec{
 			Intent:           "rollup",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{42},
@@ -573,16 +573,16 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// so SucceededOnTarget() returns true for both.
 		on := []struct {
 			name    string
-			verdict foremanv1alpha1.AgenticTaskVerdict
+			verdict meithealv1alpha1.AgenticTaskVerdict
 		}{
-			{"rollup-test-code-42", foremanv1alpha1.AgenticTaskVerdictGo},
-			{"rollup-test-verify-42", foremanv1alpha1.AgenticTaskVerdictGatePass},
+			{"rollup-test-code-42", meithealv1alpha1.AgenticTaskVerdictGo},
+			{"rollup-test-verify-42", meithealv1alpha1.AgenticTaskVerdictGatePass},
 		}
 		for _, e := range on {
-			var t foremanv1alpha1.AgenticTask
+			var t meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: e.name}, &t)).To(Succeed())
 			patch := client.MergeFrom(t.DeepCopy())
-			t.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
+			t.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
 			t.Status.Verdict = e.verdict
 			Expect(k8sClient.Status().Patch(ctx, &t, patch)).To(Succeed())
 		}
@@ -591,9 +591,9 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhaseCompleted))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseCompleted))
 		Expect(fresh.Status.SucceededTasks).To(Equal(int32(2)))
 		Expect(fresh.Status.FailedTasks).To(Equal(int32(0)))
 		completed := findCondition(fresh.Status.Conditions, conditionTypeCompleted)
@@ -602,7 +602,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 	})
 
 	It("rolls up to Failed when any child terminally fails and none are in flight", func() {
-		wl := newWorkload("rollup-fail", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("rollup-fail", meithealv1alpha1.WorkloadSpec{
 			Intent:           "rollup-fail",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{99},
@@ -622,14 +622,14 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// Terminal Failed rollup.
 		updates := []struct {
 			name    string
-			phase   foremanv1alpha1.AgenticTaskPhase
-			verdict foremanv1alpha1.AgenticTaskVerdict
+			phase   meithealv1alpha1.AgenticTaskPhase
+			verdict meithealv1alpha1.AgenticTaskVerdict
 		}{
-			{"rollup-fail-code-99", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictGo},
-			{"rollup-fail-verify-99", foremanv1alpha1.AgenticTaskPhaseFailed, ""},
+			{"rollup-fail-code-99", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictGo},
+			{"rollup-fail-verify-99", meithealv1alpha1.AgenticTaskPhaseFailed, ""},
 		}
 		for _, u := range updates {
-			var t foremanv1alpha1.AgenticTask
+			var t meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: u.name}, &t)).To(Succeed())
 			patch := client.MergeFrom(t.DeepCopy())
 			t.Status.Phase = u.phase
@@ -640,9 +640,9 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhaseFailed))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseFailed))
 		Expect(fresh.Status.SucceededTasks).To(Equal(int32(1)))
 		Expect(fresh.Status.FailedTasks).To(Equal(int32(1)))
 		completed := findCondition(fresh.Status.Conditions, conditionTypeCompleted)
@@ -658,7 +658,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 	// IncompleteTasks counter + Failed-on-incomplete phase logic
 	// makes that report honest.
 	It("rolls up Phase=Succeeded + verdict=INCOMPLETE into incompleteTasks and Failed phase (#541)", func() {
-		wl := newWorkload("rollup-incomplete", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("rollup-incomplete", meithealv1alpha1.WorkloadSpec{
 			Intent:           "rollup-incomplete",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{1234},
@@ -679,14 +679,14 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// `make` checks did not pass — also a terminal-without-output).
 		updates := []struct {
 			name    string
-			phase   foremanv1alpha1.AgenticTaskPhase
-			verdict foremanv1alpha1.AgenticTaskVerdict
+			phase   meithealv1alpha1.AgenticTaskPhase
+			verdict meithealv1alpha1.AgenticTaskVerdict
 		}{
-			{"rollup-incomplete-code-1234", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictIncomplete},
-			{"rollup-incomplete-verify-1234", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictGateFail},
+			{"rollup-incomplete-code-1234", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictIncomplete},
+			{"rollup-incomplete-verify-1234", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictGateFail},
 		}
 		for _, u := range updates {
-			var t foremanv1alpha1.AgenticTask
+			var t meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: u.name}, &t)).To(Succeed())
 			patch := client.MergeFrom(t.DeepCopy())
 			t.Status.Phase = u.phase
@@ -697,12 +697,12 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
 		// Previously: Phase=Completed, SucceededTasks=2, FailedTasks=0.
 		// Now: Phase=Failed, SucceededTasks=0, FailedTasks=0,
 		//      IncompleteTasks=2, reason=ChildrenIncomplete.
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhaseFailed),
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseFailed),
 			"workload with all-incomplete children must NOT roll to Completed")
 		Expect(fresh.Status.SucceededTasks).To(Equal(int32(0)))
 		Expect(fresh.Status.FailedTasks).To(Equal(int32(0)))
@@ -719,7 +719,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 	// AllAlreadyResolved, and a CoderAlreadyResolved condition surfaces
 	// the issue numbers so the operator can close them.
 	It("rolls up ALREADY-RESOLVED children to Completed with AllAlreadyResolved (#970)", func() {
-		wl := newWorkload("rollup-already-resolved", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("rollup-already-resolved", meithealv1alpha1.WorkloadSpec{
 			Intent:           "already-resolved at run time",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{152, 365},
@@ -743,11 +743,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// shape via markVerifySkipped below, which is what
 		// cascadeSkipIfDepAlreadyResolved writes in production.
 		for _, n := range []string{"rollup-already-resolved-code-152", "rollup-already-resolved-code-365"} {
-			var t foremanv1alpha1.AgenticTask
+			var t meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: n}, &t)).To(Succeed())
 			patch := client.MergeFrom(t.DeepCopy())
-			t.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-			t.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+			t.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+			t.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 			t.Status.Result = resultRaw("ALREADY-RESOLVED", "", "already resolved by prior fix", "")
 			Expect(k8sClient.Status().Patch(ctx, &t, patch)).To(Succeed())
 		}
@@ -761,9 +761,9 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhaseCompleted))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseCompleted))
 		Expect(fresh.Status.IncompleteTasks).To(Equal(int32(0)))
 		Expect(fresh.Status.FailedTasks).To(Equal(int32(0)))
 		completed := findCondition(fresh.Status.Conditions, conditionTypeCompleted)
@@ -785,7 +785,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 	// Workload rolls to Completed with reason AllChildrenSucceeded and
 	// the message names both buckets.
 	It("rolls up a mixed already-resolved + succeeded Workload to Completed (#970)", func() {
-		wl := newWorkload("rollup-mixed-ar", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("rollup-mixed-ar", meithealv1alpha1.WorkloadSpec{
 			Intent:           "mixed already-resolved + succeeded",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{11, 22},
@@ -804,13 +804,13 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// Issue 11: real fix path.
 		for _, u := range []struct {
 			name    string
-			phase   foremanv1alpha1.AgenticTaskPhase
-			verdict foremanv1alpha1.AgenticTaskVerdict
+			phase   meithealv1alpha1.AgenticTaskPhase
+			verdict meithealv1alpha1.AgenticTaskVerdict
 		}{
-			{"rollup-mixed-ar-code-11", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictGo},
-			{"rollup-mixed-ar-verify-11", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictGatePass},
+			{"rollup-mixed-ar-code-11", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictGo},
+			{"rollup-mixed-ar-verify-11", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictGatePass},
 		} {
-			var t foremanv1alpha1.AgenticTask
+			var t meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: u.name}, &t)).To(Succeed())
 			patch := client.MergeFrom(t.DeepCopy())
 			t.Status.Phase = u.phase
@@ -820,11 +820,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 
 		// Issue 22: ALREADY-RESOLVED. Same cascade-fail isolation as above —
 		// delete the verify-22 child so the rollup sees only the resolved coder.
-		var ar foremanv1alpha1.AgenticTask
+		var ar meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "rollup-mixed-ar-code-22"}, &ar)).To(Succeed())
 		patch := client.MergeFrom(ar.DeepCopy())
-		ar.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		ar.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+		ar.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		ar.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 		ar.Status.Result = resultRaw("ALREADY-RESOLVED", "", "already done", "")
 		Expect(k8sClient.Status().Patch(ctx, &ar, patch)).To(Succeed())
 		// Cascade-skip the verify child (production path).
@@ -833,9 +833,9 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhaseCompleted))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseCompleted))
 		Expect(fresh.Status.SucceededTasks).To(Equal(int32(2)))
 		Expect(fresh.Status.IncompleteTasks).To(Equal(int32(0)))
 		completed := findCondition(fresh.Status.Conditions, conditionTypeCompleted)
@@ -857,7 +857,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 			Recorder:            recorder,
 			AllowCloudProviders: true,
 		}
-		wl := newWorkload("rollup-ar-events", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("rollup-ar-events", meithealv1alpha1.WorkloadSpec{
 			Intent:           "already-resolved events",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{777},
@@ -873,11 +873,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := rec.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var c foremanv1alpha1.AgenticTask
+		var c meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "rollup-ar-events-code-777"}, &c)).To(Succeed())
 		patch := client.MergeFrom(c.DeepCopy())
-		c.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		c.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+		c.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		c.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 		c.Status.Result = resultRaw("ALREADY-RESOLVED", "", "already done", "abc123def")
 		Expect(k8sClient.Status().Patch(ctx, &c, patch)).To(Succeed())
 		// Cascade-skip the verify child (production path: AgenticTaskReconciler
@@ -903,7 +903,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 			Recorder:            recorder,
 			AllowCloudProviders: true,
 		}
-		wl := newWorkload("rollup-ar-events-no-rb", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("rollup-ar-events-no-rb", meithealv1alpha1.WorkloadSpec{
 			Intent:           "already-resolved events no resolvedBy",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{888},
@@ -919,11 +919,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := rec.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var c foremanv1alpha1.AgenticTask
+		var c meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "rollup-ar-events-no-rb-code-888"}, &c)).To(Succeed())
 		patch := client.MergeFrom(c.DeepCopy())
-		c.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		c.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+		c.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		c.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 		c.Status.Result = resultRaw("ALREADY-RESOLVED", "", "already done", "")
 		Expect(k8sClient.Status().Patch(ctx, &c, patch)).To(Succeed())
 		markVerifySkipped("rollup-ar-events-no-rb", 888)
@@ -952,7 +952,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 			Recorder:            recorder,
 			AllowCloudProviders: true,
 		}
-		wl := newWorkload("rollup-ar-multi", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("rollup-ar-multi", meithealv1alpha1.WorkloadSpec{
 			Intent:           "already-resolved multi-issue event pairing",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{42, 17, 99},
@@ -973,11 +973,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// matching issue number. Cascade-skip the verify children so
 		// the rollup sees them as Skipped (the production path).
 		markAR := func(issue int32, resolvedBy string) {
-			var t foremanv1alpha1.AgenticTask
+			var t meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: fmt.Sprintf("rollup-ar-multi-code-%d", issue)}, &t)).To(Succeed())
 			patch := client.MergeFrom(t.DeepCopy())
-			t.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-			t.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+			t.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+			t.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 			t.Status.Result = resultRaw("ALREADY-RESOLVED", "", "already done", resolvedBy)
 			Expect(k8sClient.Status().Patch(ctx, &t, patch)).To(Succeed())
 			markVerifySkipped("rollup-ar-multi", issue)
@@ -1022,7 +1022,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// coder is counted in the alreadyResolved bucket, which the
 		// all-on-target case checks for before it would otherwise report
 		// "0/N on-target" for the Skipped verify child.
-		wl := newWorkload("rollup-skip-verify", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("rollup-skip-verify", meithealv1alpha1.WorkloadSpec{
 			Intent:           "verify cascade-skipped because code ALREADY-RESOLVED",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{152},
@@ -1038,11 +1038,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var c foremanv1alpha1.AgenticTask
+		var c meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "rollup-skip-verify-code-152"}, &c)).To(Succeed())
 		patch := client.MergeFrom(c.DeepCopy())
-		c.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		c.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+		c.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		c.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 		c.Status.Result = resultRaw("ALREADY-RESOLVED", "", "already done", "abc123def")
 		Expect(k8sClient.Status().Patch(ctx, &c, patch)).To(Succeed())
 		markVerifySkipped("rollup-skip-verify", 152)
@@ -1050,9 +1050,9 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhaseCompleted))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseCompleted))
 		Expect(fresh.Status.FailedTasks).To(Equal(int32(0)))
 		completed := findCondition(fresh.Status.Conditions, conditionTypeCompleted)
 		Expect(completed).NotTo(BeNil())
@@ -1067,7 +1067,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// `make` checks; REQUEST-CHANGES from any reviewer MUST
 		// drive the Workload to Failed even when the gate said the
 		// commit was technically buildable.
-		wl := newWorkload("reviewer-blocks", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("reviewer-blocks", meithealv1alpha1.WorkloadSpec{
 			Intent:           "reviewer NO-GO blocks workload completion",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{1234},
@@ -1094,15 +1094,15 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// designed to catch).
 		updates := []struct {
 			name    string
-			phase   foremanv1alpha1.AgenticTaskPhase
-			verdict foremanv1alpha1.AgenticTaskVerdict
+			phase   meithealv1alpha1.AgenticTaskPhase
+			verdict meithealv1alpha1.AgenticTaskVerdict
 		}{
-			{"reviewer-blocks-code-1234", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictGo},
-			{"reviewer-blocks-verify-1234", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictGatePass},
-			{"reviewer-blocks-review-1234-0", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictNoGo},
+			{"reviewer-blocks-code-1234", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictGo},
+			{"reviewer-blocks-verify-1234", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictGatePass},
+			{"reviewer-blocks-review-1234-0", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictNoGo},
 		}
 		for _, u := range updates {
-			var t foremanv1alpha1.AgenticTask
+			var t meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: u.name}, &t)).To(Succeed())
 			patch := client.MergeFrom(t.DeepCopy())
 			t.Status.Phase = u.phase
@@ -1113,11 +1113,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
 		// Two on-target (coder GO, verify GATE-PASS) + one
 		// reviewer NO-GO = workload Failed with one IncompleteTask.
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhaseFailed),
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseFailed),
 			"reviewer NO-GO must drive Workload to Failed even when gate passed")
 		Expect(fresh.Status.SucceededTasks).To(Equal(int32(2)))
 		Expect(fresh.Status.IncompleteTasks).To(Equal(int32(1)))
@@ -1128,7 +1128,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 	})
 
 	It("emits escalation reviewers only after a base reviewer NO-GO, advisory verdict (#546)", func() {
-		wl := newWorkload("escalation-happy", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("escalation-happy", meithealv1alpha1.WorkloadSpec{
 			Intent:           "escalate on base NO-GO",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{641},
@@ -1153,22 +1153,22 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// First reconcile plans the base pipeline only: no escalate task.
 		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
 		Expect(fresh.Status.Tasks).To(HaveLen(3)) // code + verify + review
 
 		// Drive the base pipeline to a reviewer NO-GO.
 		updates := []struct {
 			name    string
-			phase   foremanv1alpha1.AgenticTaskPhase
-			verdict foremanv1alpha1.AgenticTaskVerdict
+			phase   meithealv1alpha1.AgenticTaskPhase
+			verdict meithealv1alpha1.AgenticTaskVerdict
 		}{
-			{"escalation-happy-code-641", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictGo},
-			{"escalation-happy-verify-641", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictGatePass},
-			{"escalation-happy-review-641-0", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictNoGo},
+			{"escalation-happy-code-641", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictGo},
+			{"escalation-happy-verify-641", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictGatePass},
+			{"escalation-happy-review-641-0", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictNoGo},
 		}
 		for _, u := range updates {
-			var task foremanv1alpha1.AgenticTask
+			var task meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: u.name}, &task)).To(Succeed())
 			patch := client.MergeFrom(task.DeepCopy())
 			task.Status.Phase = u.phase
@@ -1181,19 +1181,19 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var esc foremanv1alpha1.AgenticTask
+		var esc meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "escalation-happy-escalate-641-0"}, &esc)).To(Succeed())
-		Expect(esc.Spec.Kind).To(Equal(foremanv1alpha1.AgenticTaskKindReview))
+		Expect(esc.Spec.Kind).To(Equal(meithealv1alpha1.AgenticTaskKindReview))
 		Expect(esc.Spec.AgentRef.Name).To(Equal("big-reviewer"))
 		Expect(esc.Spec.Payload.Issue).To(Equal(int32(641)))
-		Expect(esc.Spec.Payload.Branch).To(Equal("foreman/escalation-happy/issue-641"))
+		Expect(esc.Spec.Payload.Branch).To(Equal("meitheal/escalation-happy/issue-641"))
 		Expect(esc.Spec.DependsOn).To(BeEmpty())
 		Expect(esc.Labels[labelStep]).To(Equal("escalate-641-0"))
 		Expect(esc.OwnerReferences).To(HaveLen(1))
 		Expect(esc.OwnerReferences[0].Name).To(Equal("escalation-happy"))
 
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhaseDispatched),
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseDispatched),
 			"workload must stay in flight while the escalation reviewer runs")
 		Expect(fresh.Status.Tasks).To(HaveLen(4))
 		escCond := findCondition(fresh.Status.Conditions, conditionTypeEscalationTriggered)
@@ -1204,24 +1204,24 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		// A third reconcile must NOT double-emit (idempotency).
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
-		var tasks foremanv1alpha1.AgenticTaskList
+		var tasks meithealv1alpha1.AgenticTaskList
 		Expect(k8sClient.List(ctx, &tasks, client.InNamespace("default"),
 			client.MatchingLabels{labelWorkload: "escalation-happy"})).To(Succeed())
 		Expect(tasks.Items).To(HaveLen(4))
 
 		// Escalation GO is advisory in v0.2: the base NO-GO still rolls
 		// the Workload to Failed for human review.
-		var escTask foremanv1alpha1.AgenticTask
+		var escTask meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "escalation-happy-escalate-641-0"}, &escTask)).To(Succeed())
 		patch := client.MergeFrom(escTask.DeepCopy())
-		escTask.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		escTask.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+		escTask.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		escTask.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 		Expect(k8sClient.Status().Patch(ctx, &escTask, patch)).To(Succeed())
 
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhaseFailed),
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseFailed),
 			"advisory: escalation GO does not clear the base NO-GO in v0.2")
 		Expect(fresh.Status.SucceededTasks).To(Equal(int32(3)))  // code, verify, escalate
 		Expect(fresh.Status.IncompleteTasks).To(Equal(int32(1))) // base reviewer NO-GO
@@ -1231,23 +1231,23 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		reconciler.AllowCloudProviders = false
 		DeferCleanup(func() { reconciler.AllowCloudProviders = true })
 
-		Expect(k8sClient.Create(ctx, &foremanv1alpha1.Agent{
+		Expect(k8sClient.Create(ctx, &meithealv1alpha1.Agent{
 			ObjectMeta: metav1.ObjectMeta{Name: "esc-local-base", Namespace: "default"},
-			Spec: foremanv1alpha1.AgentSpec{
-				Role:                foremanv1alpha1.AgentRoleReviewer,
-				Provider:            foremanv1alpha1.AgentProviderLocal,
+			Spec: meithealv1alpha1.AgentSpec{
+				Role:                meithealv1alpha1.AgentRoleReviewer,
+				Provider:            meithealv1alpha1.AgentProviderLocal,
 				InferenceServiceRef: corev1.LocalObjectReference{Name: "test-svc"},
 				SystemPrompt:        "you are a reviewer",
 				Tools:               []string{"submit_result"},
 				MaxTurns:            5,
 			},
 		})).To(Succeed())
-		Expect(k8sClient.Create(ctx, &foremanv1alpha1.Agent{
+		Expect(k8sClient.Create(ctx, &meithealv1alpha1.Agent{
 			ObjectMeta: metav1.ObjectMeta{Name: "esc-cloud-big", Namespace: "default"},
-			Spec: foremanv1alpha1.AgentSpec{
-				Role:     foremanv1alpha1.AgentRoleReviewer,
-				Provider: foremanv1alpha1.AgentProviderCloudProxy,
-				ProviderConfig: &foremanv1alpha1.ProviderConfig{
+			Spec: meithealv1alpha1.AgentSpec{
+				Role:     meithealv1alpha1.AgentRoleReviewer,
+				Provider: meithealv1alpha1.AgentProviderCloudProxy,
+				ProviderConfig: &meithealv1alpha1.ProviderConfig{
 					BaseURL: "http://foundation-router.lan:4000/v1",
 					Model:   "claude-sonnet-4-6",
 				},
@@ -1257,11 +1257,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 			},
 		})).To(Succeed())
 		DeferCleanup(func() {
-			_ = k8sClient.Delete(ctx, &foremanv1alpha1.Agent{ObjectMeta: metav1.ObjectMeta{Name: "esc-local-base", Namespace: "default"}})
-			_ = k8sClient.Delete(ctx, &foremanv1alpha1.Agent{ObjectMeta: metav1.ObjectMeta{Name: "esc-cloud-big", Namespace: "default"}})
+			_ = k8sClient.Delete(ctx, &meithealv1alpha1.Agent{ObjectMeta: metav1.ObjectMeta{Name: "esc-local-base", Namespace: "default"}})
+			_ = k8sClient.Delete(ctx, &meithealv1alpha1.Agent{ObjectMeta: metav1.ObjectMeta{Name: "esc-cloud-big", Namespace: "default"}})
 		})
 
-		wl := newWorkload("escalation-gated", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("escalation-gated", meithealv1alpha1.WorkloadSpec{
 			Intent:           "cloud escalation suppressed by operator gate",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{642},
@@ -1288,17 +1288,17 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 
 		updates := []struct {
 			name    string
-			verdict foremanv1alpha1.AgenticTaskVerdict
+			verdict meithealv1alpha1.AgenticTaskVerdict
 		}{
-			{"escalation-gated-code-642", foremanv1alpha1.AgenticTaskVerdictGo},
-			{"escalation-gated-verify-642", foremanv1alpha1.AgenticTaskVerdictGatePass},
-			{"escalation-gated-review-642-0", foremanv1alpha1.AgenticTaskVerdictNoGo},
+			{"escalation-gated-code-642", meithealv1alpha1.AgenticTaskVerdictGo},
+			{"escalation-gated-verify-642", meithealv1alpha1.AgenticTaskVerdictGatePass},
+			{"escalation-gated-review-642-0", meithealv1alpha1.AgenticTaskVerdictNoGo},
 		}
 		for _, u := range updates {
-			var task foremanv1alpha1.AgenticTask
+			var task meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: u.name}, &task)).To(Succeed())
 			patch := client.MergeFrom(task.DeepCopy())
-			task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
+			task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
 			task.Status.Verdict = u.verdict
 			Expect(k8sClient.Status().Patch(ctx, &task, patch)).To(Succeed())
 		}
@@ -1307,11 +1307,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// The cloud escalation reviewer must NOT have been created.
-		var escTask foremanv1alpha1.AgenticTask
+		var escTask meithealv1alpha1.AgenticTask
 		err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "escalation-gated-escalate-642-0"}, &escTask)
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(), "cloud escalation task must be suppressed")
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
 		cond := findCondition(fresh.Status.Conditions, conditionTypeCloudReviewersSuppressed)
 		Expect(cond).NotTo(BeNil())
@@ -1325,7 +1325,7 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 	})
 
 	It("suppresses escalation when MaxTasks leaves no room and reports it (#546)", func() {
-		wl := newWorkload("escalation-capped", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("escalation-capped", meithealv1alpha1.WorkloadSpec{
 			Intent:           "maxTasks blocks escalation",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{643},
@@ -1353,17 +1353,17 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 
 		updates := []struct {
 			name    string
-			verdict foremanv1alpha1.AgenticTaskVerdict
+			verdict meithealv1alpha1.AgenticTaskVerdict
 		}{
-			{"escalation-capped-code-643", foremanv1alpha1.AgenticTaskVerdictGo},
-			{"escalation-capped-verify-643", foremanv1alpha1.AgenticTaskVerdictGatePass},
-			{"escalation-capped-review-643-0", foremanv1alpha1.AgenticTaskVerdictNoGo},
+			{"escalation-capped-code-643", meithealv1alpha1.AgenticTaskVerdictGo},
+			{"escalation-capped-verify-643", meithealv1alpha1.AgenticTaskVerdictGatePass},
+			{"escalation-capped-review-643-0", meithealv1alpha1.AgenticTaskVerdictNoGo},
 		}
 		for _, u := range updates {
-			var task foremanv1alpha1.AgenticTask
+			var task meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: u.name}, &task)).To(Succeed())
 			patch := client.MergeFrom(task.DeepCopy())
-			task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
+			task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
 			task.Status.Verdict = u.verdict
 			Expect(k8sClient.Status().Patch(ctx, &task, patch)).To(Succeed())
 		}
@@ -1371,22 +1371,22 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var escTask foremanv1alpha1.AgenticTask
+		var escTask meithealv1alpha1.AgenticTask
 		err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "escalation-capped-escalate-643-0"}, &escTask)
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(), "MaxTasks must suppress escalation emission")
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
 		trunc := findCondition(fresh.Status.Conditions, conditionTypeTruncated)
 		Expect(trunc).NotTo(BeNil())
 		Expect(trunc.Status).To(Equal(metav1.ConditionTrue))
 		Expect(trunc.Reason).To(Equal("MaxTasksEscalationCap"))
 		// And the workload still terminates Failed on the base NO-GO.
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.WorkloadPhaseFailed))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseFailed))
 	})
 
 	It("flags escalation refs without base reviewers via EscalationTriggered=False (#546)", func() {
-		wl := newWorkload("escalation-nobase", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("escalation-nobase", meithealv1alpha1.WorkloadSpec{
 			Intent:           "escalation without base tier",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{644},
@@ -1408,11 +1408,11 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(wl)})
 		Expect(err).NotTo(HaveOccurred())
 
-		var escTask foremanv1alpha1.AgenticTask
+		var escTask meithealv1alpha1.AgenticTask
 		err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "escalation-nobase-escalate-644-0"}, &escTask)
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(), "no escalation may be emitted without a base reviewer tier")
 
-		var fresh foremanv1alpha1.Workload
+		var fresh meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
 		cond := findCondition(fresh.Status.Conditions, conditionTypeEscalationTriggered)
 		Expect(cond).NotTo(BeNil())
@@ -1423,8 +1423,8 @@ var _ = Describe("WorkloadReconciler (M6 stub planner)", func() {
 
 // newWorkload builds a Workload with the test-conventional shape. Lets the
 // individual `It` blocks stay focused on the spec under test.
-func newWorkload(name string, spec foremanv1alpha1.WorkloadSpec) *foremanv1alpha1.Workload {
-	return &foremanv1alpha1.Workload{
+func newWorkload(name string, spec meithealv1alpha1.WorkloadSpec) *meithealv1alpha1.Workload {
+	return &meithealv1alpha1.Workload{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
 		Spec:       spec,
 	}
@@ -1438,8 +1438,8 @@ func newWorkload(name string, spec foremanv1alpha1.WorkloadSpec) *foremanv1alpha
 // removed explicitly between tests. Uses the suite-level ctx so
 // DeferCleanup callbacks (which forbid re-entering DeferCleanup) can
 // invoke us directly.
-func cleanupChildren(w *foremanv1alpha1.Workload) {
-	var list foremanv1alpha1.AgenticTaskList
+func cleanupChildren(w *meithealv1alpha1.Workload) {
+	var list meithealv1alpha1.AgenticTaskList
 	if err := k8sClient.List(ctx, &list,
 		client.InNamespace(w.Namespace),
 		client.MatchingLabels{labelWorkload: w.Name},
@@ -1462,13 +1462,13 @@ func cleanupChildren(w *foremanv1alpha1.Workload) {
 // envtest setup.
 func markVerifySkipped(workloadName string, issue int32) {
 	GinkgoHelper()
-	var v foremanv1alpha1.AgenticTask
+	var v meithealv1alpha1.AgenticTask
 	Expect(k8sClient.Get(ctx, types.NamespacedName{
 		Namespace: "default",
 		Name:      fmt.Sprintf("%s-verify-%d", workloadName, issue),
 	}, &v)).To(Succeed())
 	patch := client.MergeFrom(v.DeepCopy())
-	v.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-	v.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictSkipped
+	v.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+	v.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictSkipped
 	Expect(k8sClient.Status().Patch(ctx, &v, patch)).To(Succeed())
 }

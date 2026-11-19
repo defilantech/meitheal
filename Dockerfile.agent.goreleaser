@@ -1,8 +1,8 @@
-# Dockerfile for GoReleaser builds of the foreman-agent. dockers_v2 stages
+# Dockerfile for GoReleaser builds of the meitheal-agent. dockers_v2 stages
 # the pre-built binary per platform under $TARGETPLATFORM in the build
 # context.
 #
-# The foreman-agent shells out to `git` for clone / commit / push from
+# The meitheal-agent shells out to `git` for clone / commit / push from
 # its repo helpers, so the runtime image swaps distroless static for
 # alpine + git. nonroot uid 65532 stays.
 FROM alpine:3.24
@@ -19,10 +19,10 @@ RUN apk upgrade --no-cache \
     && addgroup -S -g 65532 nonroot \
     && adduser -S -u 65532 -G nonroot nonroot
 WORKDIR /
-COPY $TARGETPLATFORM/foreman-agent /foreman-agent
+COPY $TARGETPLATFORM/meitheal-agent /meitheal-agent
 # Third-party license and NOTICE files (#2564).
 COPY LICENSE /licenses/LICENSE
 COPY third_party_licenses /licenses/third_party_licenses
 USER 65532:65532
 
-ENTRYPOINT ["/foreman-agent"]
+ENTRYPOINT ["/meitheal-agent"]

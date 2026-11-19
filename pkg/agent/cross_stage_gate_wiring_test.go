@@ -27,8 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
 
@@ -53,27 +53,27 @@ func TestCrossStageContradiction_GatePassEmptyBranch(t *testing.T) {
 	// Gate Agent: no inferenceServiceRef, no systemPrompt, tools list names
 	// the deterministic worker tool first. The executor dispatches that
 	// tool directly without spinning up the OAI loop.
-	agent := &foremanv1alpha1.Agent{
+	agent := &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "gate", Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:               foremanv1alpha1.AgentRoleVerifier,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:               meithealv1alpha1.AgentRoleVerifier,
 			Tools:              []string{"run_gate_job"},
-			RequiredCapability: foremanv1alpha1.RequiredCapability{Roles: []string{"verifier"}},
+			RequiredCapability: meithealv1alpha1.RequiredCapability{Roles: []string{"verifier"}},
 		},
 	}
 	// Verify task that ADOPTS a coder branch the coder never pushed: the
 	// branch is absent on the remote, so the executor falls back to the
 	// seed commit identical to its base (an empty branch).
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gate", Namespace: "default", UID: types.UID("gate-uid"),
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindVerify,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindVerify,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  1674,
-				Branch: "foreman/review-1",
+				Branch: "meitheal/review-1",
 			},
 			AgentRef: &corev1.LocalObjectReference{Name: agent.Name},
 		},
@@ -83,27 +83,27 @@ func TestCrossStageContradiction_GatePassEmptyBranch(t *testing.T) {
 		WithObjects(agent, task).Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			// Gate tool reports GATE-PASS on the empty branch.
 			"run_gate_job": {
 				Terminal: true,
 				Verdict:  "GATE-PASS",
 				Summary:  "all checks green",
-				Output:   map[string]any{"jobName": "foreman-gate-fake-001"},
+				Output:   map[string]any{"jobName": "meitheal-gate-fake-001"},
 			},
 		},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:             c,
 		WorkspaceRoot:      filepath.Join(root, "ws"),
 		GitRemoteURL:       bare,
 		UpstreamURLForRepo: func(string) string { return bare },
-		CommitAuthor:       repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:    repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:       repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:    repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return reg, nil
 		},
 		AuthFactory: fakeAuth(t),
@@ -113,7 +113,7 @@ func TestCrossStageContradiction_GatePassEmptyBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdict("GATE-PASS") {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdict("GATE-PASS") {
 		t.Fatalf("verdict: want GATE-PASS got %s", res.Verdict)
 	}
 

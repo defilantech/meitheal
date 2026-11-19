@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 type fakeScanJobRunner struct {
@@ -23,13 +23,13 @@ type fakeScanJobRunner struct {
 	gotBranch        string
 	gotCloneURL      string
 	gotUpstreamURL   string
-	gotScan          foremanv1alpha1.ResolvedScan
+	gotScan          meithealv1alpha1.ResolvedScan
 }
 
 func (f *fakeScanJobRunner) Run(
 	_ context.Context,
 	taskNamespace, taskName, repository, branch, cloneURL, upstreamURL string,
-	scan foremanv1alpha1.ResolvedScan,
+	scan meithealv1alpha1.ResolvedScan,
 ) (bool, bool, string) {
 	f.called = true
 	f.gotTaskNamespace = taskNamespace
@@ -46,14 +46,14 @@ func TestEvaluatePostPushScan(t *testing.T) {
 	t.Run("not declared: runner not called, verdict OK", func(t *testing.T) {
 		r := &fakeScanJobRunner{}
 		v, fb := evaluatePostPushScan(context.Background(), false, r,
-			foremanv1alpha1.ResolvedScan{}, "ns", "task", "repo", "br", "url", "up")
+			meithealv1alpha1.ResolvedScan{}, "ns", "task", "repo", "br", "url", "up")
 		if v != scanGateOK || fb != "" || r.called {
 			t.Fatalf("got verdict=%v fb=%q called=%v", v, fb, r.called)
 		}
 	})
 	t.Run("declared + nil runner: verdict OK", func(t *testing.T) {
 		v, fb := evaluatePostPushScan(context.Background(), true, nil,
-			foremanv1alpha1.ResolvedScan{}, "ns", "task", "repo", "br", "url", "up")
+			meithealv1alpha1.ResolvedScan{}, "ns", "task", "repo", "br", "url", "up")
 		if v != scanGateOK || fb != "" {
 			t.Fatalf("got verdict=%v fb=%q", v, fb)
 		}
@@ -61,7 +61,7 @@ func TestEvaluatePostPushScan(t *testing.T) {
 	t.Run("declared + pass: verdict OK", func(t *testing.T) {
 		r := &fakeScanJobRunner{pass: true, ran: true}
 		v, _ := evaluatePostPushScan(context.Background(), true, r,
-			foremanv1alpha1.ResolvedScan{}, "ns", "task", "repo", "br", "url", "up")
+			meithealv1alpha1.ResolvedScan{}, "ns", "task", "repo", "br", "url", "up")
 		if v != scanGateOK || !r.called {
 			t.Fatalf("got verdict=%v called=%v", v, r.called)
 		}
@@ -69,7 +69,7 @@ func TestEvaluatePostPushScan(t *testing.T) {
 	t.Run("declared + ran + fail: verdict Failed with feedback verbatim", func(t *testing.T) {
 		r := &fakeScanJobRunner{pass: false, ran: true, feedback: "trivy: 2 CRITICAL findings"}
 		v, fb := evaluatePostPushScan(context.Background(), true, r,
-			foremanv1alpha1.ResolvedScan{}, "ns", "task", "repo", "br", "url", "up")
+			meithealv1alpha1.ResolvedScan{}, "ns", "task", "repo", "br", "url", "up")
 		if v != scanGateFailed || fb != "trivy: 2 CRITICAL findings" {
 			t.Fatalf("got verdict=%v fb=%q", v, fb)
 		}
@@ -77,24 +77,24 @@ func TestEvaluatePostPushScan(t *testing.T) {
 	t.Run("declared + could-not-run: verdict Unverified (caller decides by attempt)", func(t *testing.T) {
 		r := &fakeScanJobRunner{pass: false, ran: false, feedback: "infra"}
 		v, _ := evaluatePostPushScan(context.Background(), true, r,
-			foremanv1alpha1.ResolvedScan{}, "ns", "task", "repo", "br", "url", "up")
+			meithealv1alpha1.ResolvedScan{}, "ns", "task", "repo", "br", "url", "up")
 		if v != scanGateUnverified {
 			t.Fatalf("could-not-run should be Unverified; got verdict=%v", v)
 		}
 	})
 	t.Run("task identity + resolved scan config are threaded to the runner (#893/#1731)", func(t *testing.T) {
 		r := &fakeScanJobRunner{pass: true, ran: true}
-		gate := foremanv1alpha1.ScanGate{
+		gate := meithealv1alpha1.ScanGate{
 			Images:       []string{"controller"},
 			Severity:     []string{"HIGH"},
 			BuilderImage: "mirror/golang:1.26",
 		}
 		scan := gate.Resolve()
 		evaluatePostPushScan(context.Background(), true, r, scan,
-			"foreman-system", "fix-issue-893", "defilantech/llmkube", "feat/x",
+			"meitheal-system", "fix-issue-893", "defilantech/llmkube", "feat/x",
 			"https://github.com/fork/llmkube.git", "https://github.com/defilantech/llmkube.git")
-		if r.gotTaskNamespace != "foreman-system" || r.gotTaskName != "fix-issue-893" {
-			t.Fatalf("runner got task identity (%q,%q), want (foreman-system,fix-issue-893)",
+		if r.gotTaskNamespace != "meitheal-system" || r.gotTaskName != "fix-issue-893" {
+			t.Fatalf("runner got task identity (%q,%q), want (meitheal-system,fix-issue-893)",
 				r.gotTaskNamespace, r.gotTaskName)
 		}
 		if r.gotRepository != "defilantech/llmkube" || r.gotBranch != "feat/x" ||
@@ -122,7 +122,7 @@ func TestEffectiveMaxScanIterations(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			a := &foremanv1alpha1.Agent{}
+			a := &meithealv1alpha1.Agent{}
 			a.Spec.MaxScanIterations = tc.in
 			if got := effectiveMaxScanIterations(a); got != tc.want {
 				t.Fatalf("got %d want %d", got, tc.want)

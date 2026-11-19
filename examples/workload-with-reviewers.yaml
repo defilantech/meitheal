@@ -1,4 +1,4 @@
-# Foreman v0.2: three-stage pipeline (code + verify + parallel reviewers).
+# Meitheal v0.2: three-stage pipeline (code + verify + parallel reviewers).
 #
 # Extends the workload-fix-small-bugs.yaml shortcut with the v0.2
 # ReviewerAgentRefs slice. For each issue N the WorkloadReconciler
@@ -45,14 +45,14 @@
 # The example below references one shared Agent CR three times for
 # brevity; flesh out three distinct Agent CRs with strategy-varied
 # system prompts when you're ready to run the multi-strategy demo.
-apiVersion: foreman.llmkube.dev/v1alpha1
+apiVersion: meitheal.dev/v1alpha1
 kind: Workload
 metadata:
   name: small-bugs-batch-with-reviewers
   namespace: default
   labels:
-    app.kubernetes.io/part-of: foreman
-    foreman.llmkube.dev/milestone: v0.2
+    app.kubernetes.io/part-of: meitheal
+    meitheal.dev/milestone: v0.2
 spec:
   intent: "Fix small open issues and pass a 3-reviewer panel"
   repo: defilantech/LLMKube
@@ -71,7 +71,7 @@ spec:
     # - name: qwen36-35b-a3b-reviewer-falsification  # v0.2.x local variant
     # - name: qwen36-35b-a3b-reviewer-thinking       # v0.2.x local variant
     # v0.2 cloud reviewer for second opinion. Subject to
-    # foreman.allowCloudProviders (chart) + spec.allowCloudReviewers
+    # meitheal.allowCloudProviders (chart) + spec.allowCloudReviewers
     # (below) sovereignty gates. Comment out for air-gap-only runs.
     - name: claude-sonnet-cloud-reviewer
 

@@ -30,10 +30,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
-// The M2 AgenticTaskReconciler is the foreman v0.1 scheduler. Its
+// The M2 AgenticTaskReconciler is the meitheal v0.1 scheduler. Its
 // contract:
 //
 //   empty status.phase           -> Pending (initial normalization)
@@ -74,28 +74,28 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 		Expect(fresh.Status.AssignedNode).To(BeEmpty())
 	})
 
 	It("schedules a Pending task to the first-fit Ready FleetNode", func() {
 		task := newTask("schedule-target")
-		task.Spec.RequiredCapability = foremanv1alpha1.RequiredCapability{
-			Accelerator: foremanv1alpha1.AgenticTaskAccelerator("metal"),
+		task.Spec.RequiredCapability = meithealv1alpha1.RequiredCapability{
+			Accelerator: meithealv1alpha1.AgenticTaskAccelerator("metal"),
 			MinRAMGB:    32,
 		}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
 
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		node := newFleetNode("schedule-target-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator:    foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator:    meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:     128,
 			AvailableRAMGB: 96,
 		})
@@ -103,30 +103,30 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(fresh.Status.AssignedNode).To(Equal(node.Name))
 	})
 
 	It("requeues without mutating status when no FleetNode satisfies the capability", func() {
 		task := newTask("no-fit")
-		task.Spec.RequiredCapability = foremanv1alpha1.RequiredCapability{
-			Accelerator: foremanv1alpha1.AgenticTaskAccelerator("metal"),
+		task.Spec.RequiredCapability = meithealv1alpha1.RequiredCapability{
+			Accelerator: meithealv1alpha1.AgenticTaskAccelerator("metal"),
 			MinRAMGB:    256, // bigger than any node will advertise
 		}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
 
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		res, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.RequeueAfter).To(BeNumerically(">", time.Duration(0)))
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 		Expect(fresh.Status.AssignedNode).To(BeEmpty())
 	})
 
@@ -134,21 +134,21 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		dep := newTask("cascade-dep")
 		Expect(k8sClient.Create(ctx, dep)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, dep) })
-		setPhase(dep, foremanv1alpha1.AgenticTaskPhaseFailed)
+		setPhase(dep, meithealv1alpha1.AgenticTaskPhaseFailed)
 
 		task := newTask("cascade-target")
 		task.Spec.DependsOn = []string{dep.Name}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseFailed))
-		Expect(fresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictIncomplete))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseFailed))
+		Expect(fresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictIncomplete))
 
 		failedCond := findCondition(fresh.Status.Conditions, "Failed")
 		Expect(failedCond).NotTo(BeNil())
@@ -172,9 +172,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		// Mark the dep as ALREADY-RESOLVED via Phase=Succeeded +
 		// Verdict=NO-GO + Status.Result envelope. The cascade path
 		// inspects all three (via isAlreadyResolvedCoder).
-		setPhase(dep, foremanv1alpha1.AgenticTaskPhaseSucceeded)
+		setPhase(dep, meithealv1alpha1.AgenticTaskPhaseSucceeded)
 		patch := client.MergeFrom(dep.DeepCopy())
-		dep.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+		dep.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 		dep.Status.Result = &runtime.RawExtension{
 			Raw: []byte(`{"summary":"already done","extra":{"outcome":"ALREADY-RESOLVED","resolvedBy":"sha-deadbeef"}}`),
 		}
@@ -184,15 +184,15 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		target.Spec.DependsOn = []string{dep.Name}
 		Expect(k8sClient.Create(ctx, target)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, target) })
-		setPhase(target, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(target, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(target))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(target), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseSucceeded))
-		Expect(fresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictSkipped))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseSucceeded))
+		Expect(fresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictSkipped))
 		Expect(fresh.Status.FinishedAt).NotTo(BeNil())
 
 		skippedCond := findCondition(fresh.Status.Conditions, "Skipped")
@@ -220,9 +220,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		code := newTask("transitive-code")
 		Expect(k8sClient.Create(ctx, code)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, code) })
-		setPhase(code, foremanv1alpha1.AgenticTaskPhaseSucceeded)
+		setPhase(code, meithealv1alpha1.AgenticTaskPhaseSucceeded)
 		patch := client.MergeFrom(code.DeepCopy())
-		code.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+		code.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 		code.Status.Result = &runtime.RawExtension{
 			Raw: []byte(`{"summary":"already done","extra":{"outcome":"ALREADY-RESOLVED","resolvedBy":"sha-deadbeef"}}`),
 		}
@@ -233,9 +233,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		verify.Spec.DependsOn = []string{code.Name}
 		Expect(k8sClient.Create(ctx, verify)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, verify) })
-		setPhase(verify, foremanv1alpha1.AgenticTaskPhaseSucceeded)
+		setPhase(verify, meithealv1alpha1.AgenticTaskPhaseSucceeded)
 		verifyPatch := client.MergeFrom(verify.DeepCopy())
-		verify.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictSkipped
+		verify.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictSkipped
 		Expect(k8sClient.Status().Patch(ctx, verify, verifyPatch)).To(Succeed())
 
 		// review: depends on verify, which is Skipped. Must be
@@ -244,15 +244,15 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		review.Spec.DependsOn = []string{verify.Name}
 		Expect(k8sClient.Create(ctx, review)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, review) })
-		setPhase(review, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(review, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(review))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(review), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseSucceeded))
-		Expect(fresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictSkipped))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseSucceeded))
+		Expect(fresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictSkipped))
 
 		skippedCond := findCondition(fresh.Status.Conditions, "Skipped")
 		Expect(skippedCond).NotTo(BeNil())
@@ -286,9 +286,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		// hasCrossStageContradiction / coderCrossStageContradictions. The dep's
 		// own verdict/phase are left unchanged — #1686 only blocks dependents,
 		// never demotes the contradicting task.
-		setPhase(dep, foremanv1alpha1.AgenticTaskPhaseSucceeded)
+		setPhase(dep, meithealv1alpha1.AgenticTaskPhaseSucceeded)
 		patch := client.MergeFrom(dep.DeepCopy())
-		dep.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+		dep.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 		dep.Status.Result = &runtime.RawExtension{
 			Raw: []byte(`{"summary":"staged","extra":{"crossStageContradictions":["gate: GATE-PASS on an empty branch (checks passed trivially)"]}}`),
 		}
@@ -298,15 +298,15 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		target.Spec.DependsOn = []string{dep.Name}
 		Expect(k8sClient.Create(ctx, target)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, target) })
-		setPhase(target, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(target, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(target))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(target), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseSucceeded))
-		Expect(fresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictSkipped))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseSucceeded))
+		Expect(fresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictSkipped))
 		Expect(fresh.Status.FinishedAt).NotTo(BeNil())
 		// A contradiction must dispatch nothing — the dependent is skipped, not
 		// assigned to a node.
@@ -324,10 +324,10 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 
 		// The contradicting dependency's own verdict and phase are untouched:
 		// #1686 blocks dependents only, never demotes the contradicting task.
-		var depFresh foremanv1alpha1.AgenticTask
+		var depFresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(dep), &depFresh)).To(Succeed())
-		Expect(depFresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseSucceeded))
-		Expect(depFresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictGo))
+		Expect(depFresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseSucceeded))
+		Expect(depFresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictGo))
 	})
 
 	// Regression for defilantech/LLMKube#1686. When a dependency is BOTH
@@ -344,9 +344,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		// ALREADY-RESOLVED (Phase=Succeeded + Verdict=NO-GO +
 		// extra.outcome="ALREADY-RESOLVED") AND a contradiction in the same
 		// envelope. Both signals fire; the already-resolved check must win.
-		setPhase(dep, foremanv1alpha1.AgenticTaskPhaseSucceeded)
+		setPhase(dep, meithealv1alpha1.AgenticTaskPhaseSucceeded)
 		patch := client.MergeFrom(dep.DeepCopy())
-		dep.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+		dep.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 		dep.Status.Result = &runtime.RawExtension{
 			Raw: []byte(`{"summary":"already done","extra":{"outcome":"ALREADY-RESOLVED","resolvedBy":"sha-deadbeef","crossStageContradictions":["coder: claims edits but branch is empty"]}}`),
 		}
@@ -356,15 +356,15 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		target.Spec.DependsOn = []string{dep.Name}
 		Expect(k8sClient.Create(ctx, target)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, target) })
-		setPhase(target, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(target, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(target))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(target), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseSucceeded))
-		Expect(fresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictSkipped))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseSucceeded))
+		Expect(fresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictSkipped))
 		Expect(fresh.Status.AssignedNode).To(BeEmpty())
 
 		skippedCond := findCondition(fresh.Status.Conditions, "Skipped")
@@ -387,22 +387,22 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		task.Spec.DependsOn = []string{dep.Name}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		res, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.RequeueAfter).To(BeNumerically(">", time.Duration(0)))
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 		Expect(fresh.Status.AssignedNode).To(BeEmpty())
 	})
 
 	It("schedules a task using the referenced Agent's RequiredCapability", func() {
 		agent := newAgent("ref-coder")
-		agent.Spec.RequiredCapability = foremanv1alpha1.RequiredCapability{
-			Accelerator: foremanv1alpha1.AgenticTaskAccelerator("metal"),
+		agent.Spec.RequiredCapability = meithealv1alpha1.RequiredCapability{
+			Accelerator: meithealv1alpha1.AgenticTaskAccelerator("metal"),
 			MinRAMGB:    32,
 		}
 		Expect(k8sClient.Create(ctx, agent)).To(Succeed())
@@ -412,13 +412,13 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		task.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		node := newFleetNode("ref-target-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator:    foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator:    meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:     128,
 			AvailableRAMGB: 96,
 		})
@@ -426,9 +426,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(fresh.Status.AssignedNode).To(Equal(node.Name))
 	})
 
@@ -437,15 +437,15 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		task.Spec.AgentRef = &corev1.LocalObjectReference{Name: "does-not-exist"}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseFailed))
-		Expect(fresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictIncomplete))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseFailed))
+		Expect(fresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictIncomplete))
 		failedCond := findCondition(fresh.Status.Conditions, "Failed")
 		Expect(failedCond).NotTo(BeNil())
 		Expect(failedCond.Reason).To(Equal("AgentNotFound"))
@@ -458,8 +458,8 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		// locked M3 contract says AgentRef wins, so the task should
 		// schedule successfully despite the task's larger RAM ask.
 		agent := newAgent("override-coder")
-		agent.Spec.RequiredCapability = foremanv1alpha1.RequiredCapability{
-			Accelerator: foremanv1alpha1.AgenticTaskAccelerator("metal"),
+		agent.Spec.RequiredCapability = meithealv1alpha1.RequiredCapability{
+			Accelerator: meithealv1alpha1.AgenticTaskAccelerator("metal"),
 			MinRAMGB:    16,
 		}
 		Expect(k8sClient.Create(ctx, agent)).To(Succeed())
@@ -467,19 +467,19 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 
 		task := newTask("override-target")
 		task.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
-		task.Spec.RequiredCapability = foremanv1alpha1.RequiredCapability{
-			Accelerator: foremanv1alpha1.AgenticTaskAccelerator("metal"),
+		task.Spec.RequiredCapability = meithealv1alpha1.RequiredCapability{
+			Accelerator: meithealv1alpha1.AgenticTaskAccelerator("metal"),
 			MinRAMGB:    1024, // would not fit any test node
 		}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		node := newFleetNode("override-target-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator:    foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator:    meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:     32,
 			AvailableRAMGB: 24,
 		})
@@ -487,9 +487,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(fresh.Status.AssignedNode).To(Equal(node.Name))
 	})
 
@@ -501,8 +501,8 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		workerNode.Spec.Roles = []string{"worker"}
 		Expect(k8sClient.Create(ctx, workerNode)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, workerNode) })
-		setNodeReady(workerNode, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("cuda"),
+		setNodeReady(workerNode, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("cuda"),
 			TotalRAMGB:  64, AvailableRAMGB: 48,
 		})
 
@@ -510,25 +510,25 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		verifierNode.Spec.Roles = []string{"worker", "verifier"}
 		Expect(k8sClient.Create(ctx, verifierNode)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, verifierNode) })
-		setNodeReady(verifierNode, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("cuda"),
+		setNodeReady(verifierNode, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("cuda"),
 			TotalRAMGB:  64, AvailableRAMGB: 48,
 		})
 
 		task := newTask("roles-target")
-		task.Spec.RequiredCapability = foremanv1alpha1.RequiredCapability{
+		task.Spec.RequiredCapability = meithealv1alpha1.RequiredCapability{
 			Roles: []string{"verifier"},
 		}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(fresh.Status.AssignedNode).To(Equal(verifierNode.Name))
 	})
 
@@ -540,33 +540,33 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		metalNode := newFleetNode("metal-box")
 		Expect(k8sClient.Create(ctx, metalNode)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, metalNode) })
-		setNodeReady(metalNode, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(metalNode, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:  64, AvailableRAMGB: 48,
 		})
 
 		vulkanNode := newFleetNode("vulkan-box")
 		Expect(k8sClient.Create(ctx, vulkanNode)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, vulkanNode) })
-		setNodeReady(vulkanNode, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("vulkan"),
+		setNodeReady(vulkanNode, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("vulkan"),
 			TotalRAMGB:  128, AvailableRAMGB: 100,
 		})
 
 		task := newTask("vulkan-target")
-		task.Spec.RequiredCapability = foremanv1alpha1.RequiredCapability{
-			Accelerator: foremanv1alpha1.AgenticTaskAccelerator("vulkan"),
+		task.Spec.RequiredCapability = meithealv1alpha1.RequiredCapability{
+			Accelerator: meithealv1alpha1.AgenticTaskAccelerator("vulkan"),
 		}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(fresh.Status.AssignedNode).To(Equal(vulkanNode.Name))
 	})
 
@@ -578,40 +578,40 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		nodeA := newFleetNode("spread-a")
 		Expect(k8sClient.Create(ctx, nodeA)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, nodeA) })
-		setNodeReady(nodeA, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(nodeA, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 		nodeB := newFleetNode("spread-b")
 		Expect(k8sClient.Create(ctx, nodeB)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, nodeB) })
-		setNodeReady(nodeB, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(nodeB, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 
 		t1 := newTask("spread-t1")
 		Expect(k8sClient.Create(ctx, t1)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, t1) })
-		setPhase(t1, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(t1, meithealv1alpha1.AgenticTaskPhasePending)
 		t2 := newTask("spread-t2")
 		Expect(k8sClient.Create(ctx, t2)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, t2) })
-		setPhase(t2, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(t2, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(t1))
 		Expect(err).NotTo(HaveOccurred())
 		_, err = reconciler.Reconcile(ctx, reqFor(t2))
 		Expect(err).NotTo(HaveOccurred())
 
-		var f1, f2 foremanv1alpha1.AgenticTask
+		var f1, f2 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(t1), &f1)).To(Succeed())
 		Expect(k8sClient.Get(ctx, nn(t2), &f2)).To(Succeed())
-		Expect(f1.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
-		Expect(f2.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(f1.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(f2.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(f1.Status.AssignedNode).NotTo(BeEmpty())
 		Expect(f2.Status.AssignedNode).NotTo(BeEmpty())
 		Expect(f1.Status.AssignedNode).NotTo(Equal(f2.Status.AssignedNode))
 
-		var na, nb foremanv1alpha1.FleetNode
+		var na, nb meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: nodeA.Name}, &na)).To(Succeed())
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: nodeB.Name}, &nb)).To(Succeed())
 		Expect([]string{na.Status.CurrentTask, nb.Status.CurrentTask}).
@@ -624,8 +624,8 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		// not be claimed via Status.CurrentTask. The node stays free so an
 		// in-process task can still be dispatched to it while the Job runs.
 		agent := newAgent("job-coder")
-		agent.Spec.Execution = &foremanv1alpha1.ExecutionSpec{
-			Mode: foremanv1alpha1.ExecutionModeJob,
+		agent.Spec.Execution = &meithealv1alpha1.ExecutionSpec{
+			Mode: meithealv1alpha1.ExecutionModeJob,
 		}
 		Expect(k8sClient.Create(ctx, agent)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, agent) })
@@ -634,25 +634,25 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		task.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		node := newFleetNode("job-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(fresh.Status.AssignedNode).To(Equal(node.Name))
 
 		// The node must NOT be claimed by the Job-mode task.
-		var unclaimed foremanv1alpha1.FleetNode
+		var unclaimed meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, &unclaimed)).To(Succeed())
 		Expect(unclaimed.Status.CurrentTask).To(BeEmpty())
 
@@ -661,16 +661,16 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		ipTask := newTask("job-inprocess")
 		Expect(k8sClient.Create(ctx, ipTask)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, ipTask) })
-		setPhase(ipTask, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(ipTask, meithealv1alpha1.AgenticTaskPhasePending)
 		_, err = reconciler.Reconcile(ctx, reqFor(ipTask))
 		Expect(err).NotTo(HaveOccurred())
 
-		var ipFresh foremanv1alpha1.AgenticTask
+		var ipFresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(ipTask), &ipFresh)).To(Succeed())
-		Expect(ipFresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(ipFresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(ipFresh.Status.AssignedNode).To(Equal(node.Name))
 
-		var claimed foremanv1alpha1.FleetNode
+		var claimed meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, &claimed)).To(Succeed())
 		Expect(claimed.Status.CurrentTask).To(Equal("default/job-inprocess"))
 	})
@@ -687,27 +687,27 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		nodeC := newFleetNode("zzz-c")
 		Expect(k8sClient.Create(ctx, nodeC)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, nodeC) })
-		setNodeReady(nodeC, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(nodeC, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 		nodeA := newFleetNode("aaa-a")
 		Expect(k8sClient.Create(ctx, nodeA)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, nodeA) })
-		setNodeReady(nodeA, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(nodeA, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 		nodeB := newFleetNode("mmm-b")
 		Expect(k8sClient.Create(ctx, nodeB)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, nodeB) })
-		setNodeReady(nodeB, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(nodeB, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 
 		// A Job-mode agent: the eligible set is derived from the agent's
 		// RequiredCapability, and jobMode is read from its execution mode.
 		agent := newAgent("job-coder-rot")
-		agent.Spec.Execution = &foremanv1alpha1.ExecutionSpec{
-			Mode: foremanv1alpha1.ExecutionModeJob,
+		agent.Spec.Execution = &meithealv1alpha1.ExecutionSpec{
+			Mode: meithealv1alpha1.ExecutionModeJob,
 		}
 		Expect(k8sClient.Create(ctx, agent)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, agent) })
@@ -719,18 +719,18 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 			task.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 			Expect(k8sClient.Create(ctx, task)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-			setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+			setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 			_, err := reconciler.Reconcile(ctx, reqFor(task))
 			Expect(err).NotTo(HaveOccurred())
 
-			var fresh foremanv1alpha1.AgenticTask
+			var fresh meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-			Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+			Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 			assigned = append(assigned, fresh.Status.AssignedNode)
 
 			// The node must never be claimed by a Job-mode task.
-			var node foremanv1alpha1.FleetNode
+			var node meithealv1alpha1.FleetNode
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: fresh.Status.AssignedNode}, &node)).To(Succeed())
 			Expect(node.Status.CurrentTask).To(BeEmpty())
 		}
@@ -768,25 +768,25 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		nodeA := newFleetNode("dep-aaa-a")
 		Expect(k8sClient.Create(ctx, nodeA)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, nodeA) })
-		setNodeReady(nodeA, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(nodeA, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 		nodeB := newFleetNode("dep-mmm-b")
 		Expect(k8sClient.Create(ctx, nodeB)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, nodeB) })
-		setNodeReady(nodeB, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(nodeB, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 		nodeC := newFleetNode("dep-zzz-c")
 		Expect(k8sClient.Create(ctx, nodeC)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, nodeC) })
-		setNodeReady(nodeC, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(nodeC, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 
 		agent := newAgent("job-coder-depth")
-		agent.Spec.Execution = &foremanv1alpha1.ExecutionSpec{
-			Mode: foremanv1alpha1.ExecutionModeJob,
+		agent.Spec.Execution = &meithealv1alpha1.ExecutionSpec{
+			Mode: meithealv1alpha1.ExecutionModeJob,
 		}
 		Expect(k8sClient.Create(ctx, agent)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, agent) })
@@ -799,10 +799,10 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 			t.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 			Expect(k8sClient.Create(ctx, t)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, t) })
-			setPhase(t, foremanv1alpha1.AgenticTaskPhasePending)
-			var live foremanv1alpha1.AgenticTask
+			setPhase(t, meithealv1alpha1.AgenticTaskPhasePending)
+			var live meithealv1alpha1.AgenticTask
 			Expect(k8sClient.Get(ctx, nn(t), &live)).To(Succeed())
-			live.Status.Phase = foremanv1alpha1.AgenticTaskPhaseRunning
+			live.Status.Phase = meithealv1alpha1.AgenticTaskPhaseRunning
 			live.Status.AssignedNode = nodeA.Name
 			Expect(k8sClient.Status().Update(ctx, &live)).To(Succeed())
 		}
@@ -811,12 +811,12 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		task.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 		Expect(fresh.Status.AssignedNode).NotTo(Equal(nodeA.Name),
 			"scheduled onto the node already supervising three Jobs while two sat idle")
@@ -826,25 +826,25 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		nodeA := newFleetNode("xag-aaa-a")
 		Expect(k8sClient.Create(ctx, nodeA)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, nodeA) })
-		setNodeReady(nodeA, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(nodeA, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 		nodeB := newFleetNode("xag-mmm-b")
 		Expect(k8sClient.Create(ctx, nodeB)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, nodeB) })
-		setNodeReady(nodeB, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(nodeB, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 
 		agentOne := newAgent("job-coder-x1")
-		agentOne.Spec.Execution = &foremanv1alpha1.ExecutionSpec{
-			Mode: foremanv1alpha1.ExecutionModeJob,
+		agentOne.Spec.Execution = &meithealv1alpha1.ExecutionSpec{
+			Mode: meithealv1alpha1.ExecutionModeJob,
 		}
 		Expect(k8sClient.Create(ctx, agentOne)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, agentOne) })
 		agentTwo := newAgent("job-coder-x2")
-		agentTwo.Spec.Execution = &foremanv1alpha1.ExecutionSpec{
-			Mode: foremanv1alpha1.ExecutionModeJob,
+		agentTwo.Spec.Execution = &meithealv1alpha1.ExecutionSpec{
+			Mode: meithealv1alpha1.ExecutionModeJob,
 		}
 		Expect(k8sClient.Create(ctx, agentTwo)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, agentTwo) })
@@ -857,10 +857,10 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		busy.Spec.AgentRef = &corev1.LocalObjectReference{Name: agentOne.Name}
 		Expect(k8sClient.Create(ctx, busy)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, busy) })
-		setPhase(busy, foremanv1alpha1.AgenticTaskPhasePending)
-		var live foremanv1alpha1.AgenticTask
+		setPhase(busy, meithealv1alpha1.AgenticTaskPhasePending)
+		var live meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(busy), &live)).To(Succeed())
-		live.Status.Phase = foremanv1alpha1.AgenticTaskPhaseRunning
+		live.Status.Phase = meithealv1alpha1.AgenticTaskPhaseRunning
 		live.Status.AssignedNode = nodeA.Name
 		Expect(k8sClient.Status().Update(ctx, &live)).To(Succeed())
 
@@ -868,12 +868,12 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		task.Spec.AgentRef = &corev1.LocalObjectReference{Name: agentTwo.Name}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 		Expect(fresh.Status.AssignedNode).To(Equal(nodeB.Name),
 			"a second Job-mode agent ignored the first agent's load and reused its node")
@@ -885,25 +885,25 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		node := newFleetNode("solo-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 
 		t1 := newTask("solo-t1")
 		Expect(k8sClient.Create(ctx, t1)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, t1) })
-		setPhase(t1, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(t1, meithealv1alpha1.AgenticTaskPhasePending)
 		t2 := newTask("solo-t2")
 		Expect(k8sClient.Create(ctx, t2)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, t2) })
-		setPhase(t2, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(t2, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(t1))
 		Expect(err).NotTo(HaveOccurred())
 
 		// Anchor the precondition: t1 must actually hold the node, otherwise
 		// this spec passes vacuously when nothing schedules at all.
-		var busy foremanv1alpha1.FleetNode
+		var busy meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, &busy)).To(Succeed())
 		Expect(busy.Status.CurrentTask).To(Equal("default/solo-t1"))
 
@@ -911,9 +911,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.RequeueAfter).To(BeNumerically(">", 0))
 
-		var f2 foremanv1alpha1.AgenticTask
+		var f2 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(t2), &f2)).To(Succeed())
-		Expect(f2.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(f2.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 		Expect(f2.Status.AssignedNode).To(BeEmpty())
 	})
 
@@ -923,28 +923,28 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		node := newFleetNode("recycle-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 
 		t1 := newTask("recycle-t1")
 		Expect(k8sClient.Create(ctx, t1)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, t1) })
-		setPhase(t1, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(t1, meithealv1alpha1.AgenticTaskPhasePending)
 		_, err := reconciler.Reconcile(ctx, reqFor(t1))
 		Expect(err).NotTo(HaveOccurred())
 
-		var busy foremanv1alpha1.FleetNode
+		var busy meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, &busy)).To(Succeed())
 		Expect(busy.Status.CurrentTask).To(Equal("default/recycle-t1"))
 
 		// Agent finishes the task; the controller reconcile of the terminal
 		// task must release the node.
-		setPhase(t1, foremanv1alpha1.AgenticTaskPhaseSucceeded)
+		setPhase(t1, meithealv1alpha1.AgenticTaskPhaseSucceeded)
 		_, err = reconciler.Reconcile(ctx, reqFor(t1))
 		Expect(err).NotTo(HaveOccurred())
 
-		var freed foremanv1alpha1.FleetNode
+		var freed meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, &freed)).To(Succeed())
 		Expect(freed.Status.CurrentTask).To(BeEmpty())
 
@@ -952,11 +952,11 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		t2 := newTask("recycle-t2")
 		Expect(k8sClient.Create(ctx, t2)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, t2) })
-		setPhase(t2, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(t2, meithealv1alpha1.AgenticTaskPhasePending)
 		_, err = reconciler.Reconcile(ctx, reqFor(t2))
 		Expect(err).NotTo(HaveOccurred())
 
-		var f2 foremanv1alpha1.AgenticTask
+		var f2 meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(t2), &f2)).To(Succeed())
 		Expect(f2.Status.AssignedNode).To(Equal(node.Name))
 	})
@@ -967,8 +967,8 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		node := newFleetNode("stale-res-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 		patch := client.MergeFrom(node.DeepCopy())
 		node.Status.CurrentTask = "default/ghost-task-that-never-existed"
@@ -977,15 +977,15 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		task := newTask("reclaim-task")
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 		Expect(fresh.Status.AssignedNode).To(Equal(node.Name))
 
-		var reclaimed foremanv1alpha1.FleetNode
+		var reclaimed meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, &reclaimed)).To(Succeed())
 		Expect(reclaimed.Status.CurrentTask).To(Equal("default/reclaim-task"))
 	})
@@ -996,14 +996,14 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		node := newFleetNode("hands-off-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 
 		task := newTask("hands-off")
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhaseRunning)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhaseRunning)
 
 		patch := client.MergeFrom(task.DeepCopy())
 		task.Status.AssignedNode = node.Name
@@ -1012,9 +1012,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseRunning))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseRunning))
 		Expect(fresh.Status.AssignedNode).To(Equal(node.Name))
 	})
 
@@ -1029,8 +1029,8 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		Expect(k8sClient.Create(ctx, staleNode)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, staleNode) })
 		// Mark Phase=Ready but with a heartbeat 5 minutes in the past.
-		setStaleNodeReady(staleNode, foremanv1alpha1.FleetNodeCapability{
-			Accelerator:    foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setStaleNodeReady(staleNode, meithealv1alpha1.FleetNodeCapability{
+			Accelerator:    meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:     64,
 			AvailableRAMGB: 48,
 		})
@@ -1038,26 +1038,26 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		freshNode := newFleetNode("zzz-sched-fresh-node")
 		Expect(k8sClient.Create(ctx, freshNode)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, freshNode) })
-		setNodeReady(freshNode, foremanv1alpha1.FleetNodeCapability{
-			Accelerator:    foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(freshNode, meithealv1alpha1.FleetNodeCapability{
+			Accelerator:    meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:     64,
 			AvailableRAMGB: 48,
 		})
 
 		task := newTask("skip-stale-target")
-		task.Spec.RequiredCapability = foremanv1alpha1.RequiredCapability{
-			Accelerator: foremanv1alpha1.AgenticTaskAccelerator("metal"),
+		task.Spec.RequiredCapability = meithealv1alpha1.RequiredCapability{
+			Accelerator: meithealv1alpha1.AgenticTaskAccelerator("metal"),
 		}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		// Must land on the fresh node, not the alphabetically-first stale one.
 		Expect(fresh.Status.AssignedNode).To(Equal(freshNode.Name))
 	})
@@ -1069,29 +1069,29 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		staleNode := newFleetNode("all-stale-only-node")
 		Expect(k8sClient.Create(ctx, staleNode)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, staleNode) })
-		setStaleNodeReady(staleNode, foremanv1alpha1.FleetNodeCapability{
-			Accelerator:    foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setStaleNodeReady(staleNode, meithealv1alpha1.FleetNodeCapability{
+			Accelerator:    meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:     64,
 			AvailableRAMGB: 48,
 		})
 
 		task := newTask("all-stale-pending-task")
-		task.Spec.RequiredCapability = foremanv1alpha1.RequiredCapability{
-			Accelerator: foremanv1alpha1.AgenticTaskAccelerator("metal"),
+		task.Spec.RequiredCapability = meithealv1alpha1.RequiredCapability{
+			Accelerator: meithealv1alpha1.AgenticTaskAccelerator("metal"),
 		}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		res, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 		// No fit: must requeue.
 		Expect(res.RequeueAfter).To(BeNumerically(">", time.Duration(0)))
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 		// Task must remain Pending with no assigned node.
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 		Expect(fresh.Status.AssignedNode).To(BeEmpty())
 	})
 
@@ -1110,20 +1110,20 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		inflight.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 		Expect(k8sClient.Create(ctx, inflight)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, inflight) })
-		setPhase(inflight, foremanv1alpha1.AgenticTaskPhaseRunning)
+		setPhase(inflight, meithealv1alpha1.AgenticTaskPhaseRunning)
 
 		// A second Pending task for the same Agent.
 		task := newTask("bounded-second")
 		task.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		node := newFleetNode("bounded-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator:    foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator:    meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:     128,
 			AvailableRAMGB: 96,
 		})
@@ -1132,9 +1132,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.RequeueAfter).To(BeNumerically(">", time.Duration(0)))
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 		Expect(fresh.Status.AssignedNode).To(BeEmpty())
 	})
 
@@ -1152,19 +1152,19 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		inflight.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 		Expect(k8sClient.Create(ctx, inflight)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, inflight) })
-		setPhase(inflight, foremanv1alpha1.AgenticTaskPhaseRunning)
+		setPhase(inflight, meithealv1alpha1.AgenticTaskPhaseRunning)
 
 		task := newTask("headroom-second")
 		task.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		node := newFleetNode("headroom-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator:    foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator:    meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:     128,
 			AvailableRAMGB: 96,
 		})
@@ -1172,9 +1172,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(fresh.Status.AssignedNode).To(Equal(node.Name))
 	})
 
@@ -1191,19 +1191,19 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		done.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 		Expect(k8sClient.Create(ctx, done)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, done) })
-		setPhase(done, foremanv1alpha1.AgenticTaskPhaseSucceeded)
+		setPhase(done, meithealv1alpha1.AgenticTaskPhaseSucceeded)
 
 		task := newTask("terminal-next")
 		task.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		node := newFleetNode("terminal-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator:    foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator:    meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:     128,
 			AvailableRAMGB: 96,
 		})
@@ -1211,9 +1211,9 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(fresh.Status.AssignedNode).To(Equal(node.Name))
 	})
 
@@ -1239,15 +1239,15 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 			t.Spec.AgentRef = &corev1.LocalObjectReference{Name: agent.Name}
 			Expect(k8sClient.Create(ctx, t)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, t) })
-			setPhase(t, foremanv1alpha1.AgenticTaskPhasePending)
+			setPhase(t, meithealv1alpha1.AgenticTaskPhasePending)
 		}
 
 		// A free, capable node so the bound (not node fit) is the thing under test.
 		node := newFleetNode("pending-batch-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator:    foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator:    meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:     128,
 			AvailableRAMGB: 96,
 		})
@@ -1256,11 +1256,11 @@ var _ = Describe("AgenticTaskReconciler scheduler", func() {
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 		// Admitted: Pending tasks hold no slot, so the task is scheduled,
 		// not left Pending (which would mean the bound deadlocked the batch).
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(fresh.Status.AssignedNode).To(Equal(node.Name))
 	})
 })
@@ -1272,13 +1272,13 @@ var _ = Describe("capabilitySatisfies jobMode", func() {
 	// accelerator / installedModels / RAM / context gates that bind a
 	// node to a locally-resident model must be skipped. See #620.
 
-	newEmptyCapNode := func() *foremanv1alpha1.FleetNode {
+	newEmptyCapNode := func() *meithealv1alpha1.FleetNode {
 		// Ready-shaped node with an EMPTY capability: no accelerator,
 		// AvailableRAMGB 0, no installed models, no context. Only the
 		// worker role is set.
-		return &foremanv1alpha1.FleetNode{
+		return &meithealv1alpha1.FleetNode{
 			ObjectMeta: metav1.ObjectMeta{Name: "empty-cap-node"},
-			Spec: foremanv1alpha1.FleetNodeSpec{
+			Spec: meithealv1alpha1.FleetNodeSpec{
 				NodeName: "empty-cap-node",
 				Roles:    []string{"worker"},
 			},
@@ -1286,8 +1286,8 @@ var _ = Describe("capabilitySatisfies jobMode", func() {
 	}
 
 	It("gates on accelerator/RAM in InProcess mode (jobMode=false)", func() {
-		req := foremanv1alpha1.RequiredCapability{
-			Accelerator: foremanv1alpha1.AgenticTaskAccelerator("cuda"),
+		req := meithealv1alpha1.RequiredCapability{
+			Accelerator: meithealv1alpha1.AgenticTaskAccelerator("cuda"),
 			MinRAMGB:    16,
 		}
 		node := newEmptyCapNode()
@@ -1295,8 +1295,8 @@ var _ = Describe("capabilitySatisfies jobMode", func() {
 	})
 
 	It("skips accelerator/RAM gates in Job mode (jobMode=true)", func() {
-		req := foremanv1alpha1.RequiredCapability{
-			Accelerator: foremanv1alpha1.AgenticTaskAccelerator("cuda"),
+		req := meithealv1alpha1.RequiredCapability{
+			Accelerator: meithealv1alpha1.AgenticTaskAccelerator("cuda"),
 			MinRAMGB:    16,
 		}
 		node := newEmptyCapNode()
@@ -1304,8 +1304,8 @@ var _ = Describe("capabilitySatisfies jobMode", func() {
 	})
 
 	It("still enforces roles in Job mode", func() {
-		req := foremanv1alpha1.RequiredCapability{
-			Accelerator: foremanv1alpha1.AgenticTaskAccelerator("cuda"),
+		req := meithealv1alpha1.RequiredCapability{
+			Accelerator: meithealv1alpha1.AgenticTaskAccelerator("cuda"),
 			MinRAMGB:    16,
 			Roles:       []string{"verifier"},
 		}
@@ -1316,21 +1316,21 @@ var _ = Describe("capabilitySatisfies jobMode", func() {
 
 // --- test helpers ---
 
-func newTask(name string) *foremanv1alpha1.AgenticTask {
-	return &foremanv1alpha1.AgenticTask{
+func newTask(name string) *meithealv1alpha1.AgenticTask {
+	return &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind:    foremanv1alpha1.AgenticTaskKindFreeform,
-			Payload: foremanv1alpha1.AgenticTaskPayload{Prompt: "test"},
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind:    meithealv1alpha1.AgenticTaskKindFreeform,
+			Payload: meithealv1alpha1.AgenticTaskPayload{Prompt: "test"},
 		},
 	}
 }
 
-func newAgent(name string) *foremanv1alpha1.Agent {
-	return &foremanv1alpha1.Agent{
+func newAgent(name string) *meithealv1alpha1.Agent {
+	return &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:                foremanv1alpha1.AgentRoleCoder,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:                meithealv1alpha1.AgentRoleCoder,
 			InferenceServiceRef: corev1.LocalObjectReference{Name: "any-svc"},
 			SystemPrompt:        "test system prompt",
 			Tools:               []string{"submit_result"},
@@ -1338,27 +1338,27 @@ func newAgent(name string) *foremanv1alpha1.Agent {
 	}
 }
 
-func newFleetNode(name string) *foremanv1alpha1.FleetNode {
-	return &foremanv1alpha1.FleetNode{
+func newFleetNode(name string) *meithealv1alpha1.FleetNode {
+	return &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: foremanv1alpha1.FleetNodeSpec{
+		Spec: meithealv1alpha1.FleetNodeSpec{
 			NodeName: name,
 			Roles:    []string{"worker"},
 		},
 	}
 }
 
-func setPhase(task *foremanv1alpha1.AgenticTask, phase foremanv1alpha1.AgenticTaskPhase) {
+func setPhase(task *meithealv1alpha1.AgenticTask, phase meithealv1alpha1.AgenticTaskPhase) {
 	GinkgoHelper()
 	patch := client.MergeFrom(task.DeepCopy())
 	task.Status.Phase = phase
 	Expect(k8sClient.Status().Patch(ctx, task, patch)).To(Succeed())
 }
 
-func setNodeReady(node *foremanv1alpha1.FleetNode, cap foremanv1alpha1.FleetNodeCapability) {
+func setNodeReady(node *meithealv1alpha1.FleetNode, cap meithealv1alpha1.FleetNodeCapability) {
 	GinkgoHelper()
 	patch := client.MergeFrom(node.DeepCopy())
-	node.Status.Phase = foremanv1alpha1.FleetNodePhaseReady
+	node.Status.Phase = meithealv1alpha1.FleetNodePhaseReady
 	node.Status.Capability = cap
 	now := metav1.Now()
 	node.Status.LastHeartbeatTime = &now
@@ -1368,10 +1368,10 @@ func setNodeReady(node *foremanv1alpha1.FleetNode, cap foremanv1alpha1.FleetNode
 // setStaleNodeReady puts a node in Phase=Ready with the given capability but
 // with a LastHeartbeatTime 5 minutes in the past, making it appear alive to a
 // Phase-only check but dead to nodeSchedulable's heartbeat gate.
-func setStaleNodeReady(node *foremanv1alpha1.FleetNode, cap foremanv1alpha1.FleetNodeCapability) {
+func setStaleNodeReady(node *meithealv1alpha1.FleetNode, cap meithealv1alpha1.FleetNodeCapability) {
 	GinkgoHelper()
 	patch := client.MergeFrom(node.DeepCopy())
-	node.Status.Phase = foremanv1alpha1.FleetNodePhaseReady
+	node.Status.Phase = meithealv1alpha1.FleetNodePhaseReady
 	node.Status.Capability = cap
 	stale := metav1.NewTime(time.Now().Add(-5 * time.Minute))
 	node.Status.LastHeartbeatTime = &stale

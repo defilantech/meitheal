@@ -41,8 +41,10 @@ type ScanTarget struct {
 	Main string
 }
 
-// builtInScanTargets mirrors the ALL table in hack/scan-images.sh verbatim,
-// in script order. It is the clean-room reproduction's target set: what the
+// builtInScanTargets mirrors the ALL table in the target repository's
+// (LLMKube's) hack/scan-images.sh verbatim, in script order. The operator and
+// agent images this project publishes are not in it: they left LLMKube's
+// release when the harness moved here. It is the clean-room reproduction's target set: what the
 // CI release gate scans is what the scan Job scans, or the gate verdict
 // means something different from the CI gate it stands in for.
 // scan_targets_parity_test.go fails when either side drifts.
@@ -53,20 +55,6 @@ var builtInScanTargets = []ScanTarget{
 		Dockerfile: "Dockerfile.goreleaser",
 		Binary:     "manager",
 		Main:       "./cmd/main.go",
-	},
-	{
-		ID:         "foreman-operator",
-		Image:      "ghcr.io/defilantech/llmkube-foreman-operator",
-		Dockerfile: "Dockerfile.foreman-operator.goreleaser",
-		Binary:     "foreman-operator",
-		Main:       "./cmd/foreman-operator",
-	},
-	{
-		ID:         "foreman-agent",
-		Image:      "ghcr.io/defilantech/llmkube-foreman-agent",
-		Dockerfile: "Dockerfile.foreman-agent.goreleaser",
-		Binary:     "foreman-agent",
-		Main:       "./cmd/foreman-agent",
 	},
 	{
 		ID:         "router-proxy",
@@ -80,7 +68,7 @@ var builtInScanTargets = []ScanTarget{
 // DefaultScanSeverity is the Trivy severity floor the CI gate scans at
 // (hack/scan-images.sh: --severity CRITICAL,HIGH). Kept byte-aligned with
 // the script by scan_targets_parity_test.go; the api ScanGate default
-// (api/foreman/v1alpha1) is the CRD-facing twin of this value.
+// (api/v1alpha1) is the CRD-facing twin of this value.
 var DefaultScanSeverity = []string{"CRITICAL", "HIGH"}
 
 // DefaultScanIgnoreUnfixed mirrors Trivy's --ignore-unfixed, CI's setting:

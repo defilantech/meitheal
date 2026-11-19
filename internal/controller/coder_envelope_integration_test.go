@@ -31,20 +31,20 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 )
 
 // realEnvelopeTask marshals an actual agent.Result into an AgenticTask the
 // way the watcher persists it, so the classifiers read the true wire shape.
-func realEnvelopeTask(t *testing.T, r *foremanagent.Result) *foremanv1alpha1.AgenticTask {
+func realEnvelopeTask(t *testing.T, r *meithealagent.Result) *meithealv1alpha1.AgenticTask {
 	t.Helper()
 	raw, err := json.Marshal(r)
 	if err != nil {
 		t.Fatalf("marshal real envelope: %v", err)
 	}
-	task := &foremanv1alpha1.AgenticTask{}
-	task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
+	task := &meithealv1alpha1.AgenticTask{}
+	task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
 	task.Status.Verdict = r.Verdict
 	task.Status.Result = &runtime.RawExtension{Raw: raw}
 	return task
@@ -52,7 +52,7 @@ func realEnvelopeTask(t *testing.T, r *foremanagent.Result) *foremanv1alpha1.Age
 
 func TestRealAgentEnvelope_DrivesClassifiers(t *testing.T) {
 	t.Run("promoted ALREADY-RESOLVED stands escalation down", func(t *testing.T) {
-		r := foremanagent.NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictNoGo,
+		r := meithealagent.NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictNoGo,
 			"already fixed by abc1234", 5*time.Second)
 		// The shape modelDecidedResult + promoteTerminalOutcome (and, post
 		// #1077, coderJobResultToResult) produce for this outcome.
@@ -79,7 +79,7 @@ func TestRealAgentEnvelope_DrivesClassifiers(t *testing.T) {
 	})
 
 	t.Run("promoted NEEDS-VERIFICATION stands escalation down", func(t *testing.T) {
-		r := foremanagent.NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictNoGo,
+		r := meithealagent.NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictNoGo,
 			"claims unverified", 5*time.Second)
 		r.Extra = map[string]any{
 			"outcome":    "NEEDS-VERIFICATION",
@@ -93,7 +93,7 @@ func TestRealAgentEnvelope_DrivesClassifiers(t *testing.T) {
 		// INCOMPLETE and an empty verdict, so checking only the top-level
 		// outcome would let this pass vacuously if the verdict ever stops
 		// propagating.
-		if v != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		if v != meithealv1alpha1.AgenticTaskVerdictNoGo {
 			t.Fatalf("real NEEDS-VERIFICATION envelope: verdict = %s, want NoGo", v)
 		}
 		if top != needsVerificationOutcome {
@@ -113,7 +113,7 @@ func TestRealAgentEnvelope_DrivesClassifiers(t *testing.T) {
 		// escalate. This pins the reason the promotion must exist at the
 		// producer, and fails loudly if someone "fixes" the classifiers to
 		// read modelExtra instead (the documented contract is top-level).
-		r := foremanagent.NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictNoGo,
+		r := meithealagent.NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictNoGo,
 			"already fixed", 5*time.Second)
 		r.Extra = map[string]any{
 			"outcome":    "MODEL-DECIDED",

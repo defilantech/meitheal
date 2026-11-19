@@ -27,8 +27,8 @@ import (
 
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
@@ -85,7 +85,7 @@ func rebase1839Seed(t *testing.T, root string) (forkURL, upstreamURL, priorBranc
 	rebase1839Git(t, seed, "push", fork, "main")
 
 	// Prior attempt on the fork: edit the line, push a branch.
-	priorBranch = "foreman/prior-attempt"
+	priorBranch = "meitheal/prior-attempt"
 	prior := filepath.Join(root, "prior")
 	clone(fork, prior)
 	rebase1839Git(t, prior, "checkout", "-b", priorBranch)
@@ -127,14 +127,14 @@ func (r *rebase1839Registry) Schemas() []oai.Tool { return nil }
 
 func (r *rebase1839Registry) Dispatch(
 	_ context.Context, name string, _ json.RawMessage,
-) (*foremanagent.ToolResult, error) {
+) (*meithealagent.ToolResult, error) {
 	if name != "submit_result" {
 		return nil, fmt.Errorf("rebase1839Registry: unexpected tool %q", name)
 	}
 	if r.abort && r.workspace != "" {
 		_ = exec.Command("git", "-C", r.workspace, "rebase", "--abort").Run()
 	}
-	return &foremanagent.ToolResult{
+	return &meithealagent.ToolResult{
 		Terminal: true, Verdict: "GO", Summary: "claims done", CommitMessage: "fix: x\n",
 	}, nil
 }
@@ -161,11 +161,11 @@ func TestNativeExecutor_RebaseConflictUnresolvedDowngradesGO(t *testing.T) {
 
 			agent, task := taskAndAgent("rebase-1839")
 			task.Spec.Payload.ReviseFromBranch = priorBranch
-			task.Spec.Payload.BranchStrategy = foremanv1alpha1.BranchStrategyRebase
+			task.Spec.Payload.BranchStrategy = meithealv1alpha1.BranchStrategyRebase
 
 			c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 			reg := &rebase1839Registry{abort: tc.abort}
-			e := &foremanagent.NativeAgentLoopExecutor{
+			e := &meithealagent.NativeAgentLoopExecutor{
 				Client:                   c,
 				WorkspaceRoot:            filepath.Join(root, "ws"),
 				GitRemoteURL:             fork,
@@ -174,8 +174,8 @@ func TestNativeExecutor_RebaseConflictUnresolvedDowngradesGO(t *testing.T) {
 				CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 				CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 				RegistryFactory: func(
-					_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-				) (foremanagent.ToolRegistry, error) {
+					_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+				) (meithealagent.ToolRegistry, error) {
 					reg.workspace = ws
 					return reg, nil
 				},
@@ -186,13 +186,13 @@ func TestNativeExecutor_RebaseConflictUnresolvedDowngradesGO(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Execute: %v", err)
 			}
-			if res.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+			if res.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 				t.Fatalf("verdict: want INCOMPLETE (unresolved rebase must not land a GO), got %s; result=%+v",
 					res.Verdict, res)
 			}
-			if res.FailureReason != foremanv1alpha1.FailureRebaseConflictUnresolved {
+			if res.FailureReason != meithealv1alpha1.FailureRebaseConflictUnresolved {
 				t.Errorf("FailureReason: want %q got %q",
-					foremanv1alpha1.FailureRebaseConflictUnresolved, res.FailureReason)
+					meithealv1alpha1.FailureRebaseConflictUnresolved, res.FailureReason)
 			}
 		})
 	}

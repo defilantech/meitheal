@@ -71,7 +71,7 @@ type caller interface {
 }
 
 // mcpTool adapts one tool discovered on a remote MCP server to the
-// Foreman tools.Tool interface, so it flows through the native loop's
+// Meitheal tools.Tool interface, so it flows through the native loop's
 // dispatch, whitelist, and transcript path exactly like a built-in tool.
 type mcpTool struct {
 	caller      caller
@@ -163,7 +163,7 @@ func (t *mcpTool) Schema() oai.ToolSchemaDef {
 }
 
 // Execute calls the remote tool via t.caller and returns its text as a
-// soft result. MCP must never fail a Foreman run: both a callTool Go
+// soft result. MCP must never fail a Meitheal run: both a callTool Go
 // error and a tool-level error result (isError=true, but nil Go error)
 // flow back as Output text rather than as a Go error, which the loop
 // would otherwise surface as an infra failure.

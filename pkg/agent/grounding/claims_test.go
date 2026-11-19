@@ -18,7 +18,7 @@ func TestDetectEmpiricalClaims(t *testing.T) {
 		{File: "docs/install.md", Line: 5,
 			Text: "Requires LLMKube 0.9.4 or newer."},
 		// numbers in Go source are out of scope for the docs claim scan
-		{File: "pkg/foreman/agent/loop.go", Line: 300,
+		{File: "pkg/agent/loop.go", Line: 300,
 			Text: "// retries 3 times, roughly 250ms apart"},
 	}
 	claims := DetectEmpiricalClaims(added)

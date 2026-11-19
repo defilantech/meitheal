@@ -37,7 +37,7 @@ const maxDeclsPerFile = 15
 // format builds the final markdown summary from the scored files.
 // Files are emitted in score order until the token budget is hit.
 // The output is intended for prepending to a coder Agent's user
-// prompt (see executor wiring in pkg/foreman/agent/executor_native.go).
+// prompt (see executor wiring in pkg/agent/executor_native.go).
 //
 // Shape:
 //

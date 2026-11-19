@@ -39,7 +39,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	inferencev1alpha1 "github.com/defilantech/llmkube/api/v1alpha1"
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/anthropic"
 	"github.com/defilantech/meitheal/pkg/agent/changepolicy"
 	"github.com/defilantech/meitheal/pkg/agent/codehost"
@@ -71,7 +71,7 @@ type NativeAgentLoopExecutor struct {
 	Client client.Client
 
 	// WorkspaceRoot is the parent dir for per-task clone workspaces.
-	// Defaults to $HOME/foreman-workspaces.
+	// Defaults to $HOME/meitheal-workspaces.
 	WorkspaceRoot string
 
 	// GitRemoteURL is the git URL to clone from and push to. v0.1 clones
@@ -92,7 +92,7 @@ type NativeAgentLoopExecutor struct {
 	// InferenceBaseURLOverride bypasses InferenceService resolution
 	// entirely and dispatches OAI requests to this URL. Use for tests
 	// and stub OAI servers; for off-cluster, same-host installs (e.g.
-	// foreman-agent on the M5 Max) prefer InferenceBaseURLHostOverride
+	// meitheal-agent on the M5 Max) prefer InferenceBaseURLHostOverride
 	// instead so the live port from the metal-agent's Endpoints object
 	// flows through on every llama-server respawn. Must include the
 	// /v1 suffix; the OAI client appends /chat/completions.
@@ -125,7 +125,7 @@ type NativeAgentLoopExecutor struct {
 	// AuthFactory builds the GitHub auth. Field is exported so tests
 	// can inject a fake auth (e.g. for file:// remote tests where no
 	// real token is needed). nil falls back to repo.NewAuth(""), which
-	// reads $GITHUB_TOKEN or ~/.config/foreman/github-token.
+	// reads $GITHUB_TOKEN or ~/.config/github-token.
 	AuthFactory func() (*repo.Auth, error)
 
 	// LoopFactory builds the Loop given the resolved chat client and
@@ -149,20 +149,20 @@ type NativeAgentLoopExecutor struct {
 	// (see mcpEnabledForTask) so the wiring layer can gate MCP tool
 	// registration per-task without the agent package importing mcp.
 	RegistryFactory func(
-		ctx context.Context, workspace string, agent *foremanv1alpha1.Agent, workloadMCPEnabled bool,
+		ctx context.Context, workspace string, agent *meithealv1alpha1.Agent, workloadMCPEnabled bool,
 	) (ToolRegistry, error)
 
 	// IssueFetcher pulls the GitHub issue title + body so buildUserPrompt
 	// can include them. Best-effort: a nil fetcher or a failed fetch
 	// runs the loop with the empty-body behavior (pre-#571 default),
 	// preserving backward compatibility. Tests inject a fake; production
-	// wires githubissue.NewClient() in cmd/foreman-agent.
+	// wires githubissue.NewClient() in cmd/meitheal-agent.
 	IssueFetcher githubissue.Fetcher
 
 	// PREnsurer opens (idempotently) the pull request for a branch whose
 	// review verdict is GO, when the task payload carries
 	// openPullRequest (#937). nil disables PR opening entirely;
-	// cmd/foreman-agent wires githubpr.NewClient().
+	// cmd/meitheal-agent wires githubpr.NewClient().
 	//
 	// Deprecated for direct use: the executor now reaches PR + clone-URL
 	// operations through the provider-neutral CodeHost seam (#1158). This
@@ -191,11 +191,11 @@ type NativeAgentLoopExecutor struct {
 	// CoderJobSubmitter, when non-nil, routes Job-mode Agents
 	// (spec.execution.mode == Job) to an ephemeral per-task Kubernetes Job
 	// instead of running the loop in this process (#620). It is the seam
-	// to pkg/foreman/agent/tools.RunCoderJob; the agent package cannot
-	// import tools directly (tools imports agent), so cmd/foreman-agent
+	// to pkg/agent/tools.RunCoderJob; the agent package cannot
+	// import tools directly (tools imports agent), so cmd/meitheal-agent
 	// wires a closure over RunCoderJob.Run here.
 	//
-	// RECURSION GUARD: the coder Job itself runs `foreman-agent run-task`,
+	// RECURSION GUARD: the coder Job itself runs `meitheal-agent run-task`,
 	// which calls Execute with the SAME Agent (still mode==Job). RunTask
 	// builds its executor WITHOUT a CoderJobSubmitter, so useCoderJobPath
 	// returns false inside the Job and the loop runs in-process there. The
@@ -205,14 +205,14 @@ type NativeAgentLoopExecutor struct {
 
 	// EnvtestJobRunner, when non-nil, verifies envtest-backed packages in a
 	// clean-room Job (`make test`) on the pushed branch after a coder GO
-	// (#859). cmd/foreman-agent wires a closure over tools.RunGateJobTool
+	// (#859). cmd/meitheal-agent wires a closure over tools.RunGateJobTool
 	// here. Nil skips the post-push envtest gate (e.g. the in-process
 	// run-task path, where the clean-room gate Job is the backstop).
 	EnvtestJobRunner EnvtestJobRunner
 
 	// ScanJobRunner, when non-nil, reproduces the container-image scan gate
 	// in a clean-room Job on the pushed branch after a coder GO (#1798).
-	// cmd/foreman-agent wires a closure over the tools-side scan gate Job
+	// cmd/meitheal-agent wires a closure over the tools-side scan gate Job
 	// runner here. In the LLM loop, a declared scan gate with no runner
 	// wired is treated as undeclared (today's behavior preserved); on the
 	// deterministic verify path a declared-but-unwired scan gate downgrades
@@ -311,12 +311,12 @@ var ErrRegistryFactoryNotSet = errors.New("native-agent-loop: RegistryFactory is
 func resolveTaskAgent(
 	ctx context.Context,
 	c client.Client,
-	task *foremanv1alpha1.AgenticTask,
-) (*foremanv1alpha1.Agent, error) {
+	task *meithealv1alpha1.AgenticTask,
+) (*meithealv1alpha1.Agent, error) {
 	if task.Spec.AgentRef == nil || task.Spec.AgentRef.Name == "" {
 		return nil, nil
 	}
-	var agent foremanv1alpha1.Agent
+	var agent meithealv1alpha1.Agent
 	key := types.NamespacedName{Namespace: task.Namespace, Name: task.Spec.AgentRef.Name}
 	if err := c.Get(ctx, key, &agent); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -332,8 +332,8 @@ func resolveTaskAgent(
 // it step by step.
 func (e *NativeAgentLoopExecutor) Execute(
 	ctx context.Context,
-	task *foremanv1alpha1.AgenticTask,
-	agent *foremanv1alpha1.Agent,
+	task *meithealv1alpha1.AgenticTask,
+	agent *meithealv1alpha1.Agent,
 ) (*Result, error) {
 	log := logf.FromContext(ctx).WithName("native-agent-loop").WithValues("task", task.Name, "ns", task.Namespace)
 	start := time.Now()
@@ -351,7 +351,7 @@ func (e *NativeAgentLoopExecutor) Execute(
 	// Agent is gone: the scheduler should have caught it, so it was deleted
 	// between scheduling and execution.
 	if agent == nil {
-		return e.failResult(start, foremanv1alpha1.FailureAgentNotFound,
+		return e.failResult(start, meithealv1alpha1.FailureAgentNotFound,
 			fmt.Sprintf("Agent %q not found in namespace %q",
 				task.Spec.AgentRef.Name, task.Namespace)), nil
 	}
@@ -361,7 +361,7 @@ func (e *NativeAgentLoopExecutor) Execute(
 	// toolchain run in an ephemeral per-task Kubernetes Job instead of in
 	// this process. None of the in-process steps below (endpoint resolve,
 	// clone, registry, loop) happen here -- the Job does all of that by
-	// running `foreman-agent run-task`, which re-enters Execute IN-PROCESS
+	// running `meitheal-agent run-task`, which re-enters Execute IN-PROCESS
 	// (RunTask wires no submitter, so useCoderJobPath is false there). The
 	// InProcess path (Execution nil or mode==InProcess, or no submitter
 	// wired) is left byte-for-byte unchanged below.
@@ -387,7 +387,7 @@ func (e *NativeAgentLoopExecutor) Execute(
 		var err error
 		endpoint, err = e.resolveProviderEndpoint(ctx, task.Namespace, agent)
 		if err != nil {
-			return e.failResult(start, foremanv1alpha1.FailureInferenceServiceUnavailable, err.Error()), nil
+			return e.failResult(start, meithealv1alpha1.FailureInferenceServiceUnavailable, err.Error()), nil
 		}
 	}
 
@@ -398,7 +398,7 @@ func (e *NativeAgentLoopExecutor) Execute(
 		if herr != nil {
 			return nil, fmt.Errorf("user home dir: %w", herr)
 		}
-		workspaceRoot = filepath.Join(home, "foreman-workspaces")
+		workspaceRoot = filepath.Join(home, "meitheal-workspaces")
 	}
 	workspace := filepath.Join(workspaceRoot, task.Namespace, task.Name)
 	if err := os.MkdirAll(filepath.Dir(workspace), 0o755); err != nil {
@@ -423,15 +423,15 @@ func (e *NativeAgentLoopExecutor) Execute(
 	// A freeform task with only a prompt runs the loop against an empty
 	// workspace with no auth and no clone (#1288).
 	needsRepo := task.Spec.Payload.Repo != "" ||
-		task.Spec.Kind == foremanv1alpha1.AgenticTaskKindIssueFix ||
-		task.Spec.Kind == foremanv1alpha1.AgenticTaskKindVerify ||
+		task.Spec.Kind == meithealv1alpha1.AgenticTaskKindIssueFix ||
+		task.Spec.Kind == meithealv1alpha1.AgenticTaskKindVerify ||
 		e.GitRemoteURL != ""
 
 	var auth *repo.Auth
 	if needsRepo {
 		a, err := e.buildAuth()
 		if err != nil {
-			return e.failResult(start, foremanv1alpha1.FailureAuthUnavailable, err.Error()), nil
+			return e.failResult(start, meithealv1alpha1.FailureAuthUnavailable, err.Error()), nil
 		}
 		auth = a
 		defer func() { _ = auth.Close() }()
@@ -464,7 +464,7 @@ func (e *NativeAgentLoopExecutor) Execute(
 			cloneURL = e.GitRemoteURL
 		}
 		if cloneURL == "" {
-			return e.failResult(start, foremanv1alpha1.FailureGitRemoteNotConfigured,
+			return e.failResult(start, meithealv1alpha1.FailureGitRemoteNotConfigured,
 				"no --git-remote-url configured and task payload.repo is empty or invalid; cannot clone"), nil
 		}
 		if err := repo.Clone(ctx, repo.CloneOptions{
@@ -472,7 +472,7 @@ func (e *NativeAgentLoopExecutor) Execute(
 			Dest:      workspace,
 			Auth:      auth,
 		}); err != nil {
-			return e.failResult(start, foremanv1alpha1.FailureCloneFailed, err.Error()), nil
+			return e.failResult(start, meithealv1alpha1.FailureCloneFailed, err.Error()), nil
 		}
 
 		// 4. Cut the task branch (see setupTaskBranch: revise-from-branch
@@ -499,7 +499,7 @@ func (e *NativeAgentLoopExecutor) Execute(
 		// whitelist name, duplicate tool); not a runtime model
 		// failure. Bucket as infrastructure so it surfaces distinctly
 		// from in-loop tool errors.
-		return e.failResult(start, foremanv1alpha1.FailureInfrastructureError, err.Error()), nil
+		return e.failResult(start, meithealv1alpha1.FailureInfrastructureError, err.Error()), nil
 	}
 
 	// 5b. Deterministic Agent path: no LLM loop. Dispatch the agent's
@@ -561,7 +561,7 @@ func (e *NativeAgentLoopExecutor) Execute(
 // success.
 func (e *NativeAgentLoopExecutor) setupBranchClassified(
 	ctx context.Context,
-	task *foremanv1alpha1.AgenticTask,
+	task *meithealv1alpha1.AgenticTask,
 	workspace, branch, baseBranch string,
 	resolveUpstream func(string) string,
 	auth *repo.Auth,
@@ -578,12 +578,12 @@ func (e *NativeAgentLoopExecutor) setupBranchClassified(
 			"branch", branch, "files", rce.Files)
 		return rce, nil
 	}
-	return nil, e.failResult(start, foremanv1alpha1.FailureCloneFailed, err.Error())
+	return nil, e.failResult(start, meithealv1alpha1.FailureCloneFailed, err.Error())
 }
 
 func setupTaskBranch(
 	ctx context.Context,
-	task *foremanv1alpha1.AgenticTask,
+	task *meithealv1alpha1.AgenticTask,
 	workspace, branch, baseBranch string,
 	resolveUpstream func(string) string,
 	auth *repo.Auth,
@@ -597,9 +597,9 @@ func setupTaskBranch(
 		// strategy as rebase — restore-and-rebase is the only sensible intent
 		// when a prior attempt is named. An explicit "reset" still wins.
 		if task.Spec.Payload.ReviseFromBranch != "" {
-			strategy = foremanv1alpha1.BranchStrategyRebase
+			strategy = meithealv1alpha1.BranchStrategyRebase
 		} else {
-			strategy = foremanv1alpha1.BranchStrategyReset
+			strategy = meithealv1alpha1.BranchStrategyReset
 		}
 	}
 
@@ -609,9 +609,9 @@ func setupTaskBranch(
 	// reset (the default) skips the restore entirely and cuts
 	// fresh from the current base below, so a retry or repair re-dispatch can
 	// never carry a stale branch that drifts from base.
-	if strategy == foremanv1alpha1.BranchStrategyRebase &&
+	if strategy == meithealv1alpha1.BranchStrategyRebase &&
 		task.Spec.Payload.ReviseFromBranch != "" &&
-		task.Spec.Kind == foremanv1alpha1.AgenticTaskKindIssueFix {
+		task.Spec.Kind == meithealv1alpha1.AgenticTaskKindIssueFix {
 		ref := task.Spec.Payload.ReviseFromBranch
 		found, err := repo.CreateBranchFromRemoteRef(ctx, repo.RemoteRefBranchOptions{
 			Workspace: workspace,
@@ -678,8 +678,8 @@ func setupTaskBranch(
 	// Verify carries the same shape: the Workload sets Payload.Branch to the
 	// coder's branch and makes the step depend on the coder, so a verifier
 	// reset to base runs its gate against code the coder never wrote.
-	if task.Spec.Kind == foremanv1alpha1.AgenticTaskKindReview ||
-		task.Spec.Kind == foremanv1alpha1.AgenticTaskKindVerify {
+	if task.Spec.Kind == meithealv1alpha1.AgenticTaskKindReview ||
+		task.Spec.Kind == meithealv1alpha1.AgenticTaskKindVerify {
 		found, err := repo.CreateBranchFromRemoteRef(ctx, repo.RemoteRefBranchOptions{
 			Workspace: workspace,
 			Branch:    branch,
@@ -698,7 +698,7 @@ func setupTaskBranch(
 		// missing branch means the coder never pushed, the ref was pruned, or
 		// the push remote is not the one the coder wrote to (#1464) - all
 		// conditions to surface, never to paper over.
-		if task.Spec.Kind == foremanv1alpha1.AgenticTaskKindReview {
+		if task.Spec.Kind == meithealv1alpha1.AgenticTaskKindReview {
 			return fmt.Errorf(
 				"review: branch %q not found on the push remote; refusing to review the "+
 					"base branch as though it were the change", branch)
@@ -735,9 +735,9 @@ func setupTaskBranch(
 	// design (ResolveCloneURL contract) and keep the fork-HEAD fallback.
 	if !codehost.IsValidRepoSlug(task.Spec.Payload.Repo) {
 		switch task.Spec.Kind {
-		case foremanv1alpha1.AgenticTaskKindIssueFix,
-			foremanv1alpha1.AgenticTaskKindVerify,
-			foremanv1alpha1.AgenticTaskKindReview:
+		case meithealv1alpha1.AgenticTaskKindIssueFix,
+			meithealv1alpha1.AgenticTaskKindVerify,
+			meithealv1alpha1.AgenticTaskKindReview:
 			return fmt.Errorf(
 				"task %s: payload.repo is empty but this task kind (%s) requires an upstream base; "+
 					"set payload.repo so the branch bases on the current upstream tip",
@@ -786,10 +786,10 @@ func maybePrependRebaseInstruction(prompt string, rc *repo.RebaseConflictError) 
 // (#560). Non-coder agents, and a failed or empty build, return the prompt
 // unchanged.
 func (e *NativeAgentLoopExecutor) applyRepoMapPrefix(
-	ctx context.Context, agent *foremanv1alpha1.Agent,
+	ctx context.Context, agent *meithealv1alpha1.Agent,
 	workspace, issueText, userPrompt string, log logr.Logger,
 ) string {
-	if agent.Spec.Role != foremanv1alpha1.AgentRoleCoder {
+	if agent.Spec.Role != meithealv1alpha1.AgentRoleCoder {
 		return userPrompt
 	}
 	summary, mapErr := repomap.Build(ctx, workspace, issueText, repomap.Options{})
@@ -804,8 +804,8 @@ func (e *NativeAgentLoopExecutor) applyRepoMapPrefix(
 
 func (e *NativeAgentLoopExecutor) runLLMPath(
 	ctx context.Context,
-	task *foremanv1alpha1.AgenticTask,
-	agent *foremanv1alpha1.Agent,
+	task *meithealv1alpha1.AgenticTask,
+	agent *meithealv1alpha1.Agent,
 	endpoint providerEndpoint,
 	workspace, branch string,
 	registry ToolRegistry,
@@ -932,7 +932,7 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 	// gate and the footprint policy always anchor to the identical
 	// commit (#1075 Task 5).
 	var evidenceBaseSHA string
-	if agent.Spec.Role == foremanv1alpha1.AgentRoleCoder {
+	if agent.Spec.Role == meithealv1alpha1.AgentRoleCoder {
 		cfg.MaxVerifyRetries = coderGateMaxRetries
 		evidenceBaseSHA = e.resolveEvidenceBaseSHA(ctx, task, workspace, log)
 		cfg.VerifyTerminal = makeCoderGateVerifier(
@@ -967,7 +967,7 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 		// Defensive: loop returned nil error but no terminal. Shouldn't
 		// happen given the loop's invariants; report it explicitly.
 		return e.incompleteResult(start, transcriptRef, loopRes,
-			foremanv1alpha1.FailureInfrastructureError,
+			meithealv1alpha1.FailureInfrastructureError,
 			"loop returned nil error but no terminal result"), nil
 	}
 
@@ -984,12 +984,12 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 	// it would push a half-applied or merged-work-reverting branch. Downgrade
 	// to INCOMPLETE, preserving the #1042/#1364 invariant. Only GO is gated;
 	// a non-GO terminal already routes without committing.
-	if rebaseConflict != nil && verdict == foremanv1alpha1.AgenticTaskVerdictGo {
+	if rebaseConflict != nil && verdict == meithealv1alpha1.AgenticTaskVerdictGo {
 		if unresolved, why := repo.RebaseUnresolved(ctx, workspace, rebaseConflict.BaseSHA); unresolved {
 			log.Info("rebase conflict left unresolved on GO; downgrading to INCOMPLETE",
 				"reason", why, "files", rebaseConflict.Files)
 			return e.incompleteResult(start, transcriptRef, loopRes,
-				foremanv1alpha1.FailureRebaseConflictUnresolved,
+				meithealv1alpha1.FailureRebaseConflictUnresolved,
 				"rebase conflict unresolved: "+why), nil
 		}
 	}
@@ -1006,14 +1006,14 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 	// modelDecidedResult so extra.modelExtra (the full review
 	// payload: reviewOutcome, findings, issueAsk, etc.) surfaces in
 	// status.result.
-	if verdict != foremanv1alpha1.AgenticTaskVerdictGo ||
-		agent.Spec.Role == foremanv1alpha1.AgentRoleReviewer {
+	if verdict != meithealv1alpha1.AgenticTaskVerdictGo ||
+		agent.Spec.Role == meithealv1alpha1.AgentRoleReviewer {
 		// For reviewer terminals, validate the structured findings
 		// payload and log a one-line summary so operators can see what
 		// the reviewer flagged without opening the transcript ConfigMap.
 		// Malformed findings are dropped with a warning; the verdict
 		// (GO=APPROVE / NO-GO=REQUEST-CHANGES) is the authoritative
-		// signal regardless of findings validity (see pkg/foreman/agent/
+		// signal regardless of findings validity (see pkg/agent/
 		// reviewer/findings.go for the schema).
 		//
 		// Declared out here so the PR-body summary grounding (#1411) can
@@ -1024,8 +1024,8 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 		// reviewerErrorReason carries the ModelReportedError a reviewer rail
 		// remapped into an ERROR verdict (#1552); attached to the Result after
 		// modelDecidedResult so the branch routes to a human.
-		var reviewerErrorReason foremanv1alpha1.AgenticTaskFailureReason
-		if agent.Spec.Role == foremanv1alpha1.AgentRoleReviewer &&
+		var reviewerErrorReason meithealv1alpha1.AgenticTaskFailureReason
+		if agent.Spec.Role == meithealv1alpha1.AgentRoleReviewer &&
 			loopRes.Terminal != nil {
 			// Ground-truth filesTouched against the actual diff before
 			// findings are logged. Devstral, in particular, hallucinates
@@ -1351,7 +1351,7 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 // push, one retry carries the combined prompt (both renderings): a single
 // coder round can fix both.
 func (e *NativeAgentLoopExecutor) postPushGateDecision(
-	ctx context.Context, envtestTouched bool, task *foremanv1alpha1.AgenticTask,
+	ctx context.Context, envtestTouched bool, task *meithealv1alpha1.AgenticTask,
 	branch, sha string, envtestAttempt, scanAttempt, maxEnvtestIters, maxScanIters int,
 	start time.Time, transcriptRef corev1.ObjectReference, loopRes *LoopResult,
 	gateAdvisories *[]advisory, cloneURL string,
@@ -1383,7 +1383,7 @@ func (e *NativeAgentLoopExecutor) postPushGateDecision(
 // envtestGateOutcome classifies one pushed attempt's post-push envtest gate
 // into (settled, downgrade, rawFeedback, retry) for postPushGateDecision.
 func (e *NativeAgentLoopExecutor) envtestGateOutcome(
-	ctx context.Context, envtestTouched bool, task *foremanv1alpha1.AgenticTask,
+	ctx context.Context, envtestTouched bool, task *meithealv1alpha1.AgenticTask,
 	branch, sha string, attempt, maxIters int,
 	start time.Time, transcriptRef corev1.ObjectReference, loopRes *LoopResult,
 	gateAdvisories *[]advisory, cloneURL string,
@@ -1424,7 +1424,7 @@ func (e *NativeAgentLoopExecutor) envtestGateOutcome(
 // wired), or -- on the FIRST attempt only -- could not be run settles as GO;
 // a could-not-run re-gate and a bound-exhausted failure downgrade.
 func (e *NativeAgentLoopExecutor) scanGateOutcome(
-	ctx context.Context, scanDeclared bool, task *foremanv1alpha1.AgenticTask,
+	ctx context.Context, scanDeclared bool, task *meithealv1alpha1.AgenticTask,
 	branch, sha string, attempt, maxIters int,
 	start time.Time, transcriptRef corev1.ObjectReference, loopRes *LoopResult,
 	gateAdvisories *[]advisory, cloneURL string,
@@ -1517,8 +1517,8 @@ func (e *NativeAgentLoopExecutor) scanGateDowngrade(
 // tail — shared by both post-push gates — runs exactly once per iteration
 // and runLLMPath stays under the gocyclo ceiling.
 func (e *NativeAgentLoopExecutor) retryCoderWithFeedback(
-	ctx context.Context, log logr.Logger, loop *Loop, agent *foremanv1alpha1.Agent,
-	task *foremanv1alpha1.AgenticTask, workspace, branch string, auth *repo.Auth,
+	ctx context.Context, log logr.Logger, loop *Loop, agent *meithealv1alpha1.Agent,
+	task *meithealv1alpha1.AgenticTask, workspace, branch string, auth *repo.Auth,
 	start time.Time, cfg LoopConfig, prompt, cloneURL string,
 ) (*LoopResult, corev1.ObjectReference, *Result, error) {
 	loopRes, loopErr := loop.Run(ctx, retryCfg(cfg, prompt))
@@ -1533,11 +1533,11 @@ func (e *NativeAgentLoopExecutor) retryCoderWithFeedback(
 	}
 	if loopRes.Terminal == nil {
 		return loopRes, transcriptRef, e.incompleteResult(start, transcriptRef, loopRes,
-			foremanv1alpha1.FailureInfrastructureError,
+			meithealv1alpha1.FailureInfrastructureError,
 			"retry loop returned nil error but no terminal result"), nil
 	}
 	verdict, normReason := normalizeModelVerdict(loopRes.Terminal.Verdict)
-	if verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		return loopRes, transcriptRef, e.retryCoderTerminalResult(ctx, log, agent, task,
 			workspace, branch, auth, start, transcriptRef, loopRes, verdict, normReason, cloneURL), nil
 	}
@@ -1555,7 +1555,7 @@ func (e *NativeAgentLoopExecutor) retryCoderWithFeedback(
 // replaceOnReject, which flips ReplaceOnReject on for a retry from EITHER
 // gate that supersedes its predecessor push).
 func (e *NativeAgentLoopExecutor) commitPushAttempt(
-	ctx context.Context, log logr.Logger, task *foremanv1alpha1.AgenticTask,
+	ctx context.Context, log logr.Logger, task *meithealv1alpha1.AgenticTask,
 	workspace, branch, baseBranch string, auth *repo.Auth,
 	replaceOnReject bool, allowOverwrite bool,
 	start time.Time, tref corev1.ObjectReference, lr *LoopResult,
@@ -1597,7 +1597,7 @@ func (e *NativeAgentLoopExecutor) commitPushAttempt(
 			if baseSHA, berr := repo.BaseBranchSHA(ctx, workspace, upstreamURL, baseBranch); berr == nil {
 				if coderDiff, derr := repo.DiffNameOnly(ctx, workspace, baseSHA); derr == nil {
 					applyCrossStageContradictionsForCoderTask(ctx, log, workspace,
-						baseSHA, coderDiff, derr, lr, foremanv1alpha1.AgenticTaskVerdictGo)
+						baseSHA, coderDiff, derr, lr, meithealv1alpha1.AgenticTaskVerdictGo)
 				}
 			}
 		}
@@ -1681,7 +1681,7 @@ func (e *NativeAgentLoopExecutor) commitPushAttempt(
 // and do reach the commit path, so the issue reference is added only when
 // there is one — otherwise the subject names issue #0 and the trailer points
 // at nothing (#1530).
-func synthesizedCommitMessage(task *foremanv1alpha1.AgenticTask, summary string) string {
+func synthesizedCommitMessage(task *meithealv1alpha1.AgenticTask, summary string) string {
 	subject := strings.TrimSpace(summary)
 	if i := strings.IndexByte(subject, '\n'); i >= 0 {
 		subject = strings.TrimSpace(subject[:i])
@@ -1698,10 +1698,10 @@ func synthesizedCommitMessage(task *foremanv1alpha1.AgenticTask, summary string)
 
 func (e *NativeAgentLoopExecutor) retryCoderTerminalResult(
 	ctx context.Context, log logr.Logger,
-	agent *foremanv1alpha1.Agent, task *foremanv1alpha1.AgenticTask,
+	agent *meithealv1alpha1.Agent, task *meithealv1alpha1.AgenticTask,
 	workspace, branch string, auth *repo.Auth,
 	start time.Time, tref corev1.ObjectReference, lr *LoopResult,
-	verdict foremanv1alpha1.AgenticTaskVerdict, normReason foremanv1alpha1.AgenticTaskFailureReason,
+	verdict meithealv1alpha1.AgenticTaskVerdict, normReason meithealv1alpha1.AgenticTaskFailureReason,
 	cloneURL string,
 ) *Result {
 	r := e.modelDecidedResult(ctx, start, tref, lr, verdict,
@@ -1740,12 +1740,12 @@ func (e *NativeAgentLoopExecutor) retryCoderTerminalResult(
 // VerdictPolicy (hand-authored task, or a Workload that never set one)
 // resolves to defaultSelfGO via VerdictPolicy.Resolve's nil-safe receiver.
 func (e *NativeAgentLoopExecutor) applyWorkClassPolicyForTask(
-	ctx context.Context, log logr.Logger, task *foremanv1alpha1.AgenticTask,
-	agent *foremanv1alpha1.Agent, workspace, evidenceBaseSHA string,
+	ctx context.Context, log logr.Logger, task *meithealv1alpha1.AgenticTask,
+	agent *meithealv1alpha1.Agent, workspace, evidenceBaseSHA string,
 	loopRes *LoopResult, r *Result,
 ) *Result {
-	if agent.Spec.Role != foremanv1alpha1.AgentRoleCoder ||
-		task.Spec.Kind != foremanv1alpha1.AgenticTaskKindIssueFix {
+	if agent.Spec.Role != meithealv1alpha1.AgentRoleCoder ||
+		task.Spec.Kind != meithealv1alpha1.AgenticTaskKindIssueFix {
 		return r
 	}
 	if declared, ok := loopRes.Terminal.Extra["workClass"].(string); ok && declared != "" {
@@ -1859,7 +1859,7 @@ const defaultMaxTokensPerTurn = 8192
 // the Agent CR: spec.maxOutputTokens when set (> 0), else the package
 // default. Kept as a helper so the resolution rule lives in one place and
 // the LoopConfig assembly in runLLMPath stays declarative.
-func maxTokensPerTurnForAgent(agent *foremanv1alpha1.Agent) int {
+func maxTokensPerTurnForAgent(agent *meithealv1alpha1.Agent) int {
 	if agent.Spec.MaxOutputTokens > 0 {
 		return int(agent.Spec.MaxOutputTokens)
 	}
@@ -1885,13 +1885,13 @@ func maxTokensPerTurnForAgent(agent *foremanv1alpha1.Agent) int {
 // collection disabled).
 func makeCoderGateVerifier(
 	workspace, issueText, evidenceBaseSHA string,
-	log logr.Logger, profile *foremanv1alpha1.GateProfile, acc *[]advisory,
+	log logr.Logger, profile *meithealv1alpha1.GateProfile, acc *[]advisory,
 ) TerminalVerifier {
 	return func(ctx context.Context, terminal *ToolResult, _ []oai.Message) (bool, string, error) {
 		if terminal == nil {
 			return true, "", nil
 		}
-		if v, _ := normalizeModelVerdict(terminal.Verdict); v != foremanv1alpha1.AgenticTaskVerdictGo {
+		if v, _ := normalizeModelVerdict(terminal.Verdict); v != meithealv1alpha1.AgenticTaskVerdictGo {
 			return true, "", nil
 		}
 		// The coder's declared evidence ledger for the claim-evidence check,
@@ -1965,8 +1965,8 @@ func makeCoderGateVerifier(
 // tool's name + output for debugging.
 func (e *NativeAgentLoopExecutor) executeDeterministic(
 	ctx context.Context,
-	task *foremanv1alpha1.AgenticTask,
-	agent *foremanv1alpha1.Agent,
+	task *meithealv1alpha1.AgenticTask,
+	agent *meithealv1alpha1.Agent,
 	branch string,
 	registry ToolRegistry,
 	cloneURL string,
@@ -1974,7 +1974,7 @@ func (e *NativeAgentLoopExecutor) executeDeterministic(
 ) *Result {
 	toolName := pickDeterministicTool(agent.Spec.Tools)
 	if toolName == "" {
-		return e.failResult(start, foremanv1alpha1.FailureInfrastructureError,
+		return e.failResult(start, meithealv1alpha1.FailureInfrastructureError,
 			"deterministic Agent has no non-terminal tool in spec.tools; expected exactly one (e.g. run_gate_job)")
 	}
 
@@ -1989,7 +1989,7 @@ func (e *NativeAgentLoopExecutor) executeDeterministic(
 
 	result, dispatchErr := registry.Dispatch(ctx, toolName, args)
 	if dispatchErr != nil {
-		return e.failResult(start, foremanv1alpha1.FailureToolFailed,
+		return e.failResult(start, meithealv1alpha1.FailureToolFailed,
 			fmt.Sprintf("%s: %s", toolName, dispatchErr.Error()))
 	}
 
@@ -1997,8 +1997,8 @@ func (e *NativeAgentLoopExecutor) executeDeterministic(
 	// its own Verdict. Otherwise fall back to a synthetic GO so the
 	// task at least reaches Succeeded; the operator can inspect
 	// Result.Extra.toolOutput for what happened.
-	verdict := foremanv1alpha1.AgenticTaskVerdictGo
-	var detNormalizedReason foremanv1alpha1.AgenticTaskFailureReason
+	verdict := meithealv1alpha1.AgenticTaskVerdictGo
+	var detNormalizedReason meithealv1alpha1.AgenticTaskFailureReason
 	if result.Terminal && result.Verdict != "" {
 		verdict, detNormalizedReason = normalizeModelVerdict(result.Verdict)
 	}
@@ -2015,10 +2015,10 @@ func (e *NativeAgentLoopExecutor) executeDeterministic(
 	// retry is a code-side fix, not a gate-side issue); GATE-ERROR
 	// maps to GateError (gate infrastructure problem, retryable).
 	switch verdict {
-	case foremanv1alpha1.AgenticTaskVerdictGateFail:
-		r.FailureReason = foremanv1alpha1.FailureGateFailed
-	case foremanv1alpha1.AgenticTaskVerdictGateError:
-		r.FailureReason = foremanv1alpha1.FailureGateError
+	case meithealv1alpha1.AgenticTaskVerdictGateFail:
+		r.FailureReason = meithealv1alpha1.FailureGateFailed
+	case meithealv1alpha1.AgenticTaskVerdictGateError:
+		r.FailureReason = meithealv1alpha1.FailureGateError
 	}
 	// Apply the model-to-CRD normalization reason (#649) only when the
 	// switch above did not already set a more-specific gate reason.
@@ -2038,7 +2038,7 @@ func (e *NativeAgentLoopExecutor) executeDeterministic(
 	// (#1798): the verify tool's GATE-PASS covers only its own checks, and a
 	// branch the scan blocks on must not stand on that word alone. Pointer
 	// presence, not IsZero: a declared-but-empty gate declares a scan.
-	if verdict == foremanv1alpha1.AgenticTaskVerdictGatePass && task.Spec.ScanGate != nil {
+	if verdict == meithealv1alpha1.AgenticTaskVerdictGatePass && task.Spec.ScanGate != nil {
 		if down := e.verifyScanReGate(ctx, task, branch, cloneURL, start, r); down != nil {
 			return down
 		}
@@ -2059,7 +2059,7 @@ func (e *NativeAgentLoopExecutor) executeDeterministic(
 //   - a passed scan keeps the GATE-PASS; the outcome (and any findings)
 //     ride its Extra.
 func (e *NativeAgentLoopExecutor) verifyScanReGate(
-	ctx context.Context, task *foremanv1alpha1.AgenticTask, branch, cloneURL string,
+	ctx context.Context, task *meithealv1alpha1.AgenticTask, branch, cloneURL string,
 	start time.Time, pass *Result,
 ) *Result {
 	var (
@@ -2086,14 +2086,14 @@ func (e *NativeAgentLoopExecutor) verifyScanReGate(
 	}
 
 	var (
-		verdict foremanv1alpha1.AgenticTaskVerdict
-		reason  foremanv1alpha1.AgenticTaskFailureReason
+		verdict meithealv1alpha1.AgenticTaskVerdict
+		reason  meithealv1alpha1.AgenticTaskFailureReason
 		summary string
 		outcome string
 	)
 	if !ran {
-		verdict = foremanv1alpha1.AgenticTaskVerdictGateError
-		reason = foremanv1alpha1.FailureGateError
+		verdict = meithealv1alpha1.AgenticTaskVerdictGateError
+		reason = meithealv1alpha1.FailureGateError
 		outcome = "UNVERIFIED"
 		if e.ScanJobRunner == nil {
 			summary = "declared container-image scan gate could not run: no scan runner wired; the GATE-PASS does not stand"
@@ -2101,8 +2101,8 @@ func (e *NativeAgentLoopExecutor) verifyScanReGate(
 			summary = "declared container-image scan gate could not be run to a verdict; the GATE-PASS does not stand"
 		}
 	} else {
-		verdict = foremanv1alpha1.AgenticTaskVerdictGateFail
-		reason = foremanv1alpha1.FailureGateFailed
+		verdict = meithealv1alpha1.AgenticTaskVerdictGateFail
+		reason = meithealv1alpha1.FailureGateFailed
 		outcome = "FAIL"
 		summary = "declared container-image scan gate failed on the verified branch; the GATE-PASS does not stand"
 	}
@@ -2135,14 +2135,14 @@ func pickDeterministicTool(tools []string) string {
 // cloneURL is the resolved clone+push target (the repository the Workload
 // asked for, #1464). When set, the gate Job clones from this URL instead of
 // constructing one from CloneURLBase + payload.repo. v0.1 needs this because
-// the upstream coder task pushes to a fork (the foreman-agent's
+// the upstream coder task pushes to a fork (the meitheal-agent's
 // --git-remote-url) and the gate must verify that branch on the fork, not on
 // the upstream payload.repo where the branch does not yet exist. Empty
 // cloneURL preserves the M4 default (upstream + repo).
 //
 // upstreamURL is the payload repo's canonical clone URL, resolved by the
 // caller through the executor's CodeHost (resolveUpstreamForRun).
-func buildDeterministicArgs(task *foremanv1alpha1.AgenticTask, branch, cloneURL, upstreamURL string) json.RawMessage {
+func buildDeterministicArgs(task *meithealv1alpha1.AgenticTask, branch, cloneURL, upstreamURL string) json.RawMessage {
 	// Resolve once. Resolve() is nil-safe: a nil GateProfile yields the go
 	// preset (image golang:1.26, the make-target checks), so a Go task stays
 	// byte-identical to before this field existed.
@@ -2200,8 +2200,8 @@ func buildDeterministicArgs(task *foremanv1alpha1.AgenticTask, branch, cloneURL,
 	// reconcile tools: the slices to union or check, the upstream source of the
 	// base, and (for reconcile) the pinned identifiers + contract. Added only
 	// for those kinds so the gate's args stay byte-identical.
-	if task.Spec.Kind == foremanv1alpha1.AgenticTaskKindIntegrate ||
-		task.Spec.Kind == foremanv1alpha1.AgenticTaskKindReconcile {
+	if task.Spec.Kind == meithealv1alpha1.AgenticTaskKindIntegrate ||
+		task.Spec.Kind == meithealv1alpha1.AgenticTaskKindReconcile {
 		args["slices"] = task.Spec.Payload.Slices
 		args["sharedIdentifiers"] = task.Spec.Payload.SharedIdentifiers
 		args["contract"] = task.Spec.Payload.Contract
@@ -2234,14 +2234,14 @@ type providerEndpoint struct {
 // It delegates to the exported IsDeterministicAgent so the executor's
 // real branch selection IS that pure helper; the admission webhook's
 // private copy is asserted equivalent against it in the webhook tests.
-func isDeterministicAgent(agent *foremanv1alpha1.Agent) bool {
+func isDeterministicAgent(agent *meithealv1alpha1.Agent) bool {
 	return IsDeterministicAgent(agent.Spec)
 }
 
 // mcpEnabledForTask reports whether MCP is permitted for this run. A nil
 // AgenticTaskSpec.MCPEnabled (the default) means allowed; an explicit false
 // (a benchmark control run) disables it.
-func mcpEnabledForTask(task *foremanv1alpha1.AgenticTask) bool {
+func mcpEnabledForTask(task *meithealv1alpha1.AgenticTask) bool {
 	return task == nil || task.Spec.MCPEnabled == nil || *task.Spec.MCPEnabled
 }
 
@@ -2251,20 +2251,20 @@ func mcpEnabledForTask(task *foremanv1alpha1.AgenticTask) bool {
 // for the Authorization header; "anthropic" -> providerConfig.BaseURL +
 // Secret lookup for the x-api-key header.
 func (e *NativeAgentLoopExecutor) resolveProviderEndpoint(
-	ctx context.Context, namespace string, agent *foremanv1alpha1.Agent,
+	ctx context.Context, namespace string, agent *meithealv1alpha1.Agent,
 ) (providerEndpoint, error) {
 	switch agent.Spec.Provider {
-	case "", foremanv1alpha1.AgentProviderLocal:
+	case "", meithealv1alpha1.AgentProviderLocal:
 		baseURL, err := e.resolveInferenceBaseURL(ctx, namespace, agent)
 		if err != nil {
 			return providerEndpoint{}, err
 		}
 		return providerEndpoint{baseURL: baseURL, modelName: agent.Spec.Model}, nil
 
-	case foremanv1alpha1.AgentProviderCloudProxy:
+	case meithealv1alpha1.AgentProviderCloudProxy:
 		return e.resolveCloudProxyEndpoint(ctx, namespace, agent)
 
-	case foremanv1alpha1.AgentProviderAnthropic:
+	case meithealv1alpha1.AgentProviderAnthropic:
 		return e.resolveAnthropicEndpoint(ctx, namespace, agent)
 
 	default:
@@ -2278,12 +2278,12 @@ func (e *NativeAgentLoopExecutor) resolveProviderEndpoint(
 // cloud-proxy); anthropic dials the native /v1/messages endpoint via
 // anthropic.Client (x-api-key header). Both satisfy ChatCompleter, so
 // the loop never sees the provider difference.
-func newChatCompleter(agent *foremanv1alpha1.Agent, endpoint providerEndpoint) ChatCompleter {
+func newChatCompleter(agent *meithealv1alpha1.Agent, endpoint providerEndpoint) ChatCompleter {
 	// Per-request header timeout (#532): how long one turn waits for
 	// the first byte of the SSE stream before retrying. The loop-wide
 	// budget is applied separately via LoopConfig.LoopBudget.
 	timeout := durationFromSeconds(agent.Spec.RequestTurnTimeoutSeconds, 120)
-	if agent.Spec.Provider == foremanv1alpha1.AgentProviderAnthropic {
+	if agent.Spec.Provider == meithealv1alpha1.AgentProviderAnthropic {
 		return anthropic.New(endpoint.baseURL, timeout, int(agent.Spec.MaxRetries),
 			anthropic.WithAPIKey(endpoint.apiKey))
 	}
@@ -2299,7 +2299,7 @@ func newChatCompleter(agent *foremanv1alpha1.Agent, endpoint providerEndpoint) C
 // required; the Secret is optional (LAN-only LiteLLM gateways behind a
 // NetworkPolicy can run without auth).
 func (e *NativeAgentLoopExecutor) resolveCloudProxyEndpoint(
-	ctx context.Context, namespace string, agent *foremanv1alpha1.Agent,
+	ctx context.Context, namespace string, agent *meithealv1alpha1.Agent,
 ) (providerEndpoint, error) {
 	cfg := agent.Spec.ProviderConfig
 	if cfg == nil {
@@ -2333,7 +2333,7 @@ func (e *NativeAgentLoopExecutor) resolveCloudProxyEndpoint(
 // value is stored RAW in apiKey: the Messages API sends it as the
 // x-api-key header, never as Authorization: Bearer.
 func (e *NativeAgentLoopExecutor) resolveAnthropicEndpoint(
-	ctx context.Context, namespace string, agent *foremanv1alpha1.Agent,
+	ctx context.Context, namespace string, agent *meithealv1alpha1.Agent,
 ) (providerEndpoint, error) {
 	cfg := agent.Spec.ProviderConfig
 	if cfg == nil {
@@ -2387,14 +2387,14 @@ func (e *NativeAgentLoopExecutor) resolveAuthToken(
 //     for scheme + path, then read the live engine port off the
 //     metal-agent's EndpointSlice(s) and substitute the override host
 //     (rewriteHostFromEndpoints). Used by off-cluster, same-host installs
-//     (foreman-agent on the M5 Max where cluster DNS does not resolve but
+//     (meitheal-agent on the M5 Max where cluster DNS does not resolve but
 //     the metal-agent rewrites Endpoints on every llama-server respawn).
 //  3. Default: trust status.endpoint as the cluster-DNS form, used by
-//     in-cluster foreman-agents.
+//     in-cluster meitheal-agents.
 func (e *NativeAgentLoopExecutor) resolveInferenceBaseURL(
 	ctx context.Context,
 	namespace string,
-	agent *foremanv1alpha1.Agent,
+	agent *meithealv1alpha1.Agent,
 ) (string, error) {
 	if e.InferenceBaseURLOverride != "" {
 		return strings.TrimRight(e.InferenceBaseURLOverride, "/"), nil
@@ -2579,9 +2579,9 @@ func (e *NativeAgentLoopExecutor) buildAuth() (*repo.Auth, error) {
 // these paths because the failure is data-shaped: the task got a
 // real, structured outcome that a downstream consumer can read.
 func (e *NativeAgentLoopExecutor) failResult(
-	start time.Time, reason foremanv1alpha1.AgenticTaskFailureReason, message string,
+	start time.Time, reason meithealv1alpha1.AgenticTaskFailureReason, message string,
 ) *Result {
-	r := NewResult(e.Kind(), foremanv1alpha1.AgenticTaskVerdictIncomplete, message, time.Since(start))
+	r := NewResult(e.Kind(), meithealv1alpha1.AgenticTaskVerdictIncomplete, message, time.Since(start))
 	r.FailureReason = reason
 	r.Extra = map[string]any{
 		"reason":  string(reason), // mirror for back-compat; v0.3 #559
@@ -2592,9 +2592,9 @@ func (e *NativeAgentLoopExecutor) failResult(
 
 func (e *NativeAgentLoopExecutor) incompleteResult(
 	start time.Time, tref corev1.ObjectReference, lr *LoopResult,
-	reason foremanv1alpha1.AgenticTaskFailureReason, msg string,
+	reason meithealv1alpha1.AgenticTaskFailureReason, msg string,
 ) *Result {
-	r := NewResult(e.Kind(), foremanv1alpha1.AgenticTaskVerdictIncomplete, msg, time.Since(start))
+	r := NewResult(e.Kind(), meithealv1alpha1.AgenticTaskVerdictIncomplete, msg, time.Since(start))
 	r.FailureReason = reason
 	r.Extra = map[string]any{
 		"reason":              string(reason),
@@ -2615,7 +2615,7 @@ func (e *NativeAgentLoopExecutor) incompleteResult(
 // configuration to honour, and the safer reading of "unknown" is the
 // human-supervised one. A deployment that wants ready-for-review PRs is
 // making a deliberate choice and sets the field.
-func openPRsAsDraft(agent *foremanv1alpha1.Agent) bool {
+func openPRsAsDraft(agent *meithealv1alpha1.Agent) bool {
 	if agent == nil || agent.Spec.OpenPullRequestsAsDraft == nil {
 		return true
 	}
@@ -2630,13 +2630,13 @@ func openPRsAsDraft(agent *foremanv1alpha1.Agent) bool {
 // duplicate the PR.
 func (e *NativeAgentLoopExecutor) maybeOpenPullRequest(
 	ctx context.Context, log logr.Logger,
-	agent *foremanv1alpha1.Agent,
-	task *foremanv1alpha1.AgenticTask, auth *repo.Auth,
-	verdict foremanv1alpha1.AgenticTaskVerdict, r *Result,
+	agent *meithealv1alpha1.Agent,
+	task *meithealv1alpha1.AgenticTask, auth *repo.Auth,
+	verdict meithealv1alpha1.AgenticTaskVerdict, r *Result,
 	workspace, reviewBase string, reviewDiff []string, cloneURL string,
 ) {
-	if verdict != foremanv1alpha1.AgenticTaskVerdictGo ||
-		task.Spec.Kind != foremanv1alpha1.AgenticTaskKindReview ||
+	if verdict != meithealv1alpha1.AgenticTaskVerdictGo ||
+		task.Spec.Kind != meithealv1alpha1.AgenticTaskKindReview ||
 		!task.Spec.Payload.OpenPullRequest ||
 		e.codeHost(authToken(auth)) == nil {
 		return
@@ -2720,26 +2720,26 @@ func coderPRBodyFromResult(r *Result) string {
 // today's grounded-summary behaviour. Status.Result.Raw is decoded through
 // the same extra.modelExtra envelope the controller's inertDemotion reads.
 func (e *NativeAgentLoopExecutor) coderPRBody(
-	ctx context.Context, task *foremanv1alpha1.AgenticTask,
+	ctx context.Context, task *meithealv1alpha1.AgenticTask,
 ) string {
 	if e.Client == nil {
 		return ""
 	}
-	workload := task.Labels["foreman.llmkube.dev/workload"]
+	workload := task.Labels["meitheal.dev/workload"]
 	if workload == "" || task.Spec.Payload.Branch == "" {
 		return ""
 	}
-	var tasks foremanv1alpha1.AgenticTaskList
+	var tasks meithealv1alpha1.AgenticTaskList
 	if err := e.Client.List(ctx, &tasks,
 		client.InNamespace(task.Namespace),
-		client.MatchingLabels{"foreman.llmkube.dev/workload": workload},
+		client.MatchingLabels{"meitheal.dev/workload": workload},
 	); err != nil {
 		return ""
 	}
-	var newest *foremanv1alpha1.AgenticTask
+	var newest *meithealv1alpha1.AgenticTask
 	for i := range tasks.Items {
 		c := &tasks.Items[i]
-		if c.Spec.Kind != foremanv1alpha1.AgenticTaskKindIssueFix ||
+		if c.Spec.Kind != meithealv1alpha1.AgenticTaskKindIssueFix ||
 			c.Spec.Payload.Branch != task.Spec.Payload.Branch {
 			continue
 		}
@@ -2835,7 +2835,7 @@ func (e *NativeAgentLoopExecutor) groundPRSummary(
 // freeform / integrate / reconcile GOs, none of which have a reviewer.
 func (e *NativeAgentLoopExecutor) maybeRefreshPRBody(
 	ctx context.Context, log logr.Logger,
-	task *foremanv1alpha1.AgenticTask, auth *repo.Auth,
+	task *meithealv1alpha1.AgenticTask, auth *repo.Auth,
 	branch string, r *Result, workspace, reviewBase string, reviewDiff []string,
 	cloneURL string,
 ) {
@@ -2853,7 +2853,7 @@ func (e *NativeAgentLoopExecutor) maybeRefreshPRBody(
 	body := coderPRBodyFromResult(r)
 	if strings.TrimSpace(body) != "" {
 		body = githubpr.DescriptionBody(body, task.Spec.Payload.Issue,
-			task.Labels["foreman.llmkube.dev/workload"])
+			task.Labels["meitheal.dev/workload"])
 	} else {
 		summary := ""
 		if r != nil {
@@ -2912,7 +2912,7 @@ func (e *NativeAgentLoopExecutor) maybeRefreshPRBody(
 // owner — or one that is not an owner/repo-shaped URL at all (local
 // paths in tests) — keeps the same-repo shape.
 func (e *NativeAgentLoopExecutor) openPullRequest(
-	ctx context.Context, task *foremanv1alpha1.AgenticTask,
+	ctx context.Context, task *meithealv1alpha1.AgenticTask,
 	auth *repo.Auth, workspace, summaryBody string, extra map[string]any,
 	draft bool, cloneURL string,
 ) (string, error) {
@@ -2963,10 +2963,10 @@ func (e *NativeAgentLoopExecutor) openPullRequest(
 	}
 	if fromDescription {
 		body = githubpr.DescriptionBody(body, p.Issue,
-			task.Labels["foreman.llmkube.dev/workload"])
+			task.Labels["meitheal.dev/workload"])
 	} else {
 		body = githubpr.PRBody(githubpr.FindTemplate(workspace), body,
-			p.Issue, task.Labels["foreman.llmkube.dev/workload"])
+			p.Issue, task.Labels["meitheal.dev/workload"])
 	}
 	prURL, _, err := ch.EnsureChangeRequest(ctx, p.Repo, head,
 		baseBranchOrDefault(p.BaseBranch), title, body, draft)
@@ -2992,10 +2992,10 @@ func (e *NativeAgentLoopExecutor) openPullRequest(
 // INCOMPLETE result as-is.
 func (e *NativeAgentLoopExecutor) maybePreserveGateFailedBranch(
 	ctx context.Context, log logr.Logger,
-	agent *foremanv1alpha1.Agent, task *foremanv1alpha1.AgenticTask,
+	agent *meithealv1alpha1.Agent, task *meithealv1alpha1.AgenticTask,
 	workspace, branch string, auth *repo.Auth, lr *LoopResult, r *Result,
 ) {
-	if agent.Spec.Role == foremanv1alpha1.AgentRoleReviewer {
+	if agent.Spec.Role == meithealv1alpha1.AgentRoleReviewer {
 		return
 	}
 	if lr == nil || lr.Terminal == nil {
@@ -3087,10 +3087,10 @@ const preserveBranchTimeout = 30 * time.Second
 // no-op for them.
 func (e *NativeAgentLoopExecutor) preserveUnsuccessfulLoopBranch(
 	ctx context.Context, log logr.Logger,
-	agent *foremanv1alpha1.Agent, task *foremanv1alpha1.AgenticTask,
+	agent *meithealv1alpha1.Agent, task *meithealv1alpha1.AgenticTask,
 	workspace, branch string, auth *repo.Auth, r *Result,
 ) *Result {
-	if agent.Spec.Role == foremanv1alpha1.AgentRoleReviewer {
+	if agent.Spec.Role == meithealv1alpha1.AgentRoleReviewer {
 		return r
 	}
 
@@ -3190,7 +3190,7 @@ func (e *NativeAgentLoopExecutor) preserveUnsuccessfulLoopBranch(
 
 func (e *NativeAgentLoopExecutor) modelDecidedResult(
 	ctx context.Context, start time.Time, tref corev1.ObjectReference, lr *LoopResult,
-	verdict foremanv1alpha1.AgenticTaskVerdict, workspace, baseBranch string,
+	verdict meithealv1alpha1.AgenticTaskVerdict, workspace, baseBranch string,
 ) *Result {
 	r := NewResult(e.Kind(), verdict, lr.Terminal.Summary, time.Since(start))
 	r.Extra = map[string]any{
@@ -3208,7 +3208,7 @@ func (e *NativeAgentLoopExecutor) modelDecidedResult(
 // to the Result's top-level Extra["outcome"]. The controller's
 // shouldEscalateCoder, shouldEscalateCoderOnFailure and
 // isAlreadyResolvedCoder (see
-// internal/foreman/controller/workload_coder_escalation.go; NOT imported
+// internal/controller/workload_coder_escalation.go; NOT imported
 // here, per the needsVerificationOutcome doc comment in verdict_policy.go)
 // read the TOP-LEVEL outcome. The first two decide whether to skip
 // escalation; isAlreadyResolvedCoder additionally drives the Workload
@@ -3299,7 +3299,7 @@ func resolvedByResolvesAndIsAncestor(
 func (e *NativeAgentLoopExecutor) noChangesResult(
 	start time.Time, tref corev1.ObjectReference, lr *LoopResult, branch string,
 ) *Result {
-	r := NewResult(e.Kind(), foremanv1alpha1.AgenticTaskVerdictNoGo,
+	r := NewResult(e.Kind(), meithealv1alpha1.AgenticTaskVerdictNoGo,
 		"model emitted GO but produced no diff", time.Since(start))
 	r.Extra = map[string]any{
 		"outcome":        "NO-CHANGES",
@@ -3321,7 +3321,7 @@ func (e *NativeAgentLoopExecutor) noChangesResult(
 func (e *NativeAgentLoopExecutor) commitRejectedResult(
 	start time.Time, tref corev1.ObjectReference, lr *LoopResult, branch string, cause error,
 ) *Result {
-	r := NewResult(e.Kind(), foremanv1alpha1.AgenticTaskVerdictNoGo,
+	r := NewResult(e.Kind(), meithealv1alpha1.AgenticTaskVerdictNoGo,
 		"commit rejected", time.Since(start))
 	r.Extra = map[string]any{
 		"outcome":        "COMMIT-REJECTED",
@@ -3340,7 +3340,7 @@ func (e *NativeAgentLoopExecutor) commitRejectedResult(
 func (e *NativeAgentLoopExecutor) envtestGateFailedResult(
 	start time.Time, tref corev1.ObjectReference, lr *LoopResult, branch, sha, feedback string,
 ) *Result {
-	r := NewResult(e.Kind(), foremanv1alpha1.AgenticTaskVerdictIncomplete,
+	r := NewResult(e.Kind(), meithealv1alpha1.AgenticTaskVerdictIncomplete,
 		"post-push envtest gate failed", time.Since(start))
 	r.Extra = map[string]any{
 		"outcome":       "ENVTEST-GATE-FAILED",
@@ -3361,7 +3361,7 @@ func (e *NativeAgentLoopExecutor) envtestGateFailedResult(
 func (e *NativeAgentLoopExecutor) scanGateFailedResult(
 	start time.Time, tref corev1.ObjectReference, lr *LoopResult, branch, sha, feedback string,
 ) *Result {
-	r := NewResult(e.Kind(), foremanv1alpha1.AgenticTaskVerdictIncomplete,
+	r := NewResult(e.Kind(), meithealv1alpha1.AgenticTaskVerdictIncomplete,
 		"post-push container-image scan gate failed", time.Since(start))
 	r.Extra = map[string]any{
 		"outcome":       "SCAN-GATE-FAILED",
@@ -3437,13 +3437,13 @@ func (e *NativeAgentLoopExecutor) mapLoopError(
 				spun += "; " + summary
 			}
 			return e.incompleteResult(start, tref, lr,
-				foremanv1alpha1.FailureLoopSpinning, spun), nil
+				meithealv1alpha1.FailureLoopSpinning, spun), nil
 		}
 		return e.incompleteResult(start, tref, lr,
-			foremanv1alpha1.FailureMaxTurnsExhausted, summary), nil
+			meithealv1alpha1.FailureMaxTurnsExhausted, summary), nil
 	case errors.Is(loopErr, ErrAssistantNoToolCalls):
 		return e.incompleteResult(start, tref, lr,
-			foremanv1alpha1.FailureModelMisunderstood,
+			meithealv1alpha1.FailureModelMisunderstood,
 			"model returned text without tool_calls; loop cannot make progress"), nil
 	case errors.Is(loopErr, ErrAssistantReasoningOnly):
 		// A thinking model that exhausted its reasoning-only budget
@@ -3452,7 +3452,7 @@ func (e *NativeAgentLoopExecutor) mapLoopError(
 		// reasoning trace is the evidence an operator needs) instead of
 		// bubbling an ExecutorError that drops both.
 		return e.incompleteResult(start, tref, lr,
-			foremanv1alpha1.FailureModelMisunderstood,
+			meithealv1alpha1.FailureModelMisunderstood,
 			"model exhausted its reasoning-only budget without emitting a tool call"), nil
 	case errors.Is(loopErr, ErrAssistantTruncated):
 		// The per-turn token cap cut the model off before it emitted a tool
@@ -3461,12 +3461,12 @@ func (e *NativeAgentLoopExecutor) mapLoopError(
 		// infrastructure failure: record INCOMPLETE with an accurate,
 		// actionable message. The fix is a bigger budget, not a retry.
 		return e.incompleteResult(start, tref, lr,
-			foremanv1alpha1.FailureModelMisunderstood,
+			meithealv1alpha1.FailureModelMisunderstood,
 			"model output was truncated by the token cap before it emitted a tool call; "+
 				"raise Agent.spec.maxOutputTokens or the served context window"), nil
 	case errors.Is(loopErr, context.Canceled), errors.Is(loopErr, context.DeadlineExceeded):
 		return e.incompleteResult(start, tref, lr,
-			foremanv1alpha1.FailureTimeout, loopErr.Error()), nil
+			meithealv1alpha1.FailureTimeout, loopErr.Error()), nil
 	default:
 		// Anything else is a system / transport failure: bubble up as an
 		// error so the watcher records ExecutorError. The watcher's execErr
@@ -3496,7 +3496,7 @@ func (e *NativeAgentLoopExecutor) upstreamURL(repoSlug string) string {
 // self-commit recovery path uses the same upstream URL the branch was
 // originally cut from. Pulled out as a method so runLLMPath stays under the
 // gocyclo ceiling.
-func (e *NativeAgentLoopExecutor) resolveUpstreamForRun(task *foremanv1alpha1.AgenticTask) string {
+func (e *NativeAgentLoopExecutor) resolveUpstreamForRun(task *meithealv1alpha1.AgenticTask) string {
 	return e.upstreamURL(task.Spec.Payload.Repo)
 }
 
@@ -3536,7 +3536,7 @@ func (e *NativeAgentLoopExecutor) resolveUpstreamForRun(task *foremanv1alpha1.Ag
 // fail-closed rather than block the gate on this infrastructure trouble
 // alone.
 func (e *NativeAgentLoopExecutor) resolveEvidenceBaseSHA(
-	ctx context.Context, task *foremanv1alpha1.AgenticTask, workspace string, log logr.Logger,
+	ctx context.Context, task *meithealv1alpha1.AgenticTask, workspace string, log logr.Logger,
 ) string {
 	upstreamURL := e.resolveUpstreamForRun(task)
 	if upstreamURL == "" {
@@ -3597,7 +3597,7 @@ func (e *NativeAgentLoopExecutor) pushFailedResult(
 	start time.Time, tref corev1.ObjectReference, lr *LoopResult,
 	branch, sha string, cause error,
 ) *Result {
-	r := NewResult(e.Kind(), foremanv1alpha1.AgenticTaskVerdictNoGo,
+	r := NewResult(e.Kind(), meithealv1alpha1.AgenticTaskVerdictNoGo,
 		"push to fork failed", time.Since(start))
 	r.Extra = map[string]any{
 		"outcome":        "PUSH-FAILED",
@@ -3629,13 +3629,13 @@ func (e *NativeAgentLoopExecutor) freeformGoResult(
 // run without the profile) rather than failing the task. Extracted from
 // runLLMPath to keep that function under the gocyclo ceiling.
 func (e *NativeAgentLoopExecutor) resolveModelProfile(
-	ctx context.Context, agent *foremanv1alpha1.Agent, log logr.Logger,
-) (*foremanv1alpha1.ModelProfile, error) {
+	ctx context.Context, agent *meithealv1alpha1.Agent, log logr.Logger,
+) (*meithealv1alpha1.ModelProfile, error) {
 	ref := agent.Spec.ModelProfileRef
 	if ref == "" {
 		return nil, nil
 	}
-	var mp foremanv1alpha1.ModelProfile
+	var mp meithealv1alpha1.ModelProfile
 	switch err := e.Client.Get(ctx, types.NamespacedName{Name: ref}, &mp); {
 	case err == nil:
 		return &mp, nil
@@ -3650,7 +3650,7 @@ func (e *NativeAgentLoopExecutor) resolveModelProfile(
 func (e *NativeAgentLoopExecutor) goResult(
 	start time.Time, tref corev1.ObjectReference, lr *LoopResult, branch, sha string,
 ) *Result {
-	r := NewResult(e.Kind(), foremanv1alpha1.AgenticTaskVerdictGo,
+	r := NewResult(e.Kind(), meithealv1alpha1.AgenticTaskVerdictGo,
 		lr.Terminal.Summary, time.Since(start))
 	r.Extra = map[string]any{
 		"outcome":       "",
@@ -3694,7 +3694,7 @@ func attachGateAdvisories(extra map[string]any, acc *[]advisory) {
 // reviewer-prompt section. Returns an empty string when the slice is empty
 // so callers can append unconditionally without adding noise. Called from
 // buildUserPrompt when rendering advisories into a reviewer task's prompt.
-func renderGateAdvisories(advisories []foremanv1alpha1.GateAdvisory) string {
+func renderGateAdvisories(advisories []meithealv1alpha1.GateAdvisory) string {
 	if len(advisories) == 0 {
 		return ""
 	}
@@ -3713,13 +3713,13 @@ func renderGateAdvisories(advisories []foremanv1alpha1.GateAdvisory) string {
 //  1. Explicit task.Spec.Payload.Branch wins. This is the documented
 //     hand-off for verify tasks (which gate a branch the upstream coder
 //     task already produced), the M6 reconciler's prepopulated
-//     foreman/<workload>/issue-N name, and the escape hatch for any
+//     meitheal/<workload>/issue-N name, and the escape hatch for any
 //     caller that wants to pin the branch name.
 //  2. issue-fix with Payload.Issue > 0 plus a Workload owner-ref
-//     derives foreman/<workload>/issue-N. The workload prefix is what
+//     derives meitheal/<workload>/issue-N. The workload prefix is what
 //     makes the branch unique across reruns on the same issue (#573).
 //  3. issue-fix with Payload.Issue > 0 and no workload owner falls
-//     back to foreman/issue-N. Kept for hand-applied AgenticTasks
+//     back to meitheal/issue-N. Kept for hand-applied AgenticTasks
 //     that target a one-off issue with no parent Workload.
 //
 // baseBranchOrDefault resolves the task's base ref, defaulting to "main" when
@@ -3835,12 +3835,12 @@ func gitRemoteOwnerRepo(remoteURL string) (owner, name string) {
 	return o, n
 }
 
-// 4. Everything else falls back to foreman/<task-name>.
-func branchNameForTask(task *foremanv1alpha1.AgenticTask) string {
+// 4. Everything else falls back to meitheal/<task-name>.
+func branchNameForTask(task *meithealv1alpha1.AgenticTask) string {
 	if task.Spec.Payload.Branch != "" {
 		return task.Spec.Payload.Branch
 	}
-	if task.Spec.Kind == foremanv1alpha1.AgenticTaskKindIssueFix && task.Spec.Payload.Issue > 0 {
+	if task.Spec.Kind == meithealv1alpha1.AgenticTaskKindIssueFix && task.Spec.Payload.Issue > 0 {
 		if owner := workloadOwnerName(task); owner != "" {
 			return fmt.Sprintf("%s/%s/issue-%d", repo.BranchPrefix, owner, task.Spec.Payload.Issue)
 		}
@@ -3855,12 +3855,12 @@ func branchNameForTask(task *foremanv1alpha1.AgenticTask) string {
 // disambiguate per-rerun branches.
 //
 // The check is intentionally name-based, not UID-based: the reader
-// is human-friendly (foreman/v03-validation-batch-rerun-5/issue-510
+// is human-friendly (meitheal/v03-validation-batch-rerun-5/issue-510
 // is greppable; a UUID suffix is not), and the name is unique within
 // a namespace which is the only scope the executor cares about.
-func workloadOwnerName(task *foremanv1alpha1.AgenticTask) string {
+func workloadOwnerName(task *meithealv1alpha1.AgenticTask) string {
 	for _, ref := range task.OwnerReferences {
-		if ref.Kind == "Workload" && ref.APIVersion == foremanv1alpha1.GroupVersion.String() {
+		if ref.Kind == "Workload" && ref.APIVersion == meithealv1alpha1.GroupVersion.String() {
 			return ref.Name
 		}
 	}
@@ -3876,11 +3876,11 @@ var nowFunc = time.Now
 // message. v0.1 is straightforward: for issue-fix, drop the issue
 // number + repo + prompt body into a small template; for freeform,
 // pass the prompt through unchanged.
-func buildUserPrompt(task *foremanv1alpha1.AgenticTask) string {
+func buildUserPrompt(task *meithealv1alpha1.AgenticTask) string {
 	p := task.Spec.Payload
 	var b strings.Builder
 	switch task.Spec.Kind {
-	case foremanv1alpha1.AgenticTaskKindIssueFix:
+	case meithealv1alpha1.AgenticTaskKindIssueFix:
 		fmt.Fprintf(&b, "You are working on issue #%d of repository %s.\n\n", p.Issue, p.Repo)
 		b.WriteString("Today's date is ")
 		b.WriteString(nowFunc().UTC().Format("2006-01-02"))
@@ -3904,7 +3904,7 @@ func buildUserPrompt(task *foremanv1alpha1.AgenticTask) string {
 		b.WriteString("Include `Fixes #")
 		fmt.Fprintf(&b, "%d", p.Issue)
 		b.WriteString("` in the commit_message trailer when verdict is GO.\n")
-	case foremanv1alpha1.AgenticTaskKindReview:
+	case meithealv1alpha1.AgenticTaskKindReview:
 		// Build a non-empty user message for reviewer tasks. The
 		// reviewer.md system prompt directs the model to read the
 		// repo / issue / branch from the task payload; surfacing
@@ -3969,8 +3969,8 @@ func buildUserPrompt(task *foremanv1alpha1.AgenticTask) string {
 // (NO-GO = REQUEST-CHANGES) remains the cascade-affecting signal;
 // findings are decoration that helps operators debug.
 //
-// See pkg/foreman/agent/reviewer/findings.go for the schema and
-// config/foreman/system-prompts/reviewer.md for the contract the
+// See pkg/agent/reviewer/findings.go for the schema and
+// config/system-prompts/reviewer.md for the contract the
 // reviewer agent is asked to honor.
 // reconcileReviewerFilesTouched overwrites
 // `submit_result.extra.filesTouched` with the ground-truth file list
@@ -4033,7 +4033,7 @@ func reconcileReviewerFilesTouched(
 // (#1005). Falls back to the local "main" ref only when no upstream is
 // resolvable (freeform tasks), matching the pre-#1005 degrade posture.
 func (e *NativeAgentLoopExecutor) reviewerDiffBase(
-	ctx context.Context, log logr.Logger, task *foremanv1alpha1.AgenticTask, workspace string,
+	ctx context.Context, log logr.Logger, task *meithealv1alpha1.AgenticTask, workspace string,
 ) string {
 	upstreamURL := e.resolveUpstreamForRun(task)
 	if upstreamURL == "" {
@@ -4318,10 +4318,10 @@ func extractIssueKeywords(body string) []string {
 func enforceReviewerIssueAsk(
 	log logr.Logger,
 	extra map[string]any,
-	verdict foremanv1alpha1.AgenticTaskVerdict,
+	verdict meithealv1alpha1.AgenticTaskVerdict,
 	scopeDriftDetected bool,
 	scopeMatched []string,
-) foremanv1alpha1.AgenticTaskVerdict {
+) meithealv1alpha1.AgenticTaskVerdict {
 	if extra == nil {
 		return verdict
 	}
@@ -4348,7 +4348,7 @@ func enforceReviewerIssueAsk(
 		extra["verdictClaimed"] = string(verdict)
 	}
 
-	if verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		extra["demotionReason"] = "issueAsk could not be verified as covering the " +
 			"fetched issue body; review verdict is untrusted"
 		log.Info("reviewer integrity: unverified issueAsk on non-GO verdict; keeping verdict but marking untrusted",
@@ -4375,7 +4375,7 @@ func enforceReviewerIssueAsk(
 		"fetched issue body; review verdict is untrusted"
 	log.Info("reviewer integrity: unverified issueAsk on GO verdict; demoting to NO-GO",
 		"verdictClaimed", verdict)
-	return foremanv1alpha1.AgenticTaskVerdictNoGo
+	return meithealv1alpha1.AgenticTaskVerdictNoGo
 }
 
 // reUnverifiedReviewerSummary matches a reviewer's own plain-language
@@ -4431,9 +4431,9 @@ func enforceReviewerUnverifiedSummary(
 	log logr.Logger,
 	extra map[string]any,
 	summary string,
-	verdict foremanv1alpha1.AgenticTaskVerdict,
-) foremanv1alpha1.AgenticTaskVerdict {
-	if verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	verdict meithealv1alpha1.AgenticTaskVerdict,
+) meithealv1alpha1.AgenticTaskVerdict {
+	if verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		return verdict
 	}
 	match := reUnverifiedReviewerSummary.FindString(summary)
@@ -4461,7 +4461,7 @@ func enforceReviewerUnverifiedSummary(
 			"could not be performed is not a verified approval", match)
 	log.Info("reviewer integrity: GO with a verification-failure summary; demoting to NO-GO",
 		"phrase", match)
-	return foremanv1alpha1.AgenticTaskVerdictNoGo
+	return meithealv1alpha1.AgenticTaskVerdictNoGo
 }
 
 // extractFetchIssueBody finds the most recent fetch_issue tool result
@@ -4584,7 +4584,7 @@ func logReviewerFindings(log logr.Logger, extra map[string]any) {
 // out of runLLMPath so the call site there is a single statement rather than
 // a branch, keeping runLLMPath's cyclomatic complexity budget untouched
 // (mirrors applyCoderGroundingRailForTask).
-func applyReviewerDiffGateForTask(log logr.Logger, loopRes *LoopResult, verdict foremanv1alpha1.AgenticTaskVerdict) {
+func applyReviewerDiffGateForTask(log logr.Logger, loopRes *LoopResult, verdict meithealv1alpha1.AgenticTaskVerdict) {
 	if loopRes == nil || loopRes.Terminal == nil {
 		return
 	}
@@ -4627,13 +4627,13 @@ func applyReviewerDiffGateForTask(log logr.Logger, loopRes *LoopResult, verdict 
 func fetchIssueBodyIfNeeded(
 	ctx context.Context,
 	items worktracker.WorkItems,
-	task *foremanv1alpha1.AgenticTask,
+	task *meithealv1alpha1.AgenticTask,
 	log logr.Logger,
 ) {
 	if items == nil {
 		return
 	}
-	if task.Spec.Kind != foremanv1alpha1.AgenticTaskKindIssueFix {
+	if task.Spec.Kind != meithealv1alpha1.AgenticTaskKindIssueFix {
 		return
 	}
 	if task.Spec.Payload.Prompt != "" && task.Spec.Payload.ReviseFromBranch == "" {
@@ -4699,7 +4699,7 @@ func fetchIssueBodyIfNeeded(
 // The non-nil-but-zero case lets a review-only Agent CR opt out
 // explicitly with `stuckLoopDetection: {}`; the nil case (the default
 // shape when no key is set) gets the conservative production defaults.
-func progressConfigFromAgent(agent *foremanv1alpha1.Agent) ProgressConfig {
+func progressConfigFromAgent(agent *meithealv1alpha1.Agent) ProgressConfig {
 	var cfg ProgressConfig
 	if agent == nil || agent.Spec.StuckLoopDetection == nil {
 		cfg = DefaultProgressConfig
@@ -4736,7 +4736,7 @@ func progressConfigFromAgent(agent *foremanv1alpha1.Agent) ProgressConfig {
 	// qwen reviewer correctly investigate a diff for 16 turns and get
 	// force-terminated by EditFreeStreak even though it was making
 	// progress; the devstral reviewer wedged on a separate OAI issue.
-	if agent != nil && agent.Spec.Role == foremanv1alpha1.AgentRoleReviewer {
+	if agent != nil && agent.Spec.Role == meithealv1alpha1.AgentRoleReviewer {
 		cfg.EditFreeTurnsLimit = 0
 	}
 	return cfg
@@ -4769,9 +4769,9 @@ func workspaceOrientationBlock(workspace string) string {
 // gives the scorer both the path hints ("see tools/bash.go") that
 // often appear in issue bodies and the bag-of-words signal from the
 // rest of the prose. Freeform tasks pass the prompt through unchanged.
-func repoMapQuery(task *foremanv1alpha1.AgenticTask) string {
+func repoMapQuery(task *meithealv1alpha1.AgenticTask) string {
 	p := task.Spec.Payload
-	if task.Spec.Kind == foremanv1alpha1.AgenticTaskKindIssueFix {
+	if task.Spec.Kind == meithealv1alpha1.AgenticTaskKindIssueFix {
 		var b strings.Builder
 		if p.Issue > 0 {
 			fmt.Fprintf(&b, "issue #%d ", p.Issue)
@@ -4823,11 +4823,13 @@ func durationFromSeconds(secs int32, fallbackSecs int) time.Duration {
 // envelopes, not only submit_result. An unknown value here is a harness bug
 // rather than a model quirk; the watcher backstop handles any remaining
 // out-of-enum strings as a follow-up (issue #649).
-func normalizeModelVerdict(raw string) (foremanv1alpha1.AgenticTaskVerdict, foremanv1alpha1.AgenticTaskFailureReason) {
+func normalizeModelVerdict(
+	raw string,
+) (meithealv1alpha1.AgenticTaskVerdict, meithealv1alpha1.AgenticTaskFailureReason) {
 	if raw == "ERROR" {
-		return foremanv1alpha1.AgenticTaskVerdictIncomplete, foremanv1alpha1.FailureModelReportedError
+		return meithealv1alpha1.AgenticTaskVerdictIncomplete, meithealv1alpha1.FailureModelReportedError
 	}
-	return foremanv1alpha1.AgenticTaskVerdict(raw), ""
+	return meithealv1alpha1.AgenticTaskVerdict(raw), ""
 }
 
 // removeAllResilient removes path like os.RemoveAll, but tolerates

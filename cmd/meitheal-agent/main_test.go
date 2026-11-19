@@ -30,10 +30,10 @@ import (
 
 	"github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
-	foremantools "github.com/defilantech/meitheal/pkg/agent/tools"
+	meithealtools "github.com/defilantech/meitheal/pkg/agent/tools"
 )
 
-// fakeAssembleTool is a minimal foremantools.Tool double used to exercise
+// fakeAssembleTool is a minimal meithealtools.Tool double used to exercise
 // assembleAgentRegistry's wiring (native whitelist filtering + MCP bypass)
 // without constructing real workspace-backed tools or dialing MCP servers.
 type fakeAssembleTool struct {
@@ -65,7 +65,7 @@ func schemaNames(t *testing.T, r agent.ToolRegistry) []string {
 }
 
 // TestAssembleAgentRegistry_MCPBypassesWhitelist is THE regression test
-// for the v0.3 Foreman MCP fix: a non-empty Agent.spec.tools whitelist
+// for the v0.3 Meitheal MCP fix: a non-empty Agent.spec.tools whitelist
 // must not drop MCP tools. Before the fix, makeRegistryFactory appended
 // MCP tools to the native slice and then ran Filter(ag.Spec.Tools) over
 // the combined set -- since MCP tool names (mcp__<server>__<tool>) are
@@ -73,12 +73,12 @@ func schemaNames(t *testing.T, r agent.ToolRegistry) []string {
 // every MCP tool. This test builds a whitelist that keeps read_file and
 // drops bash, and asserts the MCP tool survives regardless.
 func TestAssembleAgentRegistry_MCPBypassesWhitelist(t *testing.T) {
-	native := []foremantools.Tool{
+	native := []meithealtools.Tool{
 		&fakeAssembleTool{name: "read_file"},
 		&fakeAssembleTool{name: "bash"},
 	}
 	whitelist := []string{"read_file"}
-	mcpTools := []foremantools.Tool{
+	mcpTools := []meithealtools.Tool{
 		&fakeAssembleTool{name: "mcp__context7__get-docs"},
 	}
 
@@ -113,11 +113,11 @@ func TestAssembleAgentRegistry_MCPBypassesWhitelist(t *testing.T) {
 // common case: an Agent with no spec.tools whitelist (the zero value)
 // keeps every native tool, and MCP tools are still added on top.
 func TestAssembleAgentRegistry_EmptyWhitelistKeepsAllPlusMCP(t *testing.T) {
-	native := []foremantools.Tool{
+	native := []meithealtools.Tool{
 		&fakeAssembleTool{name: "read_file"},
 		&fakeAssembleTool{name: "bash"},
 	}
-	mcpTools := []foremantools.Tool{
+	mcpTools := []meithealtools.Tool{
 		&fakeAssembleTool{name: "mcp__context7__get-docs"},
 	}
 
@@ -138,7 +138,7 @@ func TestAssembleAgentRegistry_EmptyWhitelistKeepsAllPlusMCP(t *testing.T) {
 // behavior: Filter validates the whitelist names against the native
 // set and returns an error for anything unknown.
 func TestAssembleAgentRegistry_BadWhitelistNameErrors(t *testing.T) {
-	native := []foremantools.Tool{
+	native := []meithealtools.Tool{
 		&fakeAssembleTool{name: "read_file"},
 	}
 	whitelist := []string{"nope"}
@@ -296,19 +296,19 @@ func TestCommitterName_FallbackToAuthor(t *testing.T) {
 		{
 			name:           "unset_committer_falls_back_to_author",
 			committerName:  "",
-			authorName:     "Foreman Bot",
-			wantName:       "Foreman Bot",
+			authorName:     "Meitheal Bot",
+			wantName:       "Meitheal Bot",
 			committerEmail: "",
-			authorEmail:    "bot@foreman.test",
-			wantEmail:      "bot@foreman.test",
+			authorEmail:    "bot@meitheal.test",
+			wantEmail:      "bot@meitheal.test",
 		},
 		{
 			name:           "set_committer_overrides_author",
 			committerName:  "Jory Dogfood",
-			authorName:     "Foreman Bot",
+			authorName:     "Meitheal Bot",
 			wantName:       "Jory Dogfood",
 			committerEmail: "jory@example.com",
-			authorEmail:    "bot@foreman.test",
+			authorEmail:    "bot@meitheal.test",
 			wantEmail:      "jory@example.com",
 		},
 		{

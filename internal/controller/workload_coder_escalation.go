@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // coderResultEnvelope is the subset of an AgenticTask's status.result we
@@ -51,8 +51,8 @@ type coderResultEnvelope struct {
 // terminal coder task: the typed verdict plus the two outcome strings in
 // the result envelope. A missing/unparseable result yields empty
 // outcome strings (treated as non-escalating).
-func coderTerminalOutcome(task *foremanv1alpha1.AgenticTask) (
-	verdict foremanv1alpha1.AgenticTaskVerdict, topOutcome, modelOutcome string,
+func coderTerminalOutcome(task *meithealv1alpha1.AgenticTask) (
+	verdict meithealv1alpha1.AgenticTaskVerdict, topOutcome, modelOutcome string,
 ) {
 	verdict = task.Status.Verdict
 	if task.Status.Result == nil || len(task.Status.Result.Raw) == 0 {
@@ -67,7 +67,7 @@ func coderTerminalOutcome(task *foremanv1alpha1.AgenticTask) (
 
 // coderSummary returns the model's own terminal summary for the hint, or
 // "" if unavailable.
-func coderSummary(task *foremanv1alpha1.AgenticTask) string {
+func coderSummary(task *meithealv1alpha1.AgenticTask) string {
 	if task.Status.Result == nil || len(task.Status.Result.Raw) == 0 {
 		return ""
 	}
@@ -83,7 +83,7 @@ func coderSummary(task *foremanv1alpha1.AgenticTask) string {
 // extracts Extra.ResolvedBy. Empty string when Result is nil/unparseable
 // or ResolvedBy is unset. Used by rollup to surface evidence in per-issue
 // AlreadyResolved events.
-func coderResolvedBy(task *foremanv1alpha1.AgenticTask) string {
+func coderResolvedBy(task *meithealv1alpha1.AgenticTask) string {
 	if task.Status.Result == nil || len(task.Status.Result.Raw) == 0 {
 		return ""
 	}
@@ -114,12 +114,12 @@ const needsVerificationOutcome = "NEEDS-VERIFICATION"
 // shouldEscalateCoder (to skip escalation) and rollup (to keep the
 // task out of the incomplete bucket). The signal lives at
 // extra.outcome == alreadyResolvedOutcome with verdict == NO-GO.
-func isAlreadyResolvedCoder(task *foremanv1alpha1.AgenticTask) bool {
+func isAlreadyResolvedCoder(task *meithealv1alpha1.AgenticTask) bool {
 	if task == nil {
 		return false
 	}
 	verdict, topOutcome, _ := coderTerminalOutcome(task)
-	return verdict == foremanv1alpha1.AgenticTaskVerdictNoGo && topOutcome == alreadyResolvedOutcome
+	return verdict == meithealv1alpha1.AgenticTaskVerdictNoGo && topOutcome == alreadyResolvedOutcome
 }
 
 // isSkippedTask reports whether the task was skipped because its
@@ -131,25 +131,25 @@ func isAlreadyResolvedCoder(task *foremanv1alpha1.AgenticTask) bool {
 // failed, inFlight, alreadyResolved) so they don't pin the Workload
 // to Failed. Reused by that cascade path so there is a single
 // predicate for the skip state rather than a second copy.
-func isSkippedTask(task *foremanv1alpha1.AgenticTask) bool {
+func isSkippedTask(task *meithealv1alpha1.AgenticTask) bool {
 	if task == nil {
 		return false
 	}
-	return task.Status.Phase == foremanv1alpha1.AgenticTaskPhaseSucceeded &&
-		task.Status.Verdict == foremanv1alpha1.AgenticTaskVerdictSkipped
+	return task.Status.Phase == meithealv1alpha1.AgenticTaskPhaseSucceeded &&
+		task.Status.Verdict == meithealv1alpha1.AgenticTaskVerdictSkipped
 }
 
 // hasCrossStageContradiction reports whether the task's terminal result
 // envelope carries a non-empty cross-stage contradiction list
 // (extra.crossStageContradictions, #1685). The detector writes these in
-// the coder / gate / reviewer wiring (pkg/foreman/agent/cross_stage_wiring.go)
+// the coder / gate / reviewer wiring (pkg/agent/cross_stage_wiring.go)
 // when a stage's claim contradicts the ground-truth branch facts. A missing
 // or unparseable result returns false, matching coderTerminalOutcome's
 // convention. Counted into the rollup ContradictedTasks bucket so a
 // contradiction is visible on the Workload instead of being written to the
 // AgenticTask and read by nobody; orthogonal to success, so it does not
 // change terminal state.
-func hasCrossStageContradiction(task *foremanv1alpha1.AgenticTask) bool {
+func hasCrossStageContradiction(task *meithealv1alpha1.AgenticTask) bool {
 	if task == nil {
 		return false
 	}
@@ -167,7 +167,7 @@ func hasCrossStageContradiction(task *foremanv1alpha1.AgenticTask) bool {
 // task's terminal result envelope (extra.crossStageContradictions). Empty
 // when Result is nil/unparseable or no contradictions are recorded. Used by
 // classifyChildren to carry the first contradiction string into the rollup.
-func coderCrossStageContradictions(task *foremanv1alpha1.AgenticTask) []string {
+func coderCrossStageContradictions(task *meithealv1alpha1.AgenticTask) []string {
 	if task.Status.Result == nil || len(task.Status.Result.Raw) == 0 {
 		return nil
 	}
@@ -185,15 +185,15 @@ func coderCrossStageContradictions(task *foremanv1alpha1.AgenticTask) []string {
 // turns), a harness STUCK-LOOP-DETECTED, a trivial NO-CHANGES NO-GO, an
 // already-resolved NO-GO (#970), an ERROR, or a GO do not.
 func shouldEscalateCoder(
-	verdict foremanv1alpha1.AgenticTaskVerdict, topOutcome, modelOutcome string,
+	verdict meithealv1alpha1.AgenticTaskVerdict, topOutcome, modelOutcome string,
 ) bool {
-	if verdict == foremanv1alpha1.AgenticTaskVerdictNoGo && topOutcome == alreadyResolvedOutcome {
+	if verdict == meithealv1alpha1.AgenticTaskVerdictNoGo && topOutcome == alreadyResolvedOutcome {
 		return false // #970: already-resolved is not a capability failure
 	}
-	if verdict == foremanv1alpha1.AgenticTaskVerdictNoGo && topOutcome == needsVerificationOutcome {
+	if verdict == meithealv1alpha1.AgenticTaskVerdictNoGo && topOutcome == needsVerificationOutcome {
 		return false // #1033: a larger model can't reach the ground truth either
 	}
-	if verdict == foremanv1alpha1.AgenticTaskVerdictNoGo && topOutcome == "MODEL-DECIDED" {
+	if verdict == meithealv1alpha1.AgenticTaskVerdictNoGo && topOutcome == "MODEL-DECIDED" {
 		return true
 	}
 	if modelOutcome == "CODER-GATE-FAILED" {
@@ -210,12 +210,12 @@ func shouldEscalateCoder(
 // and ERROR (harness error). ALREADY-RESOLVED and NEEDS-VERIFICATION
 // never escalate even when the flag is set.
 func shouldEscalateCoderOnFailure(
-	verdict foremanv1alpha1.AgenticTaskVerdict, topOutcome string,
+	verdict meithealv1alpha1.AgenticTaskVerdict, topOutcome string,
 ) bool {
-	if verdict == foremanv1alpha1.AgenticTaskVerdictNoGo && topOutcome == alreadyResolvedOutcome {
+	if verdict == meithealv1alpha1.AgenticTaskVerdictNoGo && topOutcome == alreadyResolvedOutcome {
 		return false // #970: already-resolved is not a failure
 	}
-	if verdict == foremanv1alpha1.AgenticTaskVerdictNoGo && topOutcome == needsVerificationOutcome {
+	if verdict == meithealv1alpha1.AgenticTaskVerdictNoGo && topOutcome == needsVerificationOutcome {
 		return false // #1033: a larger model can't reach the ground truth either
 	}
 	if topOutcome == "STUCK-LOOP-DETECTED" {
@@ -224,7 +224,7 @@ func shouldEscalateCoderOnFailure(
 	if topOutcome == "ERROR" {
 		return true
 	}
-	if verdict == foremanv1alpha1.AgenticTaskVerdictIncomplete && topOutcome == "MODEL-DECIDED" {
+	if verdict == meithealv1alpha1.AgenticTaskVerdictIncomplete && topOutcome == "MODEL-DECIDED" {
 		return true
 	}
 	return false
@@ -268,15 +268,15 @@ func escalationHintPrompt(priorSummary string) string {
 // Returns a reason string ("BaseCoderCapabilityFailure" or
 // "BaseCoderFailureEscalation") for the condition Reason field.
 func coderEscalationSteps(
-	w *foremanv1alpha1.Workload, children []foremanv1alpha1.AgenticTask,
-) (steps []foremanv1alpha1.PipelineStep, escalated []int32, reason string) {
+	w *meithealv1alpha1.Workload, children []meithealv1alpha1.AgenticTask,
+) (steps []meithealv1alpha1.PipelineStep, escalated []int32, reason string) {
 	if w.Spec.EscalationCoderAgentRef == nil ||
 		len(w.Spec.Issues) == 0 {
 		return nil, nil, ""
 	}
 
 	// Index base code tasks and existing -esc tasks by step label.
-	baseCode := map[string]*foremanv1alpha1.AgenticTask{}
+	baseCode := map[string]*meithealv1alpha1.AgenticTask{}
 	existingEsc := map[string]struct{}{}
 	for i := range children {
 		step := children[i].Labels[labelStep]
@@ -298,8 +298,8 @@ func coderEscalationSteps(
 			continue
 		}
 		phase := base.Status.Phase
-		if phase != foremanv1alpha1.AgenticTaskPhaseSucceeded &&
-			phase != foremanv1alpha1.AgenticTaskPhaseFailed {
+		if phase != meithealv1alpha1.AgenticTaskPhaseSucceeded &&
+			phase != meithealv1alpha1.AgenticTaskPhaseFailed {
 			continue // not terminal yet
 		}
 		verdict, topOutcome, modelOutcome := coderTerminalOutcome(base)
@@ -320,13 +320,13 @@ func coderEscalationSteps(
 			escReason = "BaseCoderFailureEscalation"
 		}
 
-		branch := fmt.Sprintf("foreman/%s/issue-%d-esc", w.Name, n)
+		branch := fmt.Sprintf("meitheal/%s/issue-%d-esc", w.Name, n)
 		steps = append(steps,
-			foremanv1alpha1.PipelineStep{
+			meithealv1alpha1.PipelineStep{
 				Name:     escCodeStep,
-				Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+				Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 				AgentRef: *w.Spec.EscalationCoderAgentRef,
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:         w.Spec.Repo,
 					Issue:        n,
 					Branch:       branch,
@@ -340,12 +340,12 @@ func coderEscalationSteps(
 		escReviewDep := escCodeStep
 		if w.Spec.VerifierAgentRef != nil {
 			escReviewDep = escVerifyStep
-			steps = append(steps, foremanv1alpha1.PipelineStep{
+			steps = append(steps, meithealv1alpha1.PipelineStep{
 				Name:      escVerifyStep,
-				Kind:      foremanv1alpha1.AgenticTaskKindVerify,
+				Kind:      meithealv1alpha1.AgenticTaskKindVerify,
 				AgentRef:  *w.Spec.VerifierAgentRef,
 				DependsOn: []string{escCodeStep},
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:   w.Spec.Repo,
 					Issue:  n,
 					Branch: branch,
@@ -360,12 +360,12 @@ func coderEscalationSteps(
 		// reviewers configured means code+verify only (unchanged).
 		openPR := w.Spec.OpenPullRequest == nil || *w.Spec.OpenPullRequest
 		for i, reviewerRef := range w.Spec.ReviewerAgentRefs {
-			steps = append(steps, foremanv1alpha1.PipelineStep{
+			steps = append(steps, meithealv1alpha1.PipelineStep{
 				Name:      fmt.Sprintf("review-%d-esc-%d", n, i),
-				Kind:      foremanv1alpha1.AgenticTaskKindReview,
+				Kind:      meithealv1alpha1.AgenticTaskKindReview,
 				AgentRef:  reviewerRef,
 				DependsOn: []string{escReviewDep},
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:            w.Spec.Repo,
 					Issue:           n,
 					Branch:          branch,
@@ -389,8 +389,8 @@ func coderEscalationSteps(
 // synthesize placeholders so rollup counts the new tasks as in-flight.
 // Returns the refreshed children slice; a no-op returns the input.
 func (r *WorkloadReconciler) emitCoderEscalations(
-	ctx context.Context, w *foremanv1alpha1.Workload, children []foremanv1alpha1.AgenticTask,
-) ([]foremanv1alpha1.AgenticTask, error) {
+	ctx context.Context, w *meithealv1alpha1.Workload, children []meithealv1alpha1.AgenticTask,
+) ([]meithealv1alpha1.AgenticTask, error) {
 	log := logf.FromContext(ctx).WithName("workload").WithValues("workload", client.ObjectKeyFromObject(w))
 
 	if len(w.Spec.Pipeline) > 0 {
@@ -486,7 +486,7 @@ func (r *WorkloadReconciler) emitCoderEscalations(
 		if _, ok := existing[ref.Name]; ok {
 			continue
 		}
-		children = append(children, foremanv1alpha1.AgenticTask{
+		children = append(children, meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      ref.Name,
 				Namespace: ref.Namespace,

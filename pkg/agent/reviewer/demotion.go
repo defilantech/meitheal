@@ -37,20 +37,20 @@ package reviewer
 //
 // The names live here, in the leaf package that already defines the
 // reviewer's submit_result.extra contract, because the producer
-// (pkg/foreman/agent's rails) and the consumer (internal/foreman/controller)
+// (pkg/agent's rails) and the consumer (internal/controller)
 // both need the same strings and neither imports the other. A rail name
-// that exists only inside pkg/foreman/agent is one the controller's
+// that exists only inside pkg/agent is one the controller's
 // inertDemotion predicate can never match, which is how unverified-summary
 // demotions silently drove futile fix iterations before this constant
 // existed.
 const (
 	// RailIssueAsk names enforceReviewerIssueAsk in
-	// pkg/foreman/agent/executor_native.go.
+	// pkg/agent/executor_native.go.
 	RailIssueAsk = "issueAsk"
 	// RailScopeOverlap names enforceReviewerScopeOverlap in
-	// pkg/foreman/agent/scope_overlap.go.
+	// pkg/agent/scope_overlap.go.
 	RailScopeOverlap = "scope-overlap"
 	// RailUnverifiedSummary names enforceReviewerUnverifiedSummary in
-	// pkg/foreman/agent/executor_native.go.
+	// pkg/agent/executor_native.go.
 	RailUnverifiedSummary = "unverified-summary"
 )

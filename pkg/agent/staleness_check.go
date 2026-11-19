@@ -46,12 +46,12 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // stalenessToggleEnv toggles the pre-flight staleness check off. Setting it to
 // "0" disables; any other value (including unset) leaves it ENABLED.
-const stalenessToggleEnv = "FOREMAN_STALENESS_CHECK"
+const stalenessToggleEnv = "MEITHEAL_STALENESS_CHECK"
 
 // stalenessSignals carries what the pre-flight check found for a single issue.
 // Each field holds deduplicated, stably-sorted evidence: the commits that
@@ -157,7 +157,7 @@ func fileLineOf(grepLine string) string {
 }
 
 // stalenessDisabled reports whether the pre-flight staleness check has been
-// turned off via FOREMAN_STALENESS_CHECK=="0". Default (unset or any other
+// turned off via MEITHEAL_STALENESS_CHECK=="0". Default (unset or any other
 // value) is ENABLED, so this returns false.
 func stalenessDisabled() bool {
 	return os.Getenv(stalenessToggleEnv) == "0"
@@ -175,7 +175,7 @@ func gatherStaleness(issue int, gitLogOutput, grepOutput string) stalenessSignal
 }
 
 // checkStaleness is the end-to-end assembly a future call site would use: it
-// respects the FOREMAN_STALENESS_CHECK toggle and returns the note to attach
+// respects the MEITHEAL_STALENESS_CHECK toggle and returns the note to attach
 // to a task — an empty string when the check is disabled or when nothing was
 // found. It is pure with respect to its text inputs and safe to call with
 // empty strings. Where the gather actually runs is a decision for a human;
@@ -205,9 +205,9 @@ func checkStaleness(issue int, gitLogOutput, grepOutput string) string {
 // task. It gates to issue-fix tasks (the only kind that carries an issue
 // number worth checking), mirroring the sibling apply*ForTask wrappers.
 func applyStalenessCheckForTask(
-	ctx context.Context, log logr.Logger, task *foremanv1alpha1.AgenticTask, workspace string,
+	ctx context.Context, log logr.Logger, task *meithealv1alpha1.AgenticTask, workspace string,
 ) {
-	if task.Spec.Kind != foremanv1alpha1.AgenticTaskKindIssueFix {
+	if task.Spec.Kind != meithealv1alpha1.AgenticTaskKindIssueFix {
 		return
 	}
 	if task.Spec.Payload.Issue <= 0 {

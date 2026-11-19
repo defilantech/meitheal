@@ -17,7 +17,7 @@ limitations under the License.
 package agent
 
 import (
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // applyModelProfile layers a resolved ModelProfile onto an already-assembled
@@ -34,7 +34,7 @@ import (
 // The role-aware invariant from progressConfigFromAgent is preserved: a
 // reviewer never runs the edit-free signal, so a profile cannot re-enable it.
 // A nil profile is a no-op.
-func applyModelProfile(cfg *LoopConfig, agent *foremanv1alpha1.Agent, profile *foremanv1alpha1.ModelProfile) {
+func applyModelProfile(cfg *LoopConfig, agent *meithealv1alpha1.Agent, profile *meithealv1alpha1.ModelProfile) {
 	if profile == nil {
 		return
 	}
@@ -61,7 +61,7 @@ func applyModelProfile(cfg *LoopConfig, agent *foremanv1alpha1.Agent, profile *f
 		}
 	}
 	cfg.RestrictReadsInForcingPhase = profile.Spec.RestrictReadsInForcingPhase
-	if agent.Spec.Role == foremanv1alpha1.AgentRoleReviewer {
+	if agent.Spec.Role == meithealv1alpha1.AgentRoleReviewer {
 		cfg.Progress.EditFreeTurnsLimit = 0
 	}
 }

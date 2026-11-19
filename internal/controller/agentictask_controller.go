@@ -38,8 +38,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	llmkubemetrics "github.com/defilantech/meitheal/internal/metrics"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealmetrics "github.com/defilantech/meitheal/internal/metrics"
 	"github.com/defilantech/meitheal/pkg/archive"
 	"github.com/defilantech/meitheal/pkg/audit"
 )
@@ -47,14 +47,14 @@ import (
 // claimExpiriesAnnotation tracks how many times this task has been released
 // back to Pending due to a stale or absent FleetNode. The 3-strike ladder
 // (>= 2 prior expiries) terminal-fails the task to bound poison loops.
-const claimExpiriesAnnotation = "foreman.llmkube.dev/claim-expiries"
+const claimExpiriesAnnotation = "meitheal.dev/claim-expiries"
 
 // claimExpiryLimit is the maximum number of prior expiries before the task is
 // terminal-failed. At count >= claimExpiryLimit this would be the
 // (claimExpiryLimit+1)th expiry, which we refuse.
 const claimExpiryLimit = 2
 
-// AgenticTaskReconciler is the Foreman v0.1 scheduler. It watches
+// AgenticTaskReconciler is the Meitheal v0.1 scheduler. It watches
 // AgenticTask resources and routes each Pending task to the first Ready
 // FleetNode whose advertised capability satisfies the task's
 // RequiredCapability (first-fit, alphabetical-by-name for determinism).
@@ -99,18 +99,18 @@ const requeueWaitingForDeps = 10 * time.Second
 // (#1729).
 const defaultDepWaitBudget = 1 * time.Hour
 
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agentictasks,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agentictasks/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agentictasks/finalizers,verbs=update
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=fleetnodes,verbs=get;list;watch
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agents,verbs=get;list;watch
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=modelprofiles,verbs=get;list;watch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agentictasks,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agentictasks/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agentictasks/finalizers,verbs=update
+// +kubebuilder:rbac:groups=meitheal.dev,resources=fleetnodes,verbs=get;list;watch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agents,verbs=get;list;watch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=modelprofiles,verbs=get;list;watch
 
 // Reconcile drives a single AgenticTask toward Scheduled.
 func (r *AgenticTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	var task foremanv1alpha1.AgenticTask
+	var task meithealv1alpha1.AgenticTask
 	if err := r.Get(ctx, req.NamespacedName, &task); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -131,8 +131,8 @@ func (r *AgenticTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Terminal phases are done; record the durable audit entry once
 	// (best-effort: a failed audit write must not wedge reconciliation),
 	// then nothing left to do.
-	if task.Status.Phase == foremanv1alpha1.AgenticTaskPhaseSucceeded ||
-		task.Status.Phase == foremanv1alpha1.AgenticTaskPhaseFailed {
+	if task.Status.Phase == meithealv1alpha1.AgenticTaskPhaseSucceeded ||
+		task.Status.Phase == meithealv1alpha1.AgenticTaskPhaseFailed {
 		// Emit the operator-side outcome metric exactly once, gated on the
 		// audited annotation actually being PERSISTED by RecordTerminal
 		// (#1491). RecordTerminal returns nil in two cases: it just wrote the
@@ -153,7 +153,7 @@ func (r *AgenticTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				log.Error(err, "audit: failed to record terminal run; skipping outcome metric (continuing)")
 			} else {
 				agent, kind, verdict, outcome, elapsedSec, turns := taskOutcomeLabels(&task)
-				llmkubemetrics.RecordTaskOutcome(agent, kind, verdict, outcome, elapsedSec, turns)
+				meithealmetrics.RecordTaskOutcome(agent, kind, verdict, outcome, elapsedSec, turns)
 			}
 		}
 		// Release the node reservation so the scheduler can dispatch the next
@@ -179,14 +179,14 @@ func (r *AgenticTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// In-flight phases (Scheduled / Running / Verifying) with an AssignedNode
 	// need claim-expiry checking: if the node is gone or stale the task must
 	// be released back to Pending so the scheduler can re-dispatch it.
-	if task.Status.Phase != foremanv1alpha1.AgenticTaskPhasePending &&
+	if task.Status.Phase != meithealv1alpha1.AgenticTaskPhasePending &&
 		task.Status.AssignedNode != "" {
 		return r.checkClaimExpiry(ctx, &task)
 	}
 
 	// For non-Pending phases with no assigned node (unexpected but safe to
 	// ignore), and for phases not handled above, do nothing.
-	if task.Status.Phase != foremanv1alpha1.AgenticTaskPhasePending {
+	if task.Status.Phase != meithealv1alpha1.AgenticTaskPhasePending {
 		return ctrl.Result{}, nil
 	}
 
@@ -300,7 +300,7 @@ func (r *AgenticTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 // taskOutcomeLabels extracts the bounded label values the operator emits for a
-// terminal Foreman task (#1491): the Agent name (from spec.agentRef; "" when
+// terminal Meitheal task (#1491): the Agent name (from spec.agentRef; "" when
 // unset), the task kind, the verdict, and the machine outcome carried at
 // result.extra.outcome ("" when the run has none). It also returns the
 // executor's elapsedSec and the agent-loop turn count from result.extra.
@@ -309,7 +309,7 @@ func (r *AgenticTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 // cardinality. A missing or unparseable result envelope yields zero elapsedSec
 // and zero turns (RecordTaskOutcome skips observing zeros) and an empty
 // outcome — never a fabricated value.
-func taskOutcomeLabels(task *foremanv1alpha1.AgenticTask) (agent, kind, verdict, outcome string, elapsedSec float64, turns int) {
+func taskOutcomeLabels(task *meithealv1alpha1.AgenticTask) (agent, kind, verdict, outcome string, elapsedSec float64, turns int) {
 	agent = ""
 	if task.Spec.AgentRef != nil {
 		agent = task.Spec.AgentRef.Name
@@ -343,16 +343,16 @@ func taskOutcomeLabels(task *foremanv1alpha1.AgenticTask) (agent, kind, verdict,
 // loop runs in an ephemeral Job, so the claiming node only needs the
 // role/nodeSelector: the scheduler relaxes the model-binding capability
 // gates. The no-AgentRef path is never Job mode (false). See #620.
-func (r *AgenticTaskReconciler) effectiveRequiredCapability(ctx context.Context, task *foremanv1alpha1.AgenticTask) (foremanv1alpha1.RequiredCapability, string, bool, error) {
+func (r *AgenticTaskReconciler) effectiveRequiredCapability(ctx context.Context, task *meithealv1alpha1.AgenticTask) (meithealv1alpha1.RequiredCapability, string, bool, error) {
 	if task.Spec.AgentRef == nil || task.Spec.AgentRef.Name == "" {
 		return task.Spec.RequiredCapability, "", false, nil
 	}
-	var agent foremanv1alpha1.Agent
+	var agent meithealv1alpha1.Agent
 	key := types.NamespacedName{Namespace: task.Namespace, Name: task.Spec.AgentRef.Name}
 	if err := r.Get(ctx, key, &agent); err != nil {
-		return foremanv1alpha1.RequiredCapability{}, "", false, err
+		return meithealv1alpha1.RequiredCapability{}, "", false, err
 	}
-	jobMode := agent.Spec.Execution != nil && agent.Spec.Execution.Mode == foremanv1alpha1.ExecutionModeJob
+	jobMode := agent.Spec.Execution != nil && agent.Spec.Execution.Mode == meithealv1alpha1.ExecutionModeJob
 	return agent.Spec.RequiredCapability, agentModelIdentity(&agent), jobMode, nil
 }
 
@@ -364,11 +364,11 @@ func (r *AgenticTaskReconciler) effectiveRequiredCapability(ctx context.Context,
 // those that have not finished — and returns true when their count is
 // already at or above the bound, so the caller leaves this task Pending for
 // the next pass.
-func (r *AgenticTaskReconciler) agentAtConcurrencyLimit(ctx context.Context, task *foremanv1alpha1.AgenticTask) (bool, error) {
+func (r *AgenticTaskReconciler) agentAtConcurrencyLimit(ctx context.Context, task *meithealv1alpha1.AgenticTask) (bool, error) {
 	if task.Spec.AgentRef == nil || task.Spec.AgentRef.Name == "" {
 		return false, nil
 	}
-	var agent foremanv1alpha1.Agent
+	var agent meithealv1alpha1.Agent
 	key := types.NamespacedName{Namespace: task.Namespace, Name: task.Spec.AgentRef.Name}
 	if err := r.Get(ctx, key, &agent); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -382,7 +382,7 @@ func (r *AgenticTaskReconciler) agentAtConcurrencyLimit(ctx context.Context, tas
 	if agent.Spec.MaxConcurrentTasks == nil {
 		return false, nil
 	}
-	var tasks foremanv1alpha1.AgenticTaskList
+	var tasks meithealv1alpha1.AgenticTaskList
 	if err := r.List(ctx, &tasks, client.InNamespace(task.Namespace)); err != nil {
 		return false, err
 	}
@@ -414,11 +414,11 @@ func (r *AgenticTaskReconciler) agentAtConcurrencyLimit(ctx context.Context, tas
 // and nothing would ever start. Counting "what holds a slot" (rather than
 // "what has not finished") matches the field's godoc: the bound caps how
 // many tasks may be *in flight* at once.
-func holdsInFlightSlot(phase foremanv1alpha1.AgenticTaskPhase) bool {
+func holdsInFlightSlot(phase meithealv1alpha1.AgenticTaskPhase) bool {
 	switch phase {
-	case foremanv1alpha1.AgenticTaskPhaseScheduled,
-		foremanv1alpha1.AgenticTaskPhaseRunning,
-		foremanv1alpha1.AgenticTaskPhaseVerifying:
+	case meithealv1alpha1.AgenticTaskPhaseScheduled,
+		meithealv1alpha1.AgenticTaskPhaseRunning,
+		meithealv1alpha1.AgenticTaskPhaseVerifying:
 		return true
 	default:
 		return false
@@ -429,7 +429,7 @@ func holdsInFlightSlot(phase foremanv1alpha1.AgenticTaskPhase) bool {
 // membership for RequiresModelInstalled scheduling. Prefers the explicit
 // spec.model; falls back to the InferenceService reference name (which,
 // in single-model fleets, matches the advertised installedModels entry).
-func agentModelIdentity(agent *foremanv1alpha1.Agent) string {
+func agentModelIdentity(agent *meithealv1alpha1.Agent) string {
 	if agent.Spec.Model != "" {
 		return agent.Spec.Model
 	}
@@ -440,9 +440,9 @@ func agentModelIdentity(agent *foremanv1alpha1.Agent) string {
 // The status patch triggers a fresh reconcile via the controller's
 // For(AgenticTask) watch, so we do not need an explicit requeue (avoiding
 // the deprecated Result.Requeue boolean).
-func (r *AgenticTaskReconciler) setInitialPending(ctx context.Context, task *foremanv1alpha1.AgenticTask) (ctrl.Result, error) {
+func (r *AgenticTaskReconciler) setInitialPending(ctx context.Context, task *meithealv1alpha1.AgenticTask) (ctrl.Result, error) {
 	patch := client.MergeFrom(task.DeepCopy())
-	task.Status.Phase = foremanv1alpha1.AgenticTaskPhasePending
+	task.Status.Phase = meithealv1alpha1.AgenticTaskPhasePending
 	if err := r.Status().Patch(ctx, task, patch); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -465,22 +465,22 @@ func (r *AgenticTaskReconciler) setInitialPending(ctx context.Context, task *for
 // coder tasks through to their downstream verifiers and made the
 // downstream task fail GATE-FAIL on a clone-of-nonexistent-branch
 // (the wrong reason). Fixes defilantech/LLMKube#541.
-func (r *AgenticTaskReconciler) cascadeFailIfDepFailed(ctx context.Context, task *foremanv1alpha1.AgenticTask) (string, error) {
+func (r *AgenticTaskReconciler) cascadeFailIfDepFailed(ctx context.Context, task *meithealv1alpha1.AgenticTask) (string, error) {
 	for _, depName := range task.Spec.DependsOn {
-		var dep foremanv1alpha1.AgenticTask
+		var dep meithealv1alpha1.AgenticTask
 		if err := r.Get(ctx, types.NamespacedName{Namespace: task.Namespace, Name: depName}, &dep); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
 			}
 			return "", err
 		}
-		if dep.Status.Phase == foremanv1alpha1.AgenticTaskPhaseFailed {
+		if dep.Status.Phase == meithealv1alpha1.AgenticTaskPhaseFailed {
 			return fmt.Sprintf("dependency %q failed; cascade-failing", depName), nil
 		}
 		// Phase=Succeeded but verdict not on-target = terminal without
 		// usable output. Cascade-fail so dependents don't run against
 		// a nonexistent artifact.
-		if dep.Status.Phase == foremanv1alpha1.AgenticTaskPhaseSucceeded && !dep.SucceededOnTarget() {
+		if dep.Status.Phase == meithealv1alpha1.AgenticTaskPhaseSucceeded && !dep.SucceededOnTarget() {
 			return fmt.Sprintf("dependency %q ended with verdict=%s (not on-target); cascade-failing",
 				depName, dep.Status.Verdict), nil
 		}
@@ -502,9 +502,9 @@ func (r *AgenticTaskReconciler) cascadeFailIfDepFailed(ctx context.Context, task
 //
 // Previously gated on Phase=Succeeded alone, allowing INCOMPLETE /
 // GATE-FAIL deps to unblock dependents. Fixes defilantech/LLMKube#541.
-func (r *AgenticTaskReconciler) allDepsSucceeded(ctx context.Context, task *foremanv1alpha1.AgenticTask) (bool, error) {
+func (r *AgenticTaskReconciler) allDepsSucceeded(ctx context.Context, task *meithealv1alpha1.AgenticTask) (bool, error) {
 	for _, depName := range task.Spec.DependsOn {
-		var dep foremanv1alpha1.AgenticTask
+		var dep meithealv1alpha1.AgenticTask
 		if err := r.Get(ctx, types.NamespacedName{Namespace: task.Namespace, Name: depName}, &dep); err != nil {
 			if apierrors.IsNotFound(err) {
 				// Surface the wait; a budget-expired dep is cascade-failed
@@ -530,9 +530,9 @@ func (r *AgenticTaskReconciler) allDepsSucceeded(ctx context.Context, task *fore
 // waiting. The missing-dep cascade-fail is checked before
 // cascadeFailIfDepFailed so the Failed condition carries the distinct
 // MissingDependency reason (#1687).
-func (r *AgenticTaskReconciler) cascadeFailIfMissing(ctx context.Context, task *foremanv1alpha1.AgenticTask) (string, error) {
+func (r *AgenticTaskReconciler) cascadeFailIfMissing(ctx context.Context, task *meithealv1alpha1.AgenticTask) (string, error) {
 	for _, depName := range task.Spec.DependsOn {
-		var dep foremanv1alpha1.AgenticTask
+		var dep meithealv1alpha1.AgenticTask
 		if err := r.Get(ctx, types.NamespacedName{Namespace: task.Namespace, Name: depName}, &dep); err != nil {
 			if apierrors.IsNotFound(err) {
 				if depWaitExpired(task) {
@@ -554,7 +554,7 @@ func (r *AgenticTaskReconciler) cascadeFailIfMissing(ctx context.Context, task *
 // absent does not wedge the reconciler in a per-reconcile status-patch
 // loop. The caller keeps waiting (returns false, nil) for the dep to
 // appear. See #1687.
-func (r *AgenticTaskReconciler) recordMissingDepCondition(ctx context.Context, task *foremanv1alpha1.AgenticTask, depName string) error {
+func (r *AgenticTaskReconciler) recordMissingDepCondition(ctx context.Context, task *meithealv1alpha1.AgenticTask, depName string) error {
 	depWait := metav1.Condition{
 		Type:               "DepWaitStarted",
 		Status:             metav1.ConditionTrue,
@@ -600,7 +600,7 @@ func (r *AgenticTaskReconciler) recordMissingDepCondition(ctx context.Context, t
 // defaultDepWaitBudget so the wait is bounded even on paths (such as the
 // planner) that never stamp the field; an explicitly set positive
 // TimeoutSeconds always wins.
-func depWaitExpired(task *foremanv1alpha1.AgenticTask) bool {
+func depWaitExpired(task *meithealv1alpha1.AgenticTask) bool {
 	budget := time.Duration(task.Spec.TimeoutSeconds) * time.Second
 	if budget <= 0 {
 		budget = defaultDepWaitBudget
@@ -632,8 +632,8 @@ func depWaitExpired(task *foremanv1alpha1.AgenticTask) bool {
 // Job-mode task is still assigned to a node (so the Job is created there), but
 // the node's CurrentTask is left untouched and stays free for in-process work.
 // See #1496.
-func (r *AgenticTaskReconciler) reserveFirstFitNode(ctx context.Context, task *foremanv1alpha1.AgenticTask, required foremanv1alpha1.RequiredCapability, requiredModel string, jobMode bool) (string, error) {
-	var nodes foremanv1alpha1.FleetNodeList
+func (r *AgenticTaskReconciler) reserveFirstFitNode(ctx context.Context, task *meithealv1alpha1.AgenticTask, required meithealv1alpha1.RequiredCapability, requiredModel string, jobMode bool) (string, error) {
+	var nodes meithealv1alpha1.FleetNodeList
 	if err := r.List(ctx, &nodes); err != nil {
 		return "", err
 	}
@@ -703,7 +703,7 @@ func (r *AgenticTaskReconciler) reserveFirstFitNode(ctx context.Context, task *f
 // when nothing is in flight, and it distinguishes a node already supervising
 // three Jobs from an idle one.
 func (r *AgenticTaskReconciler) leastLoadedJobModeNode(
-	ctx context.Context, nodes []foremanv1alpha1.FleetNode, eligible []int, task *foremanv1alpha1.AgenticTask,
+	ctx context.Context, nodes []meithealv1alpha1.FleetNode, eligible []int, task *meithealv1alpha1.AgenticTask,
 ) int {
 	load := r.jobModeLoadByNode(ctx, task)
 	best := eligible[0]
@@ -730,9 +730,9 @@ func (r *AgenticTaskReconciler) leastLoadedJobModeNode(
 //
 // The task being scheduled is still Pending, so it does not count against
 // itself.
-func (r *AgenticTaskReconciler) jobModeLoadByNode(ctx context.Context, task *foremanv1alpha1.AgenticTask) map[string]int {
+func (r *AgenticTaskReconciler) jobModeLoadByNode(ctx context.Context, task *meithealv1alpha1.AgenticTask) map[string]int {
 	load := map[string]int{}
-	var tasks foremanv1alpha1.AgenticTaskList
+	var tasks meithealv1alpha1.AgenticTaskList
 	// A failing list must not wedge scheduling; an empty tally falls back to
 	// the first eligible node so the task still dispatches rather than
 	// stalling.
@@ -761,7 +761,7 @@ func (r *AgenticTaskReconciler) jobModeLoadByNode(ctx context.Context, task *for
 // terminal phase is stale: the node is treated as free and re-reserved. That
 // self-heals a reservation leaked by a task deleted mid-flight, so a missed
 // clear cannot wedge a node busy forever.
-func (r *AgenticTaskReconciler) reserveNode(ctx context.Context, node *foremanv1alpha1.FleetNode, taskKey string) (bool, error) {
+func (r *AgenticTaskReconciler) reserveNode(ctx context.Context, node *meithealv1alpha1.FleetNode, taskKey string) (bool, error) {
 	if cur := node.Status.CurrentTask; cur != "" && cur != taskKey {
 		live, err := taskIsLive(ctx, r.Client, cur, node.Name)
 		if err != nil {
@@ -799,15 +799,15 @@ func taskIsLive(ctx context.Context, c client.Client, key, nodeName string) (boo
 	if !ok {
 		return false, nil // unparseable key: treat as not live so the node frees
 	}
-	var t foremanv1alpha1.AgenticTask
+	var t meithealv1alpha1.AgenticTask
 	if err := c.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, &t); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
 		}
 		return false, err
 	}
-	if t.Status.Phase == foremanv1alpha1.AgenticTaskPhaseSucceeded ||
-		t.Status.Phase == foremanv1alpha1.AgenticTaskPhaseFailed {
+	if t.Status.Phase == meithealv1alpha1.AgenticTaskPhaseSucceeded ||
+		t.Status.Phase == meithealv1alpha1.AgenticTaskPhaseFailed {
 		return false, nil
 	}
 	// A live task that has been scheduled onto a different node no longer holds
@@ -826,7 +826,7 @@ func (r *AgenticTaskReconciler) clearNodeCurrentTask(ctx context.Context, nodeNa
 	if nodeName == "" {
 		return nil
 	}
-	var node foremanv1alpha1.FleetNode
+	var node meithealv1alpha1.FleetNode
 	if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, &node); err != nil {
 		return client.IgnoreNotFound(err)
 	}
@@ -844,7 +844,7 @@ func (r *AgenticTaskReconciler) clearNodeCurrentTask(ctx context.Context, nodeNa
 }
 
 // taskKey is the "namespace/name" string stored in FleetNode.Status.CurrentTask.
-func taskKey(task *foremanv1alpha1.AgenticTask) string {
+func taskKey(task *meithealv1alpha1.AgenticTask) string {
 	return types.NamespacedName{Namespace: task.Namespace, Name: task.Name}.String()
 }
 
@@ -863,8 +863,8 @@ func splitNamespacedName(key string) (namespace, name string, ok bool) {
 // heartbeat. Re-checking staleness here (defense-in-depth) prevents
 // dispatching a task into a node whose agent has gone dark but whose phase
 // has not yet been reconciled. See defilantech/LLMKube#627.
-func nodeSchedulable(n *foremanv1alpha1.FleetNode, now time.Time) bool {
-	if n.Status.Phase != foremanv1alpha1.FleetNodePhaseReady {
+func nodeSchedulable(n *meithealv1alpha1.FleetNode, now time.Time) bool {
+	if n.Status.Phase != meithealv1alpha1.FleetNodePhaseReady {
 		return false
 	}
 	return !n.HeartbeatStale(now)
@@ -880,11 +880,11 @@ func nodeSchedulable(n *foremanv1alpha1.FleetNode, now time.Time) bool {
 // minContextTokens gates (all of which bind a node to a locally-resident
 // model) are skipped. nodeSelector and roles still apply, since they
 // constrain where the Job's claiming node may live. See #620.
-func capabilitySatisfies(req foremanv1alpha1.RequiredCapability, requiredModel string, n *foremanv1alpha1.FleetNode, jobMode bool) bool {
+func capabilitySatisfies(req meithealv1alpha1.RequiredCapability, requiredModel string, n *meithealv1alpha1.FleetNode, jobMode bool) bool {
 	cap := n.Status.Capability
 
 	if !jobMode {
-		if req.Accelerator != "" && req.Accelerator != foremanv1alpha1.AgenticTaskAccelerator("any") {
+		if req.Accelerator != "" && req.Accelerator != meithealv1alpha1.AgenticTaskAccelerator("any") {
 			if string(cap.Accelerator) != string(req.Accelerator) {
 				return false
 			}
@@ -928,10 +928,10 @@ func capabilitySatisfies(req foremanv1alpha1.RequiredCapability, requiredModel s
 // scheduleToNode patches the task to phase=Scheduled with the chosen
 // FleetNode set on status.assignedNode. The FleetAgent on that node
 // picks it up via its watcher.
-func (r *AgenticTaskReconciler) scheduleToNode(ctx context.Context, task *foremanv1alpha1.AgenticTask, nodeName string) error {
+func (r *AgenticTaskReconciler) scheduleToNode(ctx context.Context, task *meithealv1alpha1.AgenticTask, nodeName string) error {
 	patch := client.MergeFrom(task.DeepCopy())
 	now := metav1.Now()
-	task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseScheduled
+	task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseScheduled
 	task.Status.AssignedNode = nodeName
 	setCondition(&task.Status.Conditions, metav1.Condition{
 		Type:               "Scheduled",
@@ -944,11 +944,11 @@ func (r *AgenticTaskReconciler) scheduleToNode(ctx context.Context, task *forema
 }
 
 // failTask cascade-fails a Pending task before it reaches an agent.
-func (r *AgenticTaskReconciler) failTask(ctx context.Context, task *foremanv1alpha1.AgenticTask, reason, message string) (ctrl.Result, error) {
+func (r *AgenticTaskReconciler) failTask(ctx context.Context, task *meithealv1alpha1.AgenticTask, reason, message string) (ctrl.Result, error) {
 	patch := client.MergeFrom(task.DeepCopy())
 	now := metav1.Now()
-	task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseFailed
-	task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictIncomplete
+	task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseFailed
+	task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictIncomplete
 	task.Status.FinishedAt = &now
 	setCondition(&task.Status.Conditions, metav1.Condition{
 		Type:               "Failed",
@@ -976,11 +976,11 @@ func (r *AgenticTaskReconciler) failTask(ctx context.Context, task *foremanv1alp
 // contradiction: skipTask stamps the distinct UpstreamContradicted reason and
 // names both the dependency and the contradiction text, so this stop signal
 // stays alertable separately from the benign UpstreamAlreadyResolved reason.
-func (r *AgenticTaskReconciler) skipTask(ctx context.Context, task *foremanv1alpha1.AgenticTask, depName, depState string, contradicted bool) (ctrl.Result, error) {
+func (r *AgenticTaskReconciler) skipTask(ctx context.Context, task *meithealv1alpha1.AgenticTask, depName, depState string, contradicted bool) (ctrl.Result, error) {
 	patch := client.MergeFrom(task.DeepCopy())
 	now := metav1.Now()
-	task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-	task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictSkipped
+	task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+	task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictSkipped
 	task.Status.FinishedAt = &now
 	reason := "UpstreamAlreadyResolved"
 	var message string
@@ -1012,9 +1012,9 @@ func (r *AgenticTaskReconciler) skipTask(ctx context.Context, task *foremanv1alp
 // success" and cascade-fails the dependent. Checking isSkippedTask here makes
 // the skip walk the whole dependency chain rather than stopping after one
 // hop. Fixes defilantech/LLMKube#1688.
-func (r *AgenticTaskReconciler) cascadeSkipIfDepResolvedOrSkipped(ctx context.Context, task *foremanv1alpha1.AgenticTask) (string, string, error) {
+func (r *AgenticTaskReconciler) cascadeSkipIfDepResolvedOrSkipped(ctx context.Context, task *meithealv1alpha1.AgenticTask) (string, string, error) {
 	for _, depName := range task.Spec.DependsOn {
-		var dep foremanv1alpha1.AgenticTask
+		var dep meithealv1alpha1.AgenticTask
 		if err := r.Get(ctx, types.NamespacedName{Namespace: task.Namespace, Name: depName}, &dep); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -1049,9 +1049,9 @@ func (r *AgenticTaskReconciler) cascadeSkipIfDepResolvedOrSkipped(ctx context.Co
 // controller only reads it. Blocking here is dependents-only: the contradicting
 // task's own verdict and phase are left untouched (demoting it was considered
 // and rejected — it would turn a records-only rail into a verdict-changing one).
-func (r *AgenticTaskReconciler) cascadeSkipIfDepContradicted(ctx context.Context, task *foremanv1alpha1.AgenticTask) (string, string, error) {
+func (r *AgenticTaskReconciler) cascadeSkipIfDepContradicted(ctx context.Context, task *meithealv1alpha1.AgenticTask) (string, string, error) {
 	for _, depName := range task.Spec.DependsOn {
-		var dep foremanv1alpha1.AgenticTask
+		var dep meithealv1alpha1.AgenticTask
 		if err := r.Get(ctx, types.NamespacedName{Namespace: task.Namespace, Name: depName}, &dep); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -1082,10 +1082,10 @@ func (r *AgenticTaskReconciler) cascadeSkipIfDepContradicted(ctx context.Context
 // Counter ordering: the metadata annotation (counter) is updated BEFORE the
 // status patch so that a crash between the two errs toward counting more
 // expiries rather than fewer, bounding poison loops conservatively.
-func (r *AgenticTaskReconciler) checkClaimExpiry(ctx context.Context, task *foremanv1alpha1.AgenticTask) (ctrl.Result, error) {
+func (r *AgenticTaskReconciler) checkClaimExpiry(ctx context.Context, task *meithealv1alpha1.AgenticTask) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	var node foremanv1alpha1.FleetNode
+	var node meithealv1alpha1.FleetNode
 	nodeNotFound := false
 	lastHeartbeatMsg := ""
 
@@ -1099,7 +1099,7 @@ func (r *AgenticTaskReconciler) checkClaimExpiry(ctx context.Context, task *fore
 
 	// Node is present and heartbeat is fresh: nothing to do yet.
 	if !nodeNotFound && !node.HeartbeatStale(time.Now()) {
-		return ctrl.Result{RequeueAfter: foremanv1alpha1.FleetNodeHeartbeatTimeout / 2}, nil
+		return ctrl.Result{RequeueAfter: meithealv1alpha1.FleetNodeHeartbeatTimeout / 2}, nil
 	}
 
 	if !nodeNotFound {
@@ -1148,9 +1148,9 @@ func (r *AgenticTaskReconciler) checkClaimExpiry(ctx context.Context, task *fore
 // This is a metadata (non-status) Update, distinct from the status patch
 // that follows. It must happen first so a crash between the two errs toward
 // counting more expiries.
-func (r *AgenticTaskReconciler) incrementExpiryCounter(ctx context.Context, task *foremanv1alpha1.AgenticTask, snapshotPrior int) error {
+func (r *AgenticTaskReconciler) incrementExpiryCounter(ctx context.Context, task *meithealv1alpha1.AgenticTask, snapshotPrior int) error {
 	// Re-fetch to get the current resourceVersion for the metadata patch.
-	var current foremanv1alpha1.AgenticTask
+	var current meithealv1alpha1.AgenticTask
 	if err := r.Get(ctx, types.NamespacedName{Namespace: task.Namespace, Name: task.Name}, &current); err != nil {
 		return fmt.Errorf("re-fetch for expiry counter: %w", err)
 	}
@@ -1183,14 +1183,14 @@ func (r *AgenticTaskReconciler) incrementExpiryCounter(ctx context.Context, task
 // condition means a concurrent terminal patch landed in the window between
 // checkClaimExpiry's staleness decision and this write; yanking the task back
 // to Pending in that case would undo legitimate agent progress.
-func (r *AgenticTaskReconciler) releaseExpiredClaim(ctx context.Context, task *foremanv1alpha1.AgenticTask, nodeName, heartbeatMsg string) (ctrl.Result, error) {
+func (r *AgenticTaskReconciler) releaseExpiredClaim(ctx context.Context, task *meithealv1alpha1.AgenticTask, nodeName, heartbeatMsg string) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
-	var current foremanv1alpha1.AgenticTask
+	var current meithealv1alpha1.AgenticTask
 	if err := r.Get(ctx, types.NamespacedName{Namespace: task.Namespace, Name: task.Name}, &current); err != nil {
 		return ctrl.Result{}, fmt.Errorf("re-fetch for claim release: %w", err)
 	}
-	if current.Status.Phase == foremanv1alpha1.AgenticTaskPhaseSucceeded ||
-		current.Status.Phase == foremanv1alpha1.AgenticTaskPhaseFailed ||
+	if current.Status.Phase == meithealv1alpha1.AgenticTaskPhaseSucceeded ||
+		current.Status.Phase == meithealv1alpha1.AgenticTaskPhaseFailed ||
 		current.Status.AssignedNode != nodeName {
 		log.Info("claim expiry superseded by concurrent state change; skipping release",
 			"task", current.Name, "node", nodeName,
@@ -1199,7 +1199,7 @@ func (r *AgenticTaskReconciler) releaseExpiredClaim(ctx context.Context, task *f
 	}
 	patch := client.MergeFrom(current.DeepCopy())
 	now := metav1.Now()
-	current.Status.Phase = foremanv1alpha1.AgenticTaskPhasePending
+	current.Status.Phase = meithealv1alpha1.AgenticTaskPhasePending
 	current.Status.AssignedNode = ""
 	current.Status.ClaimedAt = nil
 	current.Status.StartedAt = nil
@@ -1227,14 +1227,14 @@ func (r *AgenticTaskReconciler) releaseExpiredClaim(ctx context.Context, task *f
 // Guard: same as releaseExpiredClaim. If the live object is already terminal
 // or has been reassigned away from the stale node, a concurrent patch already
 // resolved the task; bail out without patching to avoid overwriting it.
-func (r *AgenticTaskReconciler) terminalFailExpired(ctx context.Context, task *foremanv1alpha1.AgenticTask, nodeName string, priorExpiries int) (ctrl.Result, error) {
+func (r *AgenticTaskReconciler) terminalFailExpired(ctx context.Context, task *meithealv1alpha1.AgenticTask, nodeName string, priorExpiries int) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
-	var current foremanv1alpha1.AgenticTask
+	var current meithealv1alpha1.AgenticTask
 	if err := r.Get(ctx, types.NamespacedName{Namespace: task.Namespace, Name: task.Name}, &current); err != nil {
 		return ctrl.Result{}, fmt.Errorf("re-fetch for expiry terminal-fail: %w", err)
 	}
-	if current.Status.Phase == foremanv1alpha1.AgenticTaskPhaseSucceeded ||
-		current.Status.Phase == foremanv1alpha1.AgenticTaskPhaseFailed ||
+	if current.Status.Phase == meithealv1alpha1.AgenticTaskPhaseSucceeded ||
+		current.Status.Phase == meithealv1alpha1.AgenticTaskPhaseFailed ||
 		current.Status.AssignedNode != nodeName {
 		log.Info("claim expiry superseded by concurrent state change; skipping terminal-fail",
 			"task", current.Name, "node", nodeName,
@@ -1243,9 +1243,9 @@ func (r *AgenticTaskReconciler) terminalFailExpired(ctx context.Context, task *f
 	}
 	patch := client.MergeFrom(current.DeepCopy())
 	now := metav1.Now()
-	current.Status.Phase = foremanv1alpha1.AgenticTaskPhaseFailed
-	current.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictIncomplete
-	current.Status.FailureReason = foremanv1alpha1.FailureInfrastructureError
+	current.Status.Phase = meithealv1alpha1.AgenticTaskPhaseFailed
+	current.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictIncomplete
+	current.Status.FailureReason = meithealv1alpha1.FailureInfrastructureError
 	current.Status.FinishedAt = &now
 	setCondition(&current.Status.Conditions, metav1.Condition{
 		Type:   "Failed",
@@ -1271,8 +1271,8 @@ func (r *AgenticTaskReconciler) terminalFailExpired(ctx context.Context, task *f
 // task immediately rather than waiting for the requeue-after timer.
 func (r *AgenticTaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&foremanv1alpha1.AgenticTask{}).
-		Watches(&foremanv1alpha1.FleetNode{}, handler.EnqueueRequestsFromMapFunc(r.fleetNodeEnqueues)).
+		For(&meithealv1alpha1.AgenticTask{}).
+		Watches(&meithealv1alpha1.FleetNode{}, handler.EnqueueRequestsFromMapFunc(r.fleetNodeEnqueues)).
 		Named("agentictask").
 		Complete(r)
 }
@@ -1288,7 +1288,7 @@ func (r *AgenticTaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // The workqueue dedupes so the worst-case cost is one reconcile per task per
 // FleetNode event, which is acceptable at v0.1 task volumes.
 func (r *AgenticTaskReconciler) fleetNodeEnqueues(ctx context.Context, obj client.Object) []ctrl.Request {
-	var list foremanv1alpha1.AgenticTaskList
+	var list meithealv1alpha1.AgenticTaskList
 	if err := r.List(ctx, &list); err != nil {
 		logf.FromContext(ctx).Error(err, "fleetnode-trigger list failed")
 		return nil
@@ -1300,14 +1300,14 @@ func (r *AgenticTaskReconciler) fleetNodeEnqueues(ctx context.Context, obj clien
 		t := &list.Items[i]
 		key := types.NamespacedName{Namespace: t.Namespace, Name: t.Name}
 		switch t.Status.Phase {
-		case foremanv1alpha1.AgenticTaskPhasePending:
+		case meithealv1alpha1.AgenticTaskPhasePending:
 			if _, ok := seen[key]; !ok {
 				seen[key] = struct{}{}
 				requests = append(requests, ctrl.Request{NamespacedName: key})
 			}
-		case foremanv1alpha1.AgenticTaskPhaseScheduled,
-			foremanv1alpha1.AgenticTaskPhaseRunning,
-			foremanv1alpha1.AgenticTaskPhaseVerifying:
+		case meithealv1alpha1.AgenticTaskPhaseScheduled,
+			meithealv1alpha1.AgenticTaskPhaseRunning,
+			meithealv1alpha1.AgenticTaskPhaseVerifying:
 			if t.Status.AssignedNode == changedNodeName {
 				if _, ok := seen[key]; !ok {
 					seen[key] = struct{}{}
@@ -1338,7 +1338,7 @@ const transcriptDataKey = "transcript.json"
 // verdict; the harness is the source of truth and this is a side effect.
 func (r *AgenticTaskReconciler) archiveTerminalTask(
 	ctx context.Context,
-	task *foremanv1alpha1.AgenticTask,
+	task *meithealv1alpha1.AgenticTask,
 	log logr.Logger,
 ) {
 	if r.ArchiveDir == "" {
@@ -1355,7 +1355,7 @@ func (r *AgenticTaskReconciler) archiveTerminalTask(
 			// collected before this runs. Neither is a reason to drop the record.
 			log.V(1).Info("archive: transcript not readable; archiving record only",
 				"transcriptRef", ref, "err", err.Error())
-			llmkubemetrics.RecordArchiveFailure("transcript_read")
+			meithealmetrics.RecordArchiveFailure("transcript_read")
 		} else if body := cm.Data[transcriptDataKey]; body == "" {
 			// The ConfigMap resolved but holds nothing we can read. Without
 			// this branch the bundle records hasTranscript:false, which is
@@ -1364,7 +1364,7 @@ func (r *AgenticTaskReconciler) archiveTerminalTask(
 			// drop every transcript in the fleet with no signal at all.
 			log.V(1).Info("archive: transcript configmap holds no transcript; archiving record only",
 				"transcriptRef", ref, "key", transcriptDataKey)
-			llmkubemetrics.RecordArchiveFailure("transcript_empty")
+			meithealmetrics.RecordArchiveFailure("transcript_empty")
 		} else {
 			transcript = []byte(body)
 		}
@@ -1372,6 +1372,6 @@ func (r *AgenticTaskReconciler) archiveTerminalTask(
 
 	if err := archive.WriteBundle(r.ArchiveDir, rec, transcript); err != nil {
 		log.Error(err, "archive: failed to write bundle (continuing)", "task", task.Name)
-		llmkubemetrics.RecordArchiveFailure("write")
+		meithealmetrics.RecordArchiveFailure("write")
 	}
 }

@@ -34,7 +34,7 @@ type QueueItem struct {
 	Repo string `json:"repo,omitempty"`
 }
 
-// Queue is the prepared work list handed to `llmkube foreman run`.
+// Queue is the prepared work list handed to `meitheal run`.
 type Queue struct {
 	Repo  string      `json:"repo,omitempty"`
 	Items []QueueItem `json:"items"`

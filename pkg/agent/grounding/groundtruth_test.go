@@ -38,8 +38,8 @@ func TestLoadGroundTruth_MetricsRepoWide(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "internal/metrics/metrics.go"),
 		"package metrics\n\nvar a = prometheus.NewCounter(prometheus.CounterOpts{Name: \"llmkube_reconcile_total\"})\n")
-	writeFile(t, filepath.Join(root, "pkg/agent/metrics.go"),
-		"package agent\n\nvar b = prometheus.NewGauge(prometheus.GaugeOpts{Name: \"llmkube_metal_agent_apple_power_gpu_watts\"})\n")
+	writeFile(t, filepath.Join(root, "pkg/agent/metrics.go"), "package agent\n\n"+
+		"var b = prometheus.NewGauge(prometheus.GaugeOpts{Name: \"llmkube_metal_agent_apple_power_gpu_watts\"})\n")
 	gt, err := LoadGroundTruth("", root, "")
 	if err != nil {
 		t.Fatal(err)

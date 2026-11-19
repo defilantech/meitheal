@@ -53,7 +53,7 @@ type ToolResult struct {
 	Extra         map[string]any
 }
 
-// ToolRegistry is the seam between the loop and pkg/foreman/agent/tools.
+// ToolRegistry is the seam between the loop and pkg/agent/tools.
 // Phase B exposes the interface; Phase C implements the concrete
 // registry with six tools (read_file, write_file, str_replace, grep,
 // bash, submit_result). Phase E plugs the concrete registry in.
@@ -717,10 +717,10 @@ type Loop struct {
 // NewLoop builds a Loop. client may be either *oai.Client
 // (OpenAI-compatible) or *anthropic.Client (Anthropic native); both
 // satisfy ChatCompleter. Pass tracer=nil to use the global tracer
-// provider's "foreman.agent.loop" tracer.
+// provider's "meitheal.agent.loop" tracer.
 func NewLoop(client ChatCompleter, registry ToolRegistry, tracer trace.Tracer) *Loop {
 	if tracer == nil {
-		tracer = otel.Tracer("foreman.agent.loop")
+		tracer = otel.Tracer("meitheal.agent.loop")
 	}
 	return &Loop{
 		client:   client,
@@ -1217,7 +1217,7 @@ func (l *Loop) runOneTurn(
 	ctx context.Context, cfg LoopConfig, schemas []oai.Tool, res *LoopResult,
 	preserveTrailingReasoning bool, sessionDrop *int,
 ) (editSucceeded bool, err error) {
-	ctx, span := l.tracer.Start(ctx, "foreman.agent.turn",
+	ctx, span := l.tracer.Start(ctx, "meitheal.agent.turn",
 		trace.WithAttributes(attribute.Int("turn", res.Turns)))
 	defer span.End()
 	start := time.Now()

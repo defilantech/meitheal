@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // skippedFor returns the recorded reason a rail could not run, if any.
@@ -26,9 +26,9 @@ func skippedFor(extra map[string]any, rail string) (string, bool) {
 func TestRailSkipped_VerdictFromFindingsRecordsMissingDiff(t *testing.T) {
 	extra := map[string]any{}
 	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra,
-		foremanv1alpha1.AgenticTaskVerdictGo, nil)
+		meithealv1alpha1.AgenticTaskVerdictGo, nil)
 
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("verdict must not change, got %v", got)
 	}
 	reason, ok := skippedFor(extra, railVerdictFromFindings)
@@ -44,7 +44,7 @@ func TestRailSkipped_VerdictFromFindingsThatRanIsNotMarked(t *testing.T) {
 	extra := map[string]any{}
 	changed := func(string) map[int]bool { return map[int]bool{1: true} }
 	enforceReviewerVerdictFromFindings(logr.Discard(), extra,
-		foremanv1alpha1.AgenticTaskVerdictGo, changed)
+		meithealv1alpha1.AgenticTaskVerdictGo, changed)
 
 	if _, ok := skippedFor(extra, railVerdictFromFindings); ok {
 		t.Errorf("a rail that ran must not be marked skipped, extra=%v", extra)
@@ -54,9 +54,9 @@ func TestRailSkipped_VerdictFromFindingsThatRanIsNotMarked(t *testing.T) {
 func TestRailSkipped_EmptyClaimRecordsMissingDiff(t *testing.T) {
 	extra := map[string]any{}
 	got, _ := enforceReviewerEmptyClaim(logr.Discard(), extra,
-		"the branch is empty", foremanv1alpha1.AgenticTaskVerdictNoGo, nil)
+		"the branch is empty", meithealv1alpha1.AgenticTaskVerdictNoGo, nil)
 
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Errorf("verdict must not change, got %v", got)
 	}
 	reason, ok := skippedFor(extra, railEmptyClaim)
@@ -73,7 +73,7 @@ func TestRailSkipped_EmptyClaimRecordsMissingDiff(t *testing.T) {
 func TestRailSkipped_GroundedFindingJoinsSharedList(t *testing.T) {
 	extra := findingExtra("blocker", "pkg/cli/cache.go", 42)
 	enforceReviewerGroundedFindings(logr.Discard(), extra,
-		foremanv1alpha1.AgenticTaskVerdictNoGo, nil)
+		meithealv1alpha1.AgenticTaskVerdictNoGo, nil)
 
 	if unavailable, _ := extra["groundingUnavailable"].(bool); !unavailable {
 		t.Errorf("#1576 marker must be preserved, extra=%v", extra)

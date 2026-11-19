@@ -29,8 +29,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
 
@@ -61,11 +61,11 @@ type scanGateResult struct {
 type scriptedScanRunner struct {
 	results  []scanGateResult
 	calls    int
-	gotScans []foremanv1alpha1.ResolvedScan
+	gotScans []meithealv1alpha1.ResolvedScan
 }
 
 func (f *scriptedScanRunner) Run(
-	_ context.Context, _, _, _, _, _, _ string, scan foremanv1alpha1.ResolvedScan,
+	_ context.Context, _, _, _, _, _, _ string, scan meithealv1alpha1.ResolvedScan,
 ) (pass bool, ran bool, feedback string) {
 	i := f.calls
 	if i >= len(f.results) {
@@ -83,20 +83,20 @@ func (f *scriptedScanRunner) Run(
 func scanLoopExecutor(
 	t *testing.T, root, bare, oaiURL string, c client.Client,
 	reg *seqEnvtestRegistry,
-	envRunner foremanagent.EnvtestJobRunner, scanRunner foremanagent.ScanJobRunner,
-) *foremanagent.NativeAgentLoopExecutor {
+	envRunner meithealagent.EnvtestJobRunner, scanRunner meithealagent.ScanJobRunner,
+) *meithealagent.NativeAgentLoopExecutor {
 	t.Helper()
-	return &foremanagent.NativeAgentLoopExecutor{
+	return &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiURL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -120,7 +120,7 @@ type scanGateLoopCase struct {
 	scanGate    []scanGateResult    // nil -> no scan runner
 }
 
-func (tc scanGateLoopCase) run(t *testing.T) (*foremanagent.Result, int, int) {
+func (tc scanGateLoopCase) run(t *testing.T) (*meithealagent.Result, int, int) {
 	t.Helper()
 	gitOrSkip(t)
 	root := t.TempDir()
@@ -132,9 +132,9 @@ func (tc scanGateLoopCase) run(t *testing.T) (*foremanagent.Result, int, int) {
 	if tc.emptyGate {
 		// Presence semantics: an empty-but-present gate arms the scan at
 		// Resolve()'s CI defaults. Distinct from "undeclared" (nil).
-		task.Spec.ScanGate = &foremanv1alpha1.ScanGate{}
+		task.Spec.ScanGate = &meithealv1alpha1.ScanGate{}
 	} else if tc.declared {
-		task.Spec.ScanGate = &foremanv1alpha1.ScanGate{Images: []string{"controller"}}
+		task.Spec.ScanGate = &meithealv1alpha1.ScanGate{Images: []string{"controller"}}
 	}
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).
 		WithObjects(agent, task).Build()
@@ -143,8 +143,8 @@ func (tc scanGateLoopCase) run(t *testing.T) (*foremanagent.Result, int, int) {
 	// Assign through the interface so an absent runner is a NIL interface,
 	// not a typed-nil pointer (the gate checks runner == nil before calling).
 	var (
-		envRunner  foremanagent.EnvtestJobRunner
-		scanRunner foremanagent.ScanJobRunner
+		envRunner  meithealagent.EnvtestJobRunner
+		scanRunner meithealagent.ScanJobRunner
 		envScript  *scriptedEnvtestRunner
 		scanScript *scriptedScanRunner
 	)
@@ -193,7 +193,7 @@ func TestNativeExecutor_ScanLoop_ConvergesAfterOneRetry(t *testing.T) {
 			{pass: true, ran: true}, // retry passes
 		},
 	}.run(t)
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO got %s (result=%+v)", res.Verdict, res)
 	}
 	if calls != 2 {
@@ -216,7 +216,7 @@ func TestNativeExecutor_ScanLoop_EmptyGateIsDeclared(t *testing.T) {
 			{pass: true, ran: true}, // retry passes
 		},
 	}.run(t)
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO got %s (result=%+v)", res.Verdict, res)
 	}
 	if calls != 2 {
@@ -237,7 +237,7 @@ func TestNativeExecutor_ScanLoop_UnverifiedRetryDoesNotFalseGo(t *testing.T) {
 			{pass: false, ran: false},                             // retry: could-not-run (infra)
 		},
 	}.run(t)
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Fatalf("verdict: want INCOMPLETE (unverified retry must not GO) got %s (result=%+v)", res.Verdict, res)
 	}
 	if calls != 2 {
@@ -257,7 +257,7 @@ func TestNativeExecutor_ScanLoop_IncompleteAfterCapExhausted(t *testing.T) {
 		regVerdicts: []string{"GO"},
 		scanGate:    []scanGateResult{{pass: false, ran: true, feedback: "still blocked"}},
 	}.run(t)
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Fatalf("verdict: want INCOMPLETE got %s", res.Verdict)
 	}
 	if calls != 1 {
@@ -280,7 +280,7 @@ func TestNativeExecutor_ScanLoop_UnverifiedFirstAttemptGoes(t *testing.T) {
 		regVerdicts: []string{"GO"},
 		scanGate:    []scanGateResult{{pass: false, ran: false}},
 	}.run(t)
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO (attempt-0 could-not-run) got %s (result=%+v)", res.Verdict, res)
 	}
 	if calls != 1 {
@@ -296,7 +296,7 @@ func TestNativeExecutor_ScanLoop_UndeclaredSkipsRunner(t *testing.T) {
 		regVerdicts: []string{"GO"},
 		scanGate:    []scanGateResult{{pass: false, ran: true, feedback: "must not be reached"}},
 	}.run(t)
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO got %s (result=%+v)", res.Verdict, res)
 	}
 	if calls != 0 {
@@ -324,7 +324,7 @@ func TestNativeExecutor_ScanLoop_IndependentBudgets(t *testing.T) {
 			{pass: false, ran: false}, // push 2: scan could not run, but it is NOT a scan retry
 		},
 	}.run(t)
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO (envtest-forced retry must not inflate the scan budget) got %s "+
 			"(result=%+v)", res.Verdict, res)
 	}
@@ -343,14 +343,14 @@ type verifyScanCase struct {
 	name         string
 	declared     bool
 	scan         []scanGateResult // nil -> no runner wired
-	wantVerdict  foremanv1alpha1.AgenticTaskVerdict
-	wantFailure  foremanv1alpha1.AgenticTaskFailureReason
+	wantVerdict  meithealv1alpha1.AgenticTaskVerdict
+	wantFailure  meithealv1alpha1.AgenticTaskFailureReason
 	wantOutcome  string // Extra["scanOutcome"]; "" means absent
 	wantFindings bool
 	wantCalls    int
 }
 
-func (tc verifyScanCase) run(t *testing.T) *foremanagent.Result {
+func (tc verifyScanCase) run(t *testing.T) *meithealagent.Result {
 	t.Helper()
 	gitOrSkip(t)
 	root := t.TempDir()
@@ -358,54 +358,54 @@ func (tc verifyScanCase) run(t *testing.T) *foremanagent.Result {
 
 	// A deterministic gate Agent (M4 shape): no inference, the registry's
 	// run_gate_job result is the verdict.
-	agent := &foremanv1alpha1.Agent{
+	agent := &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "scan-verify-" + tc.name, Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:               foremanv1alpha1.AgentRoleVerifier,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:               meithealv1alpha1.AgentRoleVerifier,
 			Tools:              []string{"run_gate_job"},
-			RequiredCapability: foremanv1alpha1.RequiredCapability{Roles: []string{"verifier"}},
+			RequiredCapability: meithealv1alpha1.RequiredCapability{Roles: []string{"verifier"}},
 		},
 	}
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: tc.name, Namespace: "default", UID: types.UID("test-uid-" + tc.name),
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindVerify,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindVerify,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  9999,
-				Branch: "foreman/issue-9999",
+				Branch: "meitheal/issue-9999",
 			},
 			AgentRef: &corev1.LocalObjectReference{Name: agent.Name},
 		},
 	}
 	if tc.declared {
-		task.Spec.ScanGate = &foremanv1alpha1.ScanGate{Images: []string{"controller"}}
+		task.Spec.ScanGate = &meithealv1alpha1.ScanGate{Images: []string{"controller"}}
 	}
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"run_gate_job": {
 				Terminal: true,
 				Verdict:  "GATE-PASS",
 				Summary:  "all checks green",
-				Output:   map[string]any{"jobName": "foreman-gate-fake-001"},
+				Output:   map[string]any{"jobName": "meitheal-gate-fake-001"},
 			},
 		},
 	}
 	// Assign through the interface so an absent runner is a nil interface,
 	// not a typed-nil pointer (verifyScanReGate checks == nil).
 	var (
-		scanRunner foremanagent.ScanJobRunner
+		scanRunner meithealagent.ScanJobRunner
 		scanScript *scriptedScanRunner
 	)
 	if tc.scan != nil {
 		scanScript = &scriptedScanRunner{results: tc.scan}
 		scanRunner = scanScript
 	}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:             c,
 		WorkspaceRoot:      filepath.Join(root, "ws"),
 		GitRemoteURL:       bare,
@@ -413,8 +413,8 @@ func (tc verifyScanCase) run(t *testing.T) *foremanagent.Result {
 		CommitAuthor:       repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:    repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return reg, nil
 		},
 		AuthFactory:   fakeAuth(t),
@@ -465,33 +465,33 @@ func TestNativeExecutor_VerifyScanReGate(t *testing.T) {
 	const finding = "CRITICAL: CVE-2024-0001 in openssl 3.1.0 (fixed in 3.1.4)"
 	cases := []verifyScanCase{
 		{
-			name: "undeclared", wantVerdict: foremanv1alpha1.AgenticTaskVerdictGatePass,
+			name: "undeclared", wantVerdict: meithealv1alpha1.AgenticTaskVerdictGatePass,
 			wantOutcome: "", wantCalls: 0,
 		},
 		{
 			name: "unwired", declared: true,
-			wantVerdict: foremanv1alpha1.AgenticTaskVerdictGateError,
-			wantFailure: foremanv1alpha1.FailureGateError,
+			wantVerdict: meithealv1alpha1.AgenticTaskVerdictGateError,
+			wantFailure: meithealv1alpha1.FailureGateError,
 			wantOutcome: "UNVERIFIED", wantCalls: 0,
 		},
 		{
 			name: "could-not-run", declared: true,
 			scan:        []scanGateResult{{pass: false, ran: false}},
-			wantVerdict: foremanv1alpha1.AgenticTaskVerdictGateError,
-			wantFailure: foremanv1alpha1.FailureGateError,
+			wantVerdict: meithealv1alpha1.AgenticTaskVerdictGateError,
+			wantFailure: meithealv1alpha1.FailureGateError,
 			wantOutcome: "UNVERIFIED", wantCalls: 1,
 		},
 		{
 			name: "scan-fails", declared: true,
 			scan:        []scanGateResult{{pass: false, ran: true, feedback: finding}},
-			wantVerdict: foremanv1alpha1.AgenticTaskVerdictGateFail,
-			wantFailure: foremanv1alpha1.FailureGateFailed,
+			wantVerdict: meithealv1alpha1.AgenticTaskVerdictGateFail,
+			wantFailure: meithealv1alpha1.FailureGateFailed,
 			wantOutcome: "FAIL", wantFindings: true, wantCalls: 1,
 		},
 		{
 			name: "scan-passes", declared: true,
 			scan:        []scanGateResult{{pass: true, ran: true}},
-			wantVerdict: foremanv1alpha1.AgenticTaskVerdictGatePass,
+			wantVerdict: meithealv1alpha1.AgenticTaskVerdictGatePass,
 			wantOutcome: "PASS", wantCalls: 1,
 		},
 	}

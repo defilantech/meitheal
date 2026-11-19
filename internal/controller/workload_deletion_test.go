@@ -23,7 +23,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // Pins #949: reconciling a Workload that is terminating (foreground
@@ -45,7 +45,7 @@ var _ = Describe("WorkloadReconciler on a deleting Workload (#949)", func() {
 	})
 
 	It("does not re-render children once deletionTimestamp is set", func() {
-		wl := newWorkload("deleting-no-resynth", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("deleting-no-resynth", meithealv1alpha1.WorkloadSpec{
 			Intent:           "fix it",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{7},
@@ -69,7 +69,7 @@ var _ = Describe("WorkloadReconciler on a deleting Workload (#949)", func() {
 		// children ourselves).
 		propagation := client.PropagationPolicy("Foreground")
 		Expect(k8sClient.Delete(ctx, wl, propagation)).To(Succeed())
-		var deleting foremanv1alpha1.Workload
+		var deleting meithealv1alpha1.Workload
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &deleting)).To(Succeed())
 		Expect(deleting.DeletionTimestamp.IsZero()).To(BeFalse())
 		cleanupChildren(wl)
@@ -85,8 +85,8 @@ var _ = Describe("WorkloadReconciler on a deleting Workload (#949)", func() {
 
 // listChildrenNames returns the names of the AgenticTasks labeled as the
 // Workload's children.
-func listChildrenNames(wl *foremanv1alpha1.Workload) []string {
-	var tasks foremanv1alpha1.AgenticTaskList
+func listChildrenNames(wl *meithealv1alpha1.Workload) []string {
+	var tasks meithealv1alpha1.AgenticTaskList
 	Expect(k8sClient.List(ctx, &tasks,
 		client.InNamespace(wl.Namespace),
 		client.MatchingLabels{labelWorkload: wl.Name},

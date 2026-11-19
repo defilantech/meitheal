@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // TestClassifyChildren_SlicerVerdicts locks in that a sliced Workload's
@@ -38,27 +38,27 @@ import (
 // keeps the Workload out of Completed; a clean GATE-PASS counts as succeeded.
 // If a future change special-cases kinds in classifyChildren, this fails.
 func TestClassifyChildren_SlicerVerdicts(t *testing.T) {
-	mk := func(kind foremanv1alpha1.AgenticTaskKind, verdict foremanv1alpha1.AgenticTaskVerdict) foremanv1alpha1.AgenticTask {
-		return foremanv1alpha1.AgenticTask{
-			Spec:   foremanv1alpha1.AgenticTaskSpec{Kind: kind},
-			Status: foremanv1alpha1.AgenticTaskStatus{Phase: foremanv1alpha1.AgenticTaskPhaseSucceeded, Verdict: verdict},
+	mk := func(kind meithealv1alpha1.AgenticTaskKind, verdict meithealv1alpha1.AgenticTaskVerdict) meithealv1alpha1.AgenticTask {
+		return meithealv1alpha1.AgenticTask{
+			Spec:   meithealv1alpha1.AgenticTaskSpec{Kind: kind},
+			Status: meithealv1alpha1.AgenticTaskStatus{Phase: meithealv1alpha1.AgenticTaskPhaseSucceeded, Verdict: verdict},
 		}
 	}
 
 	tests := []struct {
 		name           string
-		task           foremanv1alpha1.AgenticTask
+		task           meithealv1alpha1.AgenticTask
 		wantSucceeded  int32
 		wantIncomplete int32
 	}{
-		{"integrate clean", mk(foremanv1alpha1.AgenticTaskKindIntegrate, foremanv1alpha1.AgenticTaskVerdictGatePass), 1, 0},
-		{"integrate overlap", mk(foremanv1alpha1.AgenticTaskKindIntegrate, foremanv1alpha1.AgenticTaskVerdictGateFail), 0, 1},
-		{"reconcile clean", mk(foremanv1alpha1.AgenticTaskKindReconcile, foremanv1alpha1.AgenticTaskVerdictGatePass), 1, 0},
-		{"reconcile drift", mk(foremanv1alpha1.AgenticTaskKindReconcile, foremanv1alpha1.AgenticTaskVerdictGateFail), 0, 1},
+		{"integrate clean", mk(meithealv1alpha1.AgenticTaskKindIntegrate, meithealv1alpha1.AgenticTaskVerdictGatePass), 1, 0},
+		{"integrate overlap", mk(meithealv1alpha1.AgenticTaskKindIntegrate, meithealv1alpha1.AgenticTaskVerdictGateFail), 0, 1},
+		{"reconcile clean", mk(meithealv1alpha1.AgenticTaskKindReconcile, meithealv1alpha1.AgenticTaskVerdictGatePass), 1, 0},
+		{"reconcile drift", mk(meithealv1alpha1.AgenticTaskKindReconcile, meithealv1alpha1.AgenticTaskVerdictGateFail), 0, 1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			c := classifyChildren([]foremanv1alpha1.AgenticTask{tc.task})
+			c := classifyChildren([]meithealv1alpha1.AgenticTask{tc.task})
 			if c.succeeded != tc.wantSucceeded || c.incomplete != tc.wantIncomplete {
 				t.Fatalf("classifyChildren = {succeeded:%d incomplete:%d}, want {succeeded:%d incomplete:%d}",
 					c.succeeded, c.incomplete, tc.wantSucceeded, tc.wantIncomplete)
@@ -79,56 +79,56 @@ func TestComputeTerminalState_DispatchedCondition(t *testing.T) {
 	tests := []struct {
 		name            string
 		counts          childCounts
-		wantPhase       foremanv1alpha1.WorkloadPhase
+		wantPhase       meithealv1alpha1.WorkloadPhase
 		wantDispatched  metav1.ConditionStatus
 		wantDispatchRsn string
 	}{
 		{
 			name:            "all children succeeded is terminal",
 			counts:          childCounts{succeeded: 3, total: 3},
-			wantPhase:       foremanv1alpha1.WorkloadPhaseCompleted,
+			wantPhase:       meithealv1alpha1.WorkloadPhaseCompleted,
 			wantDispatched:  metav1.ConditionFalse,
 			wantDispatchRsn: "AllChildrenSucceeded",
 		},
 		{
 			name:            "pure already-resolved is terminal",
 			counts:          childCounts{alreadyResolved: 1, resolvedIssues: []int32{42}, total: 1},
-			wantPhase:       foremanv1alpha1.WorkloadPhaseCompleted,
+			wantPhase:       meithealv1alpha1.WorkloadPhaseCompleted,
 			wantDispatched:  metav1.ConditionFalse,
 			wantDispatchRsn: "AllAlreadyResolved",
 		},
 		{
 			name:            "mixed on-target and already-resolved is terminal",
 			counts:          childCounts{succeeded: 2, alreadyResolved: 1, resolvedIssues: []int32{7}, total: 3},
-			wantPhase:       foremanv1alpha1.WorkloadPhaseCompleted,
+			wantPhase:       meithealv1alpha1.WorkloadPhaseCompleted,
 			wantDispatched:  metav1.ConditionFalse,
 			wantDispatchRsn: "AllChildrenSucceeded",
 		},
 		{
 			name:            "failed child rolls to Failed",
 			counts:          childCounts{failed: 1, succeeded: 2, total: 3},
-			wantPhase:       foremanv1alpha1.WorkloadPhaseFailed,
+			wantPhase:       meithealv1alpha1.WorkloadPhaseFailed,
 			wantDispatched:  metav1.ConditionFalse,
 			wantDispatchRsn: "ChildrenFailed",
 		},
 		{
 			name:            "incomplete child rolls to Failed",
 			counts:          childCounts{incomplete: 1, total: 1},
-			wantPhase:       foremanv1alpha1.WorkloadPhaseFailed,
+			wantPhase:       meithealv1alpha1.WorkloadPhaseFailed,
 			wantDispatched:  metav1.ConditionFalse,
 			wantDispatchRsn: "ChildrenIncomplete",
 		},
 		{
 			name:            "in-flight child stays Dispatched",
 			counts:          childCounts{inFlight: 1, total: 1},
-			wantPhase:       foremanv1alpha1.WorkloadPhaseDispatched,
+			wantPhase:       meithealv1alpha1.WorkloadPhaseDispatched,
 			wantDispatched:  metav1.ConditionTrue,
 			wantDispatchRsn: "ChildrenInFlight",
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			w := &foremanv1alpha1.Workload{}
+			w := &meithealv1alpha1.Workload{}
 			computeTerminalState(w, tc.counts, now)
 
 			if w.Status.Phase != tc.wantPhase {
@@ -176,19 +176,19 @@ func firstOrEmpty(s []string) string {
 // other buckets, and asserts that a contradicting-but-Succeeded task still
 // counts as succeeded.
 func TestClassifyChildren_CrossStageContradiction(t *testing.T) {
-	withContradiction := func(verdict foremanv1alpha1.AgenticTaskVerdict, contradictions ...string) foremanv1alpha1.AgenticTask {
-		return foremanv1alpha1.AgenticTask{
-			Status: foremanv1alpha1.AgenticTaskStatus{
-				Phase:   foremanv1alpha1.AgenticTaskPhaseSucceeded,
+	withContradiction := func(verdict meithealv1alpha1.AgenticTaskVerdict, contradictions ...string) meithealv1alpha1.AgenticTask {
+		return meithealv1alpha1.AgenticTask{
+			Status: meithealv1alpha1.AgenticTaskStatus{
+				Phase:   meithealv1alpha1.AgenticTaskPhaseSucceeded,
 				Verdict: verdict,
 				Result:  withContradictionsEnvelope(contradictions...),
 			},
 		}
 	}
-	failedWithContradiction := func(contradictions ...string) foremanv1alpha1.AgenticTask {
-		return foremanv1alpha1.AgenticTask{
-			Status: foremanv1alpha1.AgenticTaskStatus{
-				Phase:  foremanv1alpha1.AgenticTaskPhaseFailed,
+	failedWithContradiction := func(contradictions ...string) meithealv1alpha1.AgenticTask {
+		return meithealv1alpha1.AgenticTask{
+			Status: meithealv1alpha1.AgenticTaskStatus{
+				Phase:  meithealv1alpha1.AgenticTaskPhaseFailed,
 				Result: withContradictionsEnvelope(contradictions...),
 			},
 		}
@@ -196,7 +196,7 @@ func TestClassifyChildren_CrossStageContradiction(t *testing.T) {
 
 	tests := []struct {
 		name             string
-		tasks            []foremanv1alpha1.AgenticTask
+		tasks            []meithealv1alpha1.AgenticTask
 		wantSucceeded    int32
 		wantIncomplete   int32
 		wantFailed       int32
@@ -205,27 +205,27 @@ func TestClassifyChildren_CrossStageContradiction(t *testing.T) {
 	}{
 		{
 			name:             "no contradiction",
-			tasks:            []foremanv1alpha1.AgenticTask{{Status: foremanv1alpha1.AgenticTaskStatus{Phase: foremanv1alpha1.AgenticTaskPhaseSucceeded, Verdict: foremanv1alpha1.AgenticTaskVerdictGatePass}}},
+			tasks:            []meithealv1alpha1.AgenticTask{{Status: meithealv1alpha1.AgenticTaskStatus{Phase: meithealv1alpha1.AgenticTaskPhaseSucceeded, Verdict: meithealv1alpha1.AgenticTaskVerdictGatePass}}},
 			wantSucceeded:    1,
 			wantContradicted: 0,
 		},
 		{
 			name:             "one contradiction on a Succeeded task",
-			tasks:            []foremanv1alpha1.AgenticTask{withContradiction(foremanv1alpha1.AgenticTaskVerdictGatePass, "coder claims edits on empty branch")},
+			tasks:            []meithealv1alpha1.AgenticTask{withContradiction(meithealv1alpha1.AgenticTaskVerdictGatePass, "coder claims edits on empty branch")},
 			wantSucceeded:    1,
 			wantContradicted: 1,
 			wantFirstContra:  "coder claims edits on empty branch",
 		},
 		{
 			name:             "one contradiction on a Failed task",
-			tasks:            []foremanv1alpha1.AgenticTask{failedWithContradiction("gate passed on empty branch")},
+			tasks:            []meithealv1alpha1.AgenticTask{failedWithContradiction("gate passed on empty branch")},
 			wantFailed:       1,
 			wantContradicted: 1,
 			wantFirstContra:  "gate passed on empty branch",
 		},
 		{
 			name:             "unparseable result",
-			tasks:            []foremanv1alpha1.AgenticTask{{Status: foremanv1alpha1.AgenticTaskStatus{Phase: foremanv1alpha1.AgenticTaskPhaseSucceeded, Verdict: foremanv1alpha1.AgenticTaskVerdictGatePass, Result: &runtime.RawExtension{Raw: []byte("{not json")}}}},
+			tasks:            []meithealv1alpha1.AgenticTask{{Status: meithealv1alpha1.AgenticTaskStatus{Phase: meithealv1alpha1.AgenticTaskPhaseSucceeded, Verdict: meithealv1alpha1.AgenticTaskVerdictGatePass, Result: &runtime.RawExtension{Raw: []byte("{not json")}}}},
 			wantSucceeded:    1,
 			wantContradicted: 0,
 		},
@@ -265,7 +265,7 @@ func TestEmitCrossStageContradictionCondition(t *testing.T) {
 	r := &WorkloadReconciler{}
 	now := metav1.Now()
 
-	cond := func(w *foremanv1alpha1.Workload) *metav1.Condition {
+	cond := func(w *meithealv1alpha1.Workload) *metav1.Condition {
 		for i := range w.Status.Conditions {
 			if w.Status.Conditions[i].Type == conditionTypeCrossStageContradiction {
 				return &w.Status.Conditions[i]
@@ -276,7 +276,7 @@ func TestEmitCrossStageContradictionCondition(t *testing.T) {
 
 	// Zero contradictions: condition present, Status=False,
 	// Reason=NoContradictions.
-	w := &foremanv1alpha1.Workload{}
+	w := &meithealv1alpha1.Workload{}
 	r.emitCrossStageContradictionCondition(w, childCounts{}, now)
 	c := cond(w)
 	if c == nil {
@@ -291,7 +291,7 @@ func TestEmitCrossStageContradictionCondition(t *testing.T) {
 
 	// One contradiction: Status=True, Reason=CrossStageContradiction,
 	// message names the count and first contradiction string.
-	w = &foremanv1alpha1.Workload{}
+	w = &meithealv1alpha1.Workload{}
 	r.emitCrossStageContradictionCondition(w, childCounts{
 		contradicted:   1,
 		contradictions: []string{"coder claims edits on empty branch"},
@@ -314,7 +314,7 @@ func TestEmitCrossStageContradictionCondition(t *testing.T) {
 	}
 
 	// Two contradictions: count reflects both, message carries the first.
-	w = &foremanv1alpha1.Workload{}
+	w = &meithealv1alpha1.Workload{}
 	r.emitCrossStageContradictionCondition(w, childCounts{
 		contradicted: 2,
 		contradictions: []string{
@@ -349,8 +349,8 @@ func TestEmitCrossStageContradictionCondition(t *testing.T) {
 // here fail.
 func TestRollup_ContradictedTasksAndCondition(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := foremanv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("add foreman scheme: %v", err)
+	if err := meithealv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add meitheal scheme: %v", err)
 	}
 	// corev1 must be registered too: rollup patches a Workload and the
 	// fake client needs the Workload's status subresource registered.
@@ -358,7 +358,7 @@ func TestRollup_ContradictedTasksAndCondition(t *testing.T) {
 		t.Fatalf("add core scheme: %v", err)
 	}
 
-	wl := &foremanv1alpha1.Workload{
+	wl := &meithealv1alpha1.Workload{
 		ObjectMeta: metav1.ObjectMeta{Name: "contradiction-wl", Namespace: "default"},
 	}
 	cl := fake.NewClientBuilder().WithScheme(scheme).
@@ -369,19 +369,19 @@ func TestRollup_ContradictedTasksAndCondition(t *testing.T) {
 	// One child Succeeded on target (counts as succeeded) AND carries a
 	// cross-stage contradiction (counts as contradicted). The contradiction
 	// is orthogonal to success, so it lands in BOTH buckets.
-	contradicting := foremanv1alpha1.AgenticTask{
+	contradicting := meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "contradiction-wl-code-1",
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{{
-				APIVersion: foremanv1alpha1.GroupVersion.String(),
+				APIVersion: meithealv1alpha1.GroupVersion.String(),
 				Kind:       "Workload",
 				Name:       "contradiction-wl",
 			}},
 		},
-		Status: foremanv1alpha1.AgenticTaskStatus{
-			Phase:   foremanv1alpha1.AgenticTaskPhaseSucceeded,
-			Verdict: foremanv1alpha1.AgenticTaskVerdictGatePass,
+		Status: meithealv1alpha1.AgenticTaskStatus{
+			Phase:   meithealv1alpha1.AgenticTaskPhaseSucceeded,
+			Verdict: meithealv1alpha1.AgenticTaskVerdictGatePass,
 			Result:  withContradictionsEnvelope("coder claims edits on empty branch"),
 		},
 	}
@@ -390,7 +390,7 @@ func TestRollup_ContradictedTasksAndCondition(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	children := []foremanv1alpha1.AgenticTask{contradicting}
+	children := []meithealv1alpha1.AgenticTask{contradicting}
 	if _, err := r.rollup(ctx, wl, children, nil); err != nil {
 		t.Fatalf("rollup: %v", err)
 	}
@@ -428,8 +428,8 @@ func TestRollup_ContradictedTasksAndCondition(t *testing.T) {
 // flap and cry wolf on every escalation.
 func TestRollup_ChildrenMissing(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := foremanv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("add foreman scheme: %v", err)
+	if err := meithealv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add meitheal scheme: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("add core scheme: %v", err)
@@ -438,33 +438,33 @@ func TestRollup_ChildrenMissing(t *testing.T) {
 	taskRef := func(name string) corev1.ObjectReference {
 		return corev1.ObjectReference{Name: name}
 	}
-	child := func(name string) foremanv1alpha1.AgenticTask {
-		return foremanv1alpha1.AgenticTask{
+	child := func(name string) meithealv1alpha1.AgenticTask {
+		return meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: "default",
 				OwnerReferences: []metav1.OwnerReference{{
-					APIVersion: foremanv1alpha1.GroupVersion.String(),
+					APIVersion: meithealv1alpha1.GroupVersion.String(),
 					Kind:       "Workload",
 					Name:       "missing-wl",
 				}},
 			},
-			Status: foremanv1alpha1.AgenticTaskStatus{
-				Phase: foremanv1alpha1.AgenticTaskPhasePending,
+			Status: meithealv1alpha1.AgenticTaskStatus{
+				Phase: meithealv1alpha1.AgenticTaskPhasePending,
 			},
 		}
 	}
 
 	// stepChild is child() plus the step label activeChildren reads and an
 	// explicit phase, so a case can build a superseded round.
-	stepChild := func(name string, phase foremanv1alpha1.AgenticTaskPhase) foremanv1alpha1.AgenticTask {
+	stepChild := func(name string, phase meithealv1alpha1.AgenticTaskPhase) meithealv1alpha1.AgenticTask {
 		c := child(name)
 		c.Labels = map[string]string{labelWorkload: "missing-wl", labelStep: name}
 		c.Status.Phase = phase
 		return c
 	}
 
-	dispatched := func(w *foremanv1alpha1.Workload) *metav1.Condition {
+	dispatched := func(w *meithealv1alpha1.Workload) *metav1.Condition {
 		return apimeta.FindStatusCondition(w.Status.Conditions, "Dispatched")
 	}
 
@@ -472,7 +472,7 @@ func TestRollup_ChildrenMissing(t *testing.T) {
 		name        string
 		issues      []int32
 		planned     []corev1.ObjectReference
-		children    []foremanv1alpha1.AgenticTask
+		children    []meithealv1alpha1.AgenticTask
 		wantReason  string
 		wantMissing string // substring the message must name; "" = none
 		wantAbsent  string // substring the message must NOT name; "" = skip
@@ -480,21 +480,21 @@ func TestRollup_ChildrenMissing(t *testing.T) {
 		{
 			name:        "every planned ref observed",
 			planned:     []corev1.ObjectReference{taskRef("code-1"), taskRef("verify-1"), taskRef("review-1")},
-			children:    []foremanv1alpha1.AgenticTask{child("code-1"), child("verify-1"), child("review-1")},
+			children:    []meithealv1alpha1.AgenticTask{child("code-1"), child("verify-1"), child("review-1")},
 			wantReason:  "ChildrenInFlight",
 			wantMissing: "",
 		},
 		{
 			name:        "planned ref absent",
 			planned:     []corev1.ObjectReference{taskRef("code-1"), taskRef("verify-1"), taskRef("review-1")},
-			children:    []foremanv1alpha1.AgenticTask{child("code-1"), child("review-1")},
+			children:    []meithealv1alpha1.AgenticTask{child("code-1"), child("review-1")},
 			wantReason:  "ChildrenMissing",
 			wantMissing: "verify-1",
 		},
 		{
 			name:        "extra child not planned",
 			planned:     []corev1.ObjectReference{taskRef("code-1"), taskRef("review-1")},
-			children:    []foremanv1alpha1.AgenticTask{child("code-1"), child("review-1"), child("extra-escalation-1")},
+			children:    []meithealv1alpha1.AgenticTask{child("code-1"), child("review-1"), child("extra-escalation-1")},
 			wantReason:  "ChildrenInFlight",
 			wantMissing: "",
 		},
@@ -509,13 +509,13 @@ func TestRollup_ChildrenMissing(t *testing.T) {
 				taskRef("code-1"), taskRef("verify-1"), taskRef("review-1-0"),
 				taskRef("code-1-r1"), taskRef("verify-1-r1"), taskRef("review-1-0-r1"),
 			},
-			children: []foremanv1alpha1.AgenticTask{
-				stepChild("code-1", foremanv1alpha1.AgenticTaskPhaseSucceeded),
-				stepChild("verify-1", foremanv1alpha1.AgenticTaskPhaseSucceeded),
-				stepChild("review-1-0", foremanv1alpha1.AgenticTaskPhaseSucceeded),
-				stepChild("code-1-r1", foremanv1alpha1.AgenticTaskPhaseRunning),
-				stepChild("verify-1-r1", foremanv1alpha1.AgenticTaskPhasePending),
-				stepChild("review-1-0-r1", foremanv1alpha1.AgenticTaskPhasePending),
+			children: []meithealv1alpha1.AgenticTask{
+				stepChild("code-1", meithealv1alpha1.AgenticTaskPhaseSucceeded),
+				stepChild("verify-1", meithealv1alpha1.AgenticTaskPhaseSucceeded),
+				stepChild("review-1-0", meithealv1alpha1.AgenticTaskPhaseSucceeded),
+				stepChild("code-1-r1", meithealv1alpha1.AgenticTaskPhaseRunning),
+				stepChild("verify-1-r1", meithealv1alpha1.AgenticTaskPhasePending),
+				stepChild("review-1-0-r1", meithealv1alpha1.AgenticTaskPhasePending),
 			},
 			wantReason: "ChildrenInFlight",
 			wantAbsent: "code-1",
@@ -529,11 +529,11 @@ func TestRollup_ChildrenMissing(t *testing.T) {
 			planned: []corev1.ObjectReference{
 				taskRef("code-1"), taskRef("verify-1"), taskRef("review-1-0"), taskRef("code-1-esc"),
 			},
-			children: []foremanv1alpha1.AgenticTask{
-				stepChild("code-1", foremanv1alpha1.AgenticTaskPhaseFailed),
-				stepChild("verify-1", foremanv1alpha1.AgenticTaskPhaseFailed),
-				stepChild("review-1-0", foremanv1alpha1.AgenticTaskPhaseFailed),
-				stepChild("code-1-esc", foremanv1alpha1.AgenticTaskPhaseRunning),
+			children: []meithealv1alpha1.AgenticTask{
+				stepChild("code-1", meithealv1alpha1.AgenticTaskPhaseFailed),
+				stepChild("verify-1", meithealv1alpha1.AgenticTaskPhaseFailed),
+				stepChild("review-1-0", meithealv1alpha1.AgenticTaskPhaseFailed),
+				stepChild("code-1-esc", meithealv1alpha1.AgenticTaskPhaseRunning),
 			},
 			wantReason: "ChildrenInFlight",
 			wantAbsent: "code-1",
@@ -547,9 +547,9 @@ func TestRollup_ChildrenMissing(t *testing.T) {
 			planned: []corev1.ObjectReference{
 				taskRef("code-1"), taskRef("code-1-r1"), taskRef("verify-1-r1"),
 			},
-			children: []foremanv1alpha1.AgenticTask{
-				stepChild("code-1", foremanv1alpha1.AgenticTaskPhaseSucceeded),
-				stepChild("code-1-r1", foremanv1alpha1.AgenticTaskPhaseRunning),
+			children: []meithealv1alpha1.AgenticTask{
+				stepChild("code-1", meithealv1alpha1.AgenticTaskPhaseSucceeded),
+				stepChild("code-1-r1", meithealv1alpha1.AgenticTaskPhaseRunning),
 			},
 			wantReason:  "ChildrenMissing",
 			wantMissing: "verify-1-r1",
@@ -558,10 +558,10 @@ func TestRollup_ChildrenMissing(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			wl := &foremanv1alpha1.Workload{
+			wl := &meithealv1alpha1.Workload{
 				ObjectMeta: metav1.ObjectMeta{Name: "missing-wl", Namespace: "default"},
-				Spec:       foremanv1alpha1.WorkloadSpec{Issues: tc.issues},
-				Status:     foremanv1alpha1.WorkloadStatus{Tasks: tc.planned},
+				Spec:       meithealv1alpha1.WorkloadSpec{Issues: tc.issues},
+				Status:     meithealv1alpha1.WorkloadStatus{Tasks: tc.planned},
 			}
 			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(wl).WithStatusSubresource(wl).Build()
 			r := &WorkloadReconciler{Client: cl, Scheme: scheme}
@@ -585,7 +585,7 @@ func TestRollup_ChildrenMissing(t *testing.T) {
 			if tc.wantAbsent != "" && strings.Contains(cond.Message, tc.wantAbsent) {
 				t.Errorf("message names %q, which is alive in the cluster: %q", tc.wantAbsent, cond.Message)
 			}
-			if wl.Status.Phase == foremanv1alpha1.WorkloadPhaseFailed {
+			if wl.Status.Phase == meithealv1alpha1.WorkloadPhaseFailed {
 				t.Errorf("phase = %q, want not Failed", wl.Status.Phase)
 			}
 		})

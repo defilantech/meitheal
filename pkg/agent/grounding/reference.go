@@ -24,7 +24,7 @@ var commonMetricFirstSegments = map[string]bool{
 	"cache": true, "chart": true, "cluster": true, "config": true, "controller": true,
 	"debug": true, "default": true,
 	"enable": true, "env": true, "error": true,
-	"fleet": true, "foreman": true,
+	"fleet": true, "meitheal": true,
 	"gate": true, "gpu": true,
 	"helm": true, "http": true,
 	"image": true,

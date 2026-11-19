@@ -110,13 +110,13 @@ func TestMutationFindingFromResults(t *testing.T) {
 }
 
 func TestMutationCheckDisabled(t *testing.T) {
-	t.Setenv("FOREMAN_MUTATION_CHECK", "0")
+	t.Setenv("MEITHEAL_MUTATION_CHECK", "0")
 	if !mutationCheckDisabled() {
-		t.Error("mutationCheckDisabled() = false, want true when FOREMAN_MUTATION_CHECK=0")
+		t.Error("mutationCheckDisabled() = false, want true when MEITHEAL_MUTATION_CHECK=0")
 	}
 
-	t.Setenv("FOREMAN_MUTATION_CHECK", "1")
+	t.Setenv("MEITHEAL_MUTATION_CHECK", "1")
 	if mutationCheckDisabled() {
-		t.Error("mutationCheckDisabled() = true, want false when FOREMAN_MUTATION_CHECK=1 (default enabled)")
+		t.Error("mutationCheckDisabled() = true, want false when MEITHEAL_MUTATION_CHECK=1 (default enabled)")
 	}
 }

@@ -16,7 +16,7 @@ limitations under the License.
 
 // Package reviewer codifies the structured-findings shape the v0.4
 // reviewer Agent emits via submit_result.extra. The schema is
-// documented in config/foreman/system-prompts/reviewer.md; this
+// documented in config/system-prompts/reviewer.md; this
 // package keeps the Go and prompt definitions in lockstep so a future
 // downstream consumer (GitHub PR-comment poster, analytics, audit
 // trail) reads from one place.

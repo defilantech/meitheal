@@ -28,8 +28,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
@@ -52,7 +52,7 @@ import (
 //     files, so writing a new .go file under internal/controller/ before the
 //     commit makes envtestTouched true and arms the post-push gate.
 
-// seqEnvtestRegistry implements foremanagent.ToolRegistry, returning the
+// seqEnvtestRegistry implements meithealagent.ToolRegistry, returning the
 // next scripted verdict for each submit_result call (repeating the final
 // entry after the script runs out, mirroring scriptedOAI's exhaustion
 // rule) and touching a controller file so the change is envtest-backed.
@@ -66,7 +66,7 @@ func (r *seqEnvtestRegistry) Schemas() []oai.Tool { return nil }
 
 func (r *seqEnvtestRegistry) Dispatch(
 	_ context.Context, name string, _ json.RawMessage,
-) (*foremanagent.ToolResult, error) {
+) (*meithealagent.ToolResult, error) {
 	if name != "submit_result" {
 		return nil, fmt.Errorf("seqEnvtestRegistry: unexpected tool %q", name)
 	}
@@ -76,7 +76,7 @@ func (r *seqEnvtestRegistry) Dispatch(
 		i = len(r.verdicts) - 1
 	}
 	r.calls++
-	return &foremanagent.ToolResult{
+	return &meithealagent.ToolResult{
 		Terminal:      true,
 		Verdict:       r.verdicts[i],
 		Summary:       "fix",
@@ -128,20 +128,20 @@ func touchController(ws string) {
 // writes into the per-task clone.
 func envtestLoopExecutor(
 	t *testing.T, root, bare, oaiURL string, c client.Client,
-	runner foremanagent.EnvtestJobRunner, reg *seqEnvtestRegistry,
-) *foremanagent.NativeAgentLoopExecutor {
+	runner meithealagent.EnvtestJobRunner, reg *seqEnvtestRegistry,
+) *meithealagent.NativeAgentLoopExecutor {
 	t.Helper()
-	return &foremanagent.NativeAgentLoopExecutor{
+	return &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiURL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -160,7 +160,7 @@ type envtestLoopCase struct {
 	gate        []envtestGateResult
 }
 
-func (tc envtestLoopCase) run(t *testing.T) (*foremanagent.Result, int) {
+func (tc envtestLoopCase) run(t *testing.T) (*meithealagent.Result, int) {
 	t.Helper()
 	gitOrSkip(t)
 	root := t.TempDir()
@@ -192,7 +192,7 @@ func TestNativeExecutor_EnvtestLoop_ConvergesAfterOneRetry(t *testing.T) {
 			{pass: true, ran: true}, // retry passes
 		},
 	}.run(t)
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO got %s (result=%+v)", res.Verdict, res)
 	}
 	if calls != 2 {
@@ -215,7 +215,7 @@ func TestNativeExecutor_EnvtestLoop_UnverifiedRetryDoesNotFalseGo(t *testing.T) 
 			{pass: false, ran: false},                             // retry: could-not-run (collision/infra)
 		},
 	}.run(t)
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Fatalf("verdict: want INCOMPLETE (unverified retry must not GO) got %s (result=%+v)", res.Verdict, res)
 	}
 	if calls != 2 {
@@ -233,7 +233,7 @@ func TestNativeExecutor_EnvtestLoop_IncompleteAfterCapExhausted(t *testing.T) {
 		regVerdicts: []string{"GO"},
 		gate:        []envtestGateResult{{pass: false, ran: true, feedback: "still broken"}},
 	}.run(t)
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Fatalf("verdict: want INCOMPLETE got %s", res.Verdict)
 	}
 	if calls != 1 {
@@ -253,7 +253,7 @@ func TestNativeExecutor_EnvtestLoop_NoGoOnRetrySurfaces(t *testing.T) {
 		regVerdicts: []string{"GO", "NO-GO"},
 		gate:        []envtestGateResult{{pass: false, ran: true, feedback: "boom"}},
 	}.run(t)
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("verdict: want NO-GO got %s", res.Verdict)
 	}
 }

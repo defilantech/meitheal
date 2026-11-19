@@ -25,13 +25,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // setAssignedRunning is a test helper that moves a task to the given in-flight
 // phase with an assigned node, mirroring the state left by the scheduler +
 // agent claim cycle.
-func setAssignedRunning(task *foremanv1alpha1.AgenticTask, phase foremanv1alpha1.AgenticTaskPhase, nodeName string) {
+func setAssignedRunning(task *meithealv1alpha1.AgenticTask, phase meithealv1alpha1.AgenticTaskPhase, nodeName string) {
 	GinkgoHelper()
 	patch := client.MergeFrom(task.DeepCopy())
 	now := metav1.Now()
@@ -44,18 +44,18 @@ func setAssignedRunning(task *foremanv1alpha1.AgenticTask, phase foremanv1alpha1
 
 // setStaleNode creates or updates a FleetNode with a last heartbeat far enough
 // in the past to be considered stale (> FleetNodeHeartbeatTimeout).
-func setStaleNode(node *foremanv1alpha1.FleetNode) {
+func setStaleNode(node *meithealv1alpha1.FleetNode) {
 	GinkgoHelper()
 	patch := client.MergeFrom(node.DeepCopy())
 	stale := metav1.NewTime(time.Now().Add(-5 * time.Minute))
-	node.Status.Phase = foremanv1alpha1.FleetNodePhaseReady
+	node.Status.Phase = meithealv1alpha1.FleetNodePhaseReady
 	node.Status.LastHeartbeatTime = &stale
 	Expect(k8sClient.Status().Patch(ctx, node, patch)).To(Succeed())
 }
 
 // setExpiryAnnotation writes the claim-expiry counter annotation directly onto
 // the task's metadata.
-func setExpiryAnnotation(task *foremanv1alpha1.AgenticTask, value string) {
+func setExpiryAnnotation(task *meithealv1alpha1.AgenticTask, value string) {
 	GinkgoHelper()
 	patch := client.MergeFrom(task.DeepCopy())
 	if task.Annotations == nil {
@@ -86,17 +86,17 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		task := newTask("stale-running-task")
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setAssignedRunning(task, foremanv1alpha1.AgenticTaskPhaseRunning, node.Name)
+		setAssignedRunning(task, meithealv1alpha1.AgenticTaskPhaseRunning, node.Name)
 
 		res, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.RequeueAfter).To(BeZero()) // release returns immediately
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 
 		// Phase released to Pending.
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 		// Claim fields cleared.
 		Expect(fresh.Status.AssignedNode).To(BeEmpty())
 		Expect(fresh.Status.ClaimedAt).To(BeNil())
@@ -117,16 +117,16 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		task := newTask("absent-node-task")
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setAssignedRunning(task, foremanv1alpha1.AgenticTaskPhaseRunning, "ghost-node")
+		setAssignedRunning(task, meithealv1alpha1.AgenticTaskPhaseRunning, "ghost-node")
 
 		res, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.RequeueAfter).To(BeZero())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 		Expect(fresh.Status.AssignedNode).To(BeEmpty())
 		Expect(fresh.Status.ClaimedAt).To(BeNil())
 		Expect(fresh.Status.StartedAt).To(BeNil())
@@ -143,25 +143,25 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		node := newFleetNode("fresh-running-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator: foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator: meithealv1alpha1.FleetNodeAccelerator("metal"),
 		})
 
 		task := newTask("fresh-running-task")
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setAssignedRunning(task, foremanv1alpha1.AgenticTaskPhaseRunning, node.Name)
+		setAssignedRunning(task, meithealv1alpha1.AgenticTaskPhaseRunning, node.Name)
 
 		res, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 		// Should requeue so staleness is re-checked.
 		Expect(res.RequeueAfter).To(BeNumerically(">", time.Duration(0)))
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 
 		// Untouched: still Running with the same assigned node.
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseRunning))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseRunning))
 		Expect(fresh.Status.AssignedNode).To(Equal(node.Name))
 		// No expiry annotation.
 		Expect(fresh.Annotations[claimExpiriesAnnotation]).To(BeEmpty())
@@ -177,15 +177,15 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		task := newTask("stale-scheduled-task")
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setAssignedRunning(task, foremanv1alpha1.AgenticTaskPhaseScheduled, node.Name)
+		setAssignedRunning(task, meithealv1alpha1.AgenticTaskPhaseScheduled, node.Name)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 		Expect(fresh.Status.AssignedNode).To(BeEmpty())
 		Expect(fresh.Annotations[claimExpiriesAnnotation]).To(Equal("1"))
 	})
@@ -200,18 +200,18 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		task := newTask("limit-reached-task")
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setAssignedRunning(task, foremanv1alpha1.AgenticTaskPhaseRunning, node.Name)
+		setAssignedRunning(task, meithealv1alpha1.AgenticTaskPhaseRunning, node.Name)
 		setExpiryAnnotation(task, "2") // two prior expiries; this is the 3rd
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseFailed))
-		Expect(fresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictIncomplete))
-		Expect(fresh.Status.FailureReason).To(Equal(foremanv1alpha1.FailureInfrastructureError))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseFailed))
+		Expect(fresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictIncomplete))
+		Expect(fresh.Status.FailureReason).To(Equal(meithealv1alpha1.FailureInfrastructureError))
 		Expect(fresh.Status.FinishedAt).NotTo(BeNil())
 
 		cond := findCondition(fresh.Status.Conditions, "Failed")
@@ -234,8 +234,8 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		// Put the task in terminal Succeeded state (as the agent would).
 		patch := client.MergeFrom(task.DeepCopy())
 		now := metav1.Now()
-		task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+		task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 		task.Status.AssignedNode = node.Name
 		task.Status.FinishedAt = &now
 		Expect(k8sClient.Status().Patch(ctx, task, patch)).To(Succeed())
@@ -245,12 +245,12 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		// Terminal phases must not produce a forced requeue.
 		Expect(res.RequeueAfter).To(BeZero())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 
 		// Still Succeeded; no expiry annotation.
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseSucceeded))
-		Expect(fresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictGo))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseSucceeded))
+		Expect(fresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictGo))
 		Expect(fresh.Annotations[claimExpiriesAnnotation]).To(BeEmpty())
 	})
 
@@ -280,8 +280,8 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		// would have done).
 		succPatch := client.MergeFrom(task.DeepCopy())
 		finishedAt := metav1.Now()
-		task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+		task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 		task.Status.AssignedNode = node.Name
 		task.Status.FinishedAt = &finishedAt
 		Expect(k8sClient.Status().Patch(ctx, task, succPatch)).To(Succeed())
@@ -291,7 +291,7 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		// (before the Succeeded patch) so its resourceVersion is older.
 		staleSnapshot := task.DeepCopy()
 		now := metav1.Now()
-		staleSnapshot.Status.Phase = foremanv1alpha1.AgenticTaskPhaseRunning
+		staleSnapshot.Status.Phase = meithealv1alpha1.AgenticTaskPhaseRunning
 		staleSnapshot.Status.AssignedNode = node.Name
 		staleSnapshot.Status.ClaimedAt = &now
 		staleSnapshot.Status.StartedAt = &now
@@ -301,10 +301,10 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		Expect(res.RequeueAfter).To(BeZero())
 
 		// Live object must still be Succeeded, not regressed to Pending.
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseSucceeded))
-		Expect(fresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictGo))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseSucceeded))
+		Expect(fresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictGo))
 		Expect(fresh.Annotations[claimExpiriesAnnotation]).To(BeEmpty())
 	})
 
@@ -322,8 +322,8 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		// Write Succeeded into etcd.
 		succPatch := client.MergeFrom(task.DeepCopy())
 		finishedAt := metav1.Now()
-		task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+		task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 		task.Status.AssignedNode = node.Name
 		task.Status.FinishedAt = &finishedAt
 		Expect(k8sClient.Status().Patch(ctx, task, succPatch)).To(Succeed())
@@ -331,7 +331,7 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		// Stale snapshot: two prior expiries, still Running.
 		staleSnapshot := task.DeepCopy()
 		claimedAt := metav1.Now()
-		staleSnapshot.Status.Phase = foremanv1alpha1.AgenticTaskPhaseRunning
+		staleSnapshot.Status.Phase = meithealv1alpha1.AgenticTaskPhaseRunning
 		staleSnapshot.Status.AssignedNode = node.Name
 		staleSnapshot.Status.ClaimedAt = &claimedAt
 		if staleSnapshot.Annotations == nil {
@@ -344,10 +344,10 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		Expect(res.RequeueAfter).To(BeZero())
 
 		// Live object must still be Succeeded, not overwritten with Failed.
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseSucceeded))
-		Expect(fresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictGo))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseSucceeded))
+		Expect(fresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictGo))
 	})
 
 	It("incrementExpiryCounter uses max(fresh, snapshot) to avoid counter regression", func() {
@@ -368,7 +368,7 @@ var _ = Describe("AgenticTaskReconciler claim expiry", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// Result must be max(2, 1)+1 = 3, not 1+1 = 2.
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 		Expect(fresh.Annotations[claimExpiriesAnnotation]).To(Equal("3"))
 	})

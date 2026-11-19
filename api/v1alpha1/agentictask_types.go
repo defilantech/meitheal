@@ -116,11 +116,11 @@ const (
 	FailureInferenceServiceUnavailable AgenticTaskFailureReason = "InferenceServiceUnavailable"
 
 	// FailureAuthUnavailable: GitHub auth could not be built (no
-	// GITHUB_TOKEN, no ~/.config/foreman/github-token). Operator
+	// GITHUB_TOKEN, no ~/.config/github-token). Operator
 	// config error; not retryable.
 	FailureAuthUnavailable AgenticTaskFailureReason = "AuthUnavailable"
 
-	// FailureGitRemoteNotConfigured: foreman-agent was started without
+	// FailureGitRemoteNotConfigured: meitheal-agent was started without
 	// --git-remote-url and a coder-shaped task arrived. Operator
 	// config error; not retryable.
 	FailureGitRemoteNotConfigured AgenticTaskFailureReason = "GitRemoteNotConfigured"
@@ -256,7 +256,7 @@ type RequiredCapability struct {
 
 	// Roles filters to FleetNodes whose spec.roles include every named
 	// role. Matches against FleetNodeSpec.Roles (the --roles flag on the
-	// foreman-agent). Used to route the gate Agent's tasks to nodes that
+	// meitheal-agent). Used to route the gate Agent's tasks to nodes that
 	// advertise themselves as verifiers without coupling to per-node
 	// labels.
 	// +optional
@@ -663,7 +663,7 @@ type AgenticTaskStatus struct {
 	FailureReason AgenticTaskFailureReason `json:"failureReason,omitempty"`
 
 	// Result is the structured JSON the agent emitted, validated against the
-	// foreman.v1 schema. Opaque to the API server.
+	// meitheal.v1 schema. Opaque to the API server.
 	// +optional
 	Result *runtime.RawExtension `json:"result,omitempty"`
 
@@ -704,7 +704,7 @@ type AgenticTaskStatus struct {
 // +kubebuilder:printcolumn:name="Verdict",type=string,JSONPath=`.status.verdict`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// AgenticTask is the unit of dispatchable agentic work. The Foreman scheduler
+// AgenticTask is the unit of dispatchable agentic work. The Meitheal scheduler
 // matches each Pending task to a FleetNode whose advertised capability
 // satisfies the task's RequiredCapability, then a FleetAgent on that node
 // picks up the task and runs the matching executor.

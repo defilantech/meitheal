@@ -27,11 +27,11 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
-func intentWorkload(intent string) *foremanv1alpha1.Workload {
-	w := &foremanv1alpha1.Workload{}
+func intentWorkload(intent string) *meithealv1alpha1.Workload {
+	w := &meithealv1alpha1.Workload{}
 	w.Name = "wl-intent"
 	w.Spec.Repo = "defilantech/LLMKube"
 	w.Spec.Issues = []int32{42}
@@ -79,9 +79,9 @@ func TestSynthesizeIssueBatch_CarriesIntent(t *testing.T) {
 
 	steps := synthesizeIssueBatch(w)
 
-	var code *foremanv1alpha1.PipelineStep
+	var code *meithealv1alpha1.PipelineStep
 	for i := range steps {
-		if steps[i].Kind == foremanv1alpha1.AgenticTaskKindIssueFix {
+		if steps[i].Kind == meithealv1alpha1.AgenticTaskKindIssueFix {
 			code = &steps[i]
 		}
 	}
@@ -95,7 +95,7 @@ func TestSynthesizeIssueBatch_CarriesIntent(t *testing.T) {
 	// The verify step runs the deterministic gate, not a prompt; it must
 	// not grow a PromptPrefix.
 	for _, s := range steps {
-		if s.Kind == foremanv1alpha1.AgenticTaskKindVerify && s.Payload.PromptPrefix != "" {
+		if s.Kind == meithealv1alpha1.AgenticTaskKindVerify && s.Payload.PromptPrefix != "" {
 			t.Fatalf("verify step unexpectedly carries a PromptPrefix: %q", s.Payload.PromptPrefix)
 		}
 	}
@@ -104,9 +104,9 @@ func TestSynthesizeIssueBatch_CarriesIntent(t *testing.T) {
 func TestReviewIterationSteps_CarriesIntent(t *testing.T) {
 	w := iterationWorkload([]int32{641}, 1, nil)
 	w.Spec.Intent = "Do not touch the chart."
-	children := []foremanv1alpha1.AgenticTask{
-		child("code-641", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictGo),
-		child("verify-641", foremanv1alpha1.AgenticTaskPhaseSucceeded, foremanv1alpha1.AgenticTaskVerdictGatePass),
+	children := []meithealv1alpha1.AgenticTask{
+		child("code-641", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictGo),
+		child("verify-641", meithealv1alpha1.AgenticTaskPhaseSucceeded, meithealv1alpha1.AgenticTaskVerdictGatePass),
 		noGoChild("needs work", "[]"),
 	}
 
@@ -114,7 +114,7 @@ func TestReviewIterationSteps_CarriesIntent(t *testing.T) {
 
 	var found bool
 	for _, s := range steps {
-		if s.Kind != foremanv1alpha1.AgenticTaskKindIssueFix {
+		if s.Kind != meithealv1alpha1.AgenticTaskKindIssueFix {
 			continue
 		}
 		found = true
@@ -138,14 +138,14 @@ func TestCoderEscalationSteps_ComposesIntentWithHint(t *testing.T) {
 	w.Spec.VerifierAgentRef = &corev1.LocalObjectReference{Name: "gate"}
 	w.Spec.EscalationCoderAgentRef = &corev1.LocalObjectReference{Name: "coder-esc"}
 
-	code := foremanv1alpha1.AgenticTask{}
+	code := meithealv1alpha1.AgenticTask{}
 	code.Name = "wl-intent-code-944"
 	code.Labels = map[string]string{labelStep: "code-944"}
-	code.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-	code.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+	code.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+	code.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 	code.Status.Result = resultRaw("MODEL-DECIDED", "", "could not solve: anchor drift", "")
 
-	steps, _, _ := coderEscalationSteps(w, []foremanv1alpha1.AgenticTask{code})
+	steps, _, _ := coderEscalationSteps(w, []meithealv1alpha1.AgenticTask{code})
 	if len(steps) == 0 {
 		t.Fatal("no escalation steps synthesized")
 	}

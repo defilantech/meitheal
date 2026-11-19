@@ -108,7 +108,7 @@ func runNonGoLint(t *testing.T, changed string, binDir string) (string, string) 
 		t.Skip("bash not available")
 	}
 	block := extractNonGoLintBlock(t, renderGateArgsForTest(t, map[string]any{
-		"repo": "defilantech/LLMKube", "branch": "foreman/x", "biteCheck": true,
+		"repo": "defilantech/LLMKube", "branch": "meitheal/x", "biteCheck": true,
 		"upstreamURL": "https://github.com/defilantech/LLMKube.git",
 	}))
 
@@ -223,7 +223,7 @@ func TestNonGoLint_NoBaseSkipsHonestly(t *testing.T) {
 	}
 	bin := hermeticBin(t)
 	block := extractNonGoLintBlock(t, renderGateArgsForTest(t, map[string]any{
-		"repo": "defilantech/LLMKube", "branch": "foreman/x", "biteCheck": true,
+		"repo": "defilantech/LLMKube", "branch": "meitheal/x", "biteCheck": true,
 		"upstreamURL": "https://github.com/defilantech/LLMKube.git",
 	}))
 	// MB empty is the "could not resolve a base" state.
@@ -247,7 +247,7 @@ func TestNonGoLint_NoBaseSkipsHonestly(t *testing.T) {
 // actually runs in.
 func TestNonGoLint_DoesNotDeriveItsOwnBase(t *testing.T) {
 	block := extractNonGoLintBlock(t, renderGateArgsForTest(t, map[string]any{
-		"repo": "defilantech/LLMKube", "branch": "foreman/x", "biteCheck": true,
+		"repo": "defilantech/LLMKube", "branch": "meitheal/x", "biteCheck": true,
 	}))
 	for _, forbidden := range []string{"HEAD~", "git ls-files", "git diff"} {
 		if strings.Contains(block, forbidden) {

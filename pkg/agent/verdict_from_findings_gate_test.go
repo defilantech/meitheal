@@ -21,7 +21,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // vffExtra builds a findings extra map with one finding of the given severity,
@@ -41,9 +41,9 @@ func vffChanged(fix map[string]map[int]bool) func(string) map[int]bool {
 
 func TestVerdictFromFindings_GroundedBlockerPromotes(t *testing.T) {
 	extra := vffExtra("blocker", "a.go", 10)
-	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictGo,
+	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictGo,
 		vffChanged(map[string]map[int]bool{"a.go": {10: true}}))
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("GO with a grounded blocker must promote to NO-GO, got %s", got)
 	}
 	if extra["verdictPromotedFromFindings"] != true {
@@ -56,9 +56,9 @@ func TestVerdictFromFindings_GroundedBlockerPromotes(t *testing.T) {
 
 func TestVerdictFromFindings_GroundedMajorPromotes(t *testing.T) {
 	extra := vffExtra("major", "a.go", 10)
-	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictGo,
+	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictGo,
 		vffChanged(map[string]map[int]bool{"a.go": {10: true}}))
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("GO with a grounded major must promote to NO-GO, got %s", got)
 	}
 }
@@ -66,9 +66,9 @@ func TestVerdictFromFindings_GroundedMajorPromotes(t *testing.T) {
 func TestVerdictFromFindings_UngroundedBlockerStaysGo(t *testing.T) {
 	// Cites a changed file but an unchanged line -> ungrounded -> no promotion.
 	extra := vffExtra("blocker", "a.go", 999)
-	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictGo,
+	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictGo,
 		vffChanged(map[string]map[int]bool{"a.go": {10: true}}))
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("GO with only an ungrounded blocker must stay GO, got %s", got)
 	}
 	if _, promoted := extra["verdictPromotedFromFindings"]; promoted {
@@ -78,18 +78,18 @@ func TestVerdictFromFindings_UngroundedBlockerStaysGo(t *testing.T) {
 
 func TestVerdictFromFindings_MinorStaysGo(t *testing.T) {
 	extra := vffExtra("minor", "a.go", 10) // minor on a changed line is not blocking
-	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictGo,
+	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictGo,
 		vffChanged(map[string]map[int]bool{"a.go": {10: true}}))
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("GO with only a minor finding must stay GO, got %s", got)
 	}
 }
 
 func TestVerdictFromFindings_NoGoUntouched(t *testing.T) {
 	extra := vffExtra("blocker", "a.go", 10) // grounded, but verdict is already NO-GO
-	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo,
+	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo,
 		vffChanged(map[string]map[int]bool{"a.go": {10: true}}))
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("rail must only act on GO; NO-GO must pass through, got %s", got)
 	}
 	if _, promoted := extra["verdictPromotedFromFindings"]; promoted {
@@ -98,11 +98,11 @@ func TestVerdictFromFindings_NoGoUntouched(t *testing.T) {
 }
 
 func TestVerdictFromFindings_ToggleOff(t *testing.T) {
-	t.Setenv("FOREMAN_VERDICT_FROM_FINDINGS", "0")
+	t.Setenv("MEITHEAL_VERDICT_FROM_FINDINGS", "0")
 	extra := vffExtra("blocker", "a.go", 10)
-	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictGo,
+	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictGo,
 		vffChanged(map[string]map[int]bool{"a.go": {10: true}}))
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("toggle off must leave GO untouched, got %s", got)
 	}
 }
@@ -110,8 +110,8 @@ func TestVerdictFromFindings_ToggleOff(t *testing.T) {
 func TestVerdictFromFindings_GitUnavailableDegradesOpen(t *testing.T) {
 	extra := vffExtra("blocker", "a.go", 10)
 	// changedLines == nil signals git unavailable -> degrade-open (no promotion).
-	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictGo, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerVerdictFromFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictGo, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("nil changedLines must leave verdict untouched, got %s", got)
 	}
 }
@@ -122,8 +122,8 @@ func TestVerdictFromFindings_GitUnavailableDegradesOpen(t *testing.T) {
 // model's stated verdict. This guards the two-rail composition against future
 // reordering (the per-rail tests cover each rail in isolation).
 func TestGroundingRailsComposition(t *testing.T) {
-	gogo := foremanv1alpha1.AgenticTaskVerdictGo
-	nogo := foremanv1alpha1.AgenticTaskVerdictNoGo
+	gogo := meithealv1alpha1.AgenticTaskVerdictGo
+	nogo := meithealv1alpha1.AgenticTaskVerdictNoGo
 	changed := vffChanged(map[string]map[int]bool{"a.go": {10: true}})
 	blk := func() map[string]any { return vffExtra("blocker", "a.go", 10) }  // grounded blocker
 	ublk := func() map[string]any { return vffExtra("blocker", "a.go", 99) } // ungrounded blocker (line unchanged)
@@ -131,9 +131,9 @@ func TestGroundingRailsComposition(t *testing.T) {
 
 	cases := []struct {
 		name  string
-		model foremanv1alpha1.AgenticTaskVerdict
+		model meithealv1alpha1.AgenticTaskVerdict
 		extra map[string]any
-		want  foremanv1alpha1.AgenticTaskVerdict
+		want  meithealv1alpha1.AgenticTaskVerdict
 	}{
 		{"GO+blocker->NoGo", gogo, blk(), nogo},
 		{"NoGo+blocker->NoGo", nogo, blk(), nogo},

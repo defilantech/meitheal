@@ -1,26 +1,26 @@
-{{- if .Values.foreman.crs.enabled }}
-# Starter Grafana dashboard for Foreman CRD status metrics.
+{{- if .Values.meitheal.crs.enabled }}
+# Starter Grafana dashboard for Meitheal CRD status metrics.
 #
 # Drop this ConfigMap into a namespace that the Grafana datasource plugin
 # can mount (the kube-prometheus-stack `grafana.sidecar.dashboards` config,
 # or a Grafana dashboard-provider ConfigMap). The dashboard covers:
 #
-#   - Foreman fleet overview (FleetNode count by phase, RAM, accelerator)
+#   - Meitheal fleet overview (FleetNode count by phase, RAM, accelerator)
 #   - Workload lifecycle (phases, task counts)
 #   - AgenticTask pipeline (phase/verdict distribution, stuck tasks)
 #
 # The metric series referenced here are emitted by the CRS ConfigMap
-# (charts/foreman/templates/crs-configmap.yaml).
+# (charts/meitheal/templates/crs-configmap.yaml).
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "foreman.fullname" . }}-grafana-dashboard
-  namespace: {{ include "foreman.namespace" . }}
+  name: {{ include "meitheal.fullname" . }}-grafana-dashboard
+  namespace: {{ include "meitheal.namespace" . }}
   labels:
-    {{- include "foreman.labels" . | nindent 4 }}
+    {{- include "meitheal.labels" . | nindent 4 }}
     grafana_dashboard: "true"
 data:
-  foreman.json: |
+  meitheal.json: |
     {
       "annotations": { "list": [] },
       "editable": true,
@@ -60,7 +60,7 @@ data:
           "title": "Ready Nodes",
           "type": "stat",
           "targets": [
-            { "expr": "sum(foreman_fleetnode_phase{phase=\"Ready\"})", "refId": "A" }
+            { "expr": "sum(meitheal_fleetnode_phase{phase=\"Ready\"})", "refId": "A" }
           ]
         },
         {
@@ -85,7 +85,7 @@ data:
           "title": "Draining Nodes",
           "type": "stat",
           "targets": [
-            { "expr": "sum(foreman_fleetnode_phase{phase=\"Draining\"})", "refId": "A" }
+            { "expr": "sum(meitheal_fleetnode_phase{phase=\"Draining\"})", "refId": "A" }
           ]
         },
         {
@@ -109,7 +109,7 @@ data:
           "title": "NotReady Nodes",
           "type": "stat",
           "targets": [
-            { "expr": "sum(foreman_fleetnode_phase{phase=\"NotReady\"})", "refId": "A" }
+            { "expr": "sum(meitheal_fleetnode_phase{phase=\"NotReady\"})", "refId": "A" }
           ]
         },
         {
@@ -129,7 +129,7 @@ data:
           "title": "Nodes by Accelerator",
           "type": "barchart",
           "targets": [
-            { "expr": "sum by (accelerator) (foreman_fleetnode_info)", "refId": "A" }
+            { "expr": "sum by (accelerator) (meitheal_fleetnode_info)", "refId": "A" }
           ]
         },
         {
@@ -149,7 +149,7 @@ data:
           "title": "FleetNode Heartbeat Timestamp",
           "type": "timeseries",
           "targets": [
-            { "expr": "foreman_fleetnode_heartbeat_timestamp_seconds", "refId": "A" }
+            { "expr": "meitheal_fleetnode_heartbeat_timestamp_seconds", "refId": "A" }
           ]
         },
         {
@@ -177,7 +177,7 @@ data:
           "title": "Workloads by Phase",
           "type": "barchart",
           "targets": [
-            { "expr": "sum by (phase) (foreman_workload_phase)", "refId": "A" }
+            { "expr": "sum by (phase) (meitheal_workload_phase)", "refId": "A" }
           ]
         },
         {
@@ -197,9 +197,9 @@ data:
           "title": "Workload Task Counts",
           "type": "timeseries",
           "targets": [
-            { "expr": "foreman_workload_succeeded_tasks", "refId": "A" },
-            { "expr": "foreman_workload_failed_tasks", "refId": "B" },
-            { "expr": "foreman_workload_incomplete_tasks", "refId": "C" }
+            { "expr": "meitheal_workload_succeeded_tasks", "refId": "A" },
+            { "expr": "meitheal_workload_failed_tasks", "refId": "B" },
+            { "expr": "meitheal_workload_incomplete_tasks", "refId": "C" }
           ]
         },
         {
@@ -227,7 +227,7 @@ data:
           "title": "Tasks by Phase",
           "type": "barchart",
           "targets": [
-            { "expr": "sum by (phase) (foreman_agentictask_phase)", "refId": "A" }
+            { "expr": "sum by (phase) (meitheal_agentictask_phase)", "refId": "A" }
           ]
         },
         {
@@ -247,7 +247,7 @@ data:
           "title": "Tasks by Verdict",
           "type": "barchart",
           "targets": [
-            { "expr": "sum by (verdict) (foreman_agentictask_verdict)", "refId": "A" }
+            { "expr": "sum by (verdict) (meitheal_agentictask_verdict)", "refId": "A" }
           ]
         },
         {
@@ -272,7 +272,7 @@ data:
           "title": "Stuck Tasks (Running > 1h)",
           "type": "stat",
           "targets": [
-            { "expr": "count(foreman_agentictask_phase{phase=\"Running\"}) > 0", "refId": "A" }
+            { "expr": "count(meitheal_agentictask_phase{phase=\"Running\"}) > 0", "refId": "A" }
           ]
         },
         {
@@ -297,7 +297,7 @@ data:
           "title": "Succeeded Tasks",
           "type": "stat",
           "targets": [
-            { "expr": "sum(foreman_agentictask_phase{phase=\"Succeeded\"})", "refId": "A" }
+            { "expr": "sum(meitheal_agentictask_phase{phase=\"Succeeded\"})", "refId": "A" }
           ]
         },
         {
@@ -321,7 +321,7 @@ data:
           "title": "Failed Tasks",
           "type": "stat",
           "targets": [
-            { "expr": "sum(foreman_agentictask_phase{phase=\"Failed\"})", "refId": "A" }
+            { "expr": "sum(meitheal_agentictask_phase{phase=\"Failed\"})", "refId": "A" }
           ]
         },
         {
@@ -345,20 +345,20 @@ data:
           "title": "Incomplete Tasks",
           "type": "stat",
           "targets": [
-            { "expr": "sum(foreman_agentictask_verdict{verdict=\"INCOMPLETE\"})", "refId": "A" }
+            { "expr": "sum(meitheal_agentictask_verdict{verdict=\"INCOMPLETE\"})", "refId": "A" }
           ]
         }
       ],
       "schemaVersion": 38,
-      "tags": ["foreman", "llmkube"],
+      "tags": ["meitheal"],
       "templating": { "list": [
         { "current": {}, "hide": 0, "includeAll": false, "label": "Datasource", "multi": false, "name": "datasource", "options": [], "query": "prometheus", "refresh": 1, "regex": "", "skipUrlSync": false, "type": "datasource" }
       ]},
       "time": { "from": "now-6h", "to": "now" },
       "timepicker": {},
       "timezone": "browser",
-      "title": "Foreman Fleet & Tasks",
-      "uid": "foreman-fleet-tasks",
+      "title": "Meitheal Fleet & Tasks",
+      "uid": "meitheal-fleet-tasks",
       "version": 1
     }
 ---

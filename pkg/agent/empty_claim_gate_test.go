@@ -21,7 +21,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // nonEmptyChanged simulates a ground-truth branch diff that touched a.go
@@ -44,11 +44,11 @@ func TestEmptyClaim_UnsupportedYieldsError(t *testing.T) {
 	extra := map[string]any{"reviewOutcome": "REQUEST-CHANGES"}
 	got, reason := enforceReviewerEmptyClaim(logr.Discard(), extra,
 		"NO-GO: branch has no commits and no code changes",
-		foremanv1alpha1.AgenticTaskVerdictNoGo, nonEmptyChanged())
-	if got != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+		meithealv1alpha1.AgenticTaskVerdictNoGo, nonEmptyChanged())
+	if got != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Fatalf("unsupported emptiness claim must remap to INCOMPLETE(ERROR), got %s", got)
 	}
-	if reason != foremanv1alpha1.FailureModelReportedError {
+	if reason != meithealv1alpha1.FailureModelReportedError {
 		t.Fatalf("remapped ERROR must carry ModelReportedError, got %s", reason)
 	}
 	if extra["emptyClaimRemappedToError"] != true {
@@ -68,8 +68,8 @@ func TestEmptyClaim_EvidencedFindingKeepsNoGo(t *testing.T) {
 	}
 	got, reason := enforceReviewerEmptyClaim(logr.Discard(), extra,
 		"NO-GO: branch has no commits and no code changes",
-		foremanv1alpha1.AgenticTaskVerdictNoGo, nonEmptyChanged())
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		meithealv1alpha1.AgenticTaskVerdictNoGo, nonEmptyChanged())
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("an evidenced emptiness claim must keep NO-GO, got %s", got)
 	}
 	if reason != "" {
@@ -91,8 +91,8 @@ func TestEmptyClaim_NoClaimKeepsNoGo(t *testing.T) {
 	}
 	got, reason := enforceReviewerEmptyClaim(logr.Discard(), extra,
 		"NO-GO: diff addresses a different bug than the issue",
-		foremanv1alpha1.AgenticTaskVerdictNoGo, nonEmptyChanged())
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		meithealv1alpha1.AgenticTaskVerdictNoGo, nonEmptyChanged())
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("a non-emptiness NO-GO must stay NO-GO, got %s", got)
 	}
 	if reason != "" {
@@ -104,8 +104,8 @@ func TestEmptyClaim_NoClaimKeepsNoGo(t *testing.T) {
 func TestEmptyClaim_GoUntouched(t *testing.T) {
 	extra := map[string]any{}
 	got, reason := enforceReviewerEmptyClaim(logr.Discard(), extra,
-		"branch is empty", foremanv1alpha1.AgenticTaskVerdictGo, nonEmptyChanged())
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+		"branch is empty", meithealv1alpha1.AgenticTaskVerdictGo, nonEmptyChanged())
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("rail must leave GO untouched, got %s", got)
 	}
 	if reason != "" {
@@ -119,8 +119,8 @@ func TestEmptyClaim_GoUntouched(t *testing.T) {
 func TestEmptyClaim_GitUnavailableDegradesOpen(t *testing.T) {
 	extra := map[string]any{}
 	got, reason := enforceReviewerEmptyClaim(logr.Discard(), extra,
-		"branch is empty", foremanv1alpha1.AgenticTaskVerdictNoGo, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		"branch is empty", meithealv1alpha1.AgenticTaskVerdictNoGo, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("nil changedLines must leave the verdict untouched, got %s", got)
 	}
 	if reason != "" {
@@ -128,13 +128,13 @@ func TestEmptyClaim_GitUnavailableDegradesOpen(t *testing.T) {
 	}
 }
 
-// TestEmptyClaim_ToggleOff: FOREMAN_EMPTY_CLAIM=0 disables the rail.
+// TestEmptyClaim_ToggleOff: MEITHEAL_EMPTY_CLAIM=0 disables the rail.
 func TestEmptyClaim_ToggleOff(t *testing.T) {
-	t.Setenv("FOREMAN_EMPTY_CLAIM", "0")
+	t.Setenv("MEITHEAL_EMPTY_CLAIM", "0")
 	extra := map[string]any{}
 	got, reason := enforceReviewerEmptyClaim(logr.Discard(), extra,
-		"branch is empty", foremanv1alpha1.AgenticTaskVerdictNoGo, nonEmptyChanged())
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		"branch is empty", meithealv1alpha1.AgenticTaskVerdictNoGo, nonEmptyChanged())
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("toggle off must leave the verdict untouched, got %s", got)
 	}
 	if reason != "" {

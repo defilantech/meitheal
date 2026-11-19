@@ -1,4 +1,4 @@
-# Foreman v0.1 M6 stub planner demo: explicit-pipeline mode. Use this
+# Meitheal v0.1 M6 stub planner demo: explicit-pipeline mode. Use this
 # when you want full control over each step's Agent, payload, and ordering
 # (custom system prompts, non-issue-fix kinds, branching dependencies).
 #
@@ -12,14 +12,14 @@
 # step-local Name; the reconciler rewrites them to absolute task names
 # when creating the AgenticTasks.
 
-apiVersion: foreman.llmkube.dev/v1alpha1
+apiVersion: meitheal.dev/v1alpha1
 kind: Workload
 metadata:
   name: linter-fix-503
   namespace: default
   labels:
-    app.kubernetes.io/part-of: foreman
-    foreman.llmkube.dev/milestone: m6
+    app.kubernetes.io/part-of: meitheal
+    meitheal.dev/milestone: m6
 spec:
   intent: "Single explicit issue-fix pipeline against #503"
   repo: defilantech/LLMKube
@@ -31,7 +31,7 @@ spec:
       payload:
         repo: defilantech/LLMKube
         issue: 503
-        branch: foreman/issue-503
+        branch: meitheal/issue-503
         prompt: |
           Fix issue #503 per the body of that issue. Run the
           verification commands from AGENTS.md before reporting.
@@ -48,5 +48,5 @@ spec:
       payload:
         repo: defilantech/LLMKube
         issue: 503
-        branch: foreman/issue-503
+        branch: meitheal/issue-503
       timeoutSeconds: 3900

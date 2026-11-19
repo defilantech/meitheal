@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func i32p(v int32) *int32 { return &v }
@@ -21,7 +21,7 @@ func TestEffectiveMaxEnvtestIterations(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			a := &foremanv1alpha1.Agent{}
+			a := &meithealv1alpha1.Agent{}
 			a.Spec.MaxEnvtestIterations = tc.in
 			if got := effectiveMaxEnvtestIterations(a); got != tc.want {
 				t.Fatalf("got %d want %d", got, tc.want)

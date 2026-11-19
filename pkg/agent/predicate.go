@@ -17,7 +17,7 @@ limitations under the License.
 package agent
 
 import (
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // IsDeterministicAgent reports whether the Agent runs the model-free
@@ -30,8 +30,8 @@ import (
 // webhook keeps a private copy that the webhook tests assert is
 // behaviorally identical to this function (the webhook must not import
 // this package into the operator binary).
-func IsDeterministicAgent(spec foremanv1alpha1.AgentSpec) bool {
-	if spec.Provider != "" && spec.Provider != foremanv1alpha1.AgentProviderLocal {
+func IsDeterministicAgent(spec meithealv1alpha1.AgentSpec) bool {
+	if spec.Provider != "" && spec.Provider != meithealv1alpha1.AgentProviderLocal {
 		return false
 	}
 	return spec.InferenceServiceRef.Name == ""

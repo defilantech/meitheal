@@ -25,7 +25,7 @@ import (
 
 // TestPRBody_NoTemplateIsByteIdenticalToLegacy is the regression guard
 // (#1541): a repo with no PR template must produce exactly the body
-// Foreman always emitted — the reviewer's summary, the issue link, and the
+// Meitheal always emitted — the reviewer's summary, the issue link, and the
 // provenance line — byte for byte. The template code path must not perturb
 // this shape at all.
 func TestPRBody_NoTemplateIsByteIdenticalToLegacy(t *testing.T) {
@@ -36,7 +36,7 @@ func TestPRBody_NoTemplateIsByteIdenticalToLegacy(t *testing.T) {
 	got := PRBody("", summary, issue, wl)
 	want := summary + "\n\n" +
 		"Fixes #7\n\n" +
-		"_Opened by foreman on review GO (workload wl-x)._"
+		"_Opened by meitheal on review GO (workload wl-x)._"
 	if got != want {
 		t.Fatalf("no-template body changed:\n got %q\nwant %q", got, want)
 	}
@@ -47,7 +47,7 @@ func TestPRBody_NoTemplateIsByteIdenticalToLegacy(t *testing.T) {
 func TestPRBody_NoTemplateEmptySummary(t *testing.T) {
 	got := PRBody("", "   ", 12, "wl-y")
 	want := "Fixes #12\n\n" +
-		"_Opened by foreman on review GO (workload wl-y)._"
+		"_Opened by meitheal on review GO (workload wl-y)._"
 	if got != want {
 		t.Fatalf("empty-summary no-template body changed:\n got %q\nwant %q", got, want)
 	}
@@ -74,7 +74,7 @@ func TestPRBody_UsesTemplate(t *testing.T) {
 	}
 	// Provenance always appended.
 	if !strings.Contains(got, "Fixes #42") ||
-		!strings.Contains(got, "_Opened by foreman on review GO (workload wl-z)._") {
+		!strings.Contains(got, "_Opened by meitheal on review GO (workload wl-z)._") {
 		t.Errorf("provenance must always be appended; got %q", got)
 	}
 	// Template leads, the reviewer's prose is spliced between template and
@@ -82,7 +82,7 @@ func TestPRBody_UsesTemplate(t *testing.T) {
 	want := tmpl + "\n\n" +
 		summary + "\n\n" +
 		"Fixes #42\n\n" +
-		"_Opened by foreman on review GO (workload wl-z)._"
+		"_Opened by meitheal on review GO (workload wl-z)._"
 	if got != want {
 		t.Errorf("template body mismatch:\n got %q\nwant %q", got, want)
 	}
@@ -123,7 +123,7 @@ func TestPRBody_EmptySummaryWithTemplate(t *testing.T) {
 	got := PRBody(tmpl, "", 5, "w")
 	want := tmpl + "\n\n" +
 		"Fixes #5\n\n" +
-		"_Opened by foreman on review GO (workload w)._"
+		"_Opened by meitheal on review GO (workload w)._"
 	if got != want {
 		t.Errorf("template+empty-summary body mismatch:\n got %q\nwant %q", got, want)
 	}
@@ -180,7 +180,7 @@ func TestFindTemplate_ResolutionOrder(t *testing.T) {
 }
 
 // TestFindTemplate_NoTemplate: an empty tree and an empty workspace both
-// yield "" so the caller falls back to Foreman's own body.
+// yield "" so the caller falls back to Meitheal's own body.
 func TestFindTemplate_NoTemplate(t *testing.T) {
 	if got := FindTemplate(t.TempDir()); got != "" {
 		t.Fatalf("empty tree must yield \"\", got %q", got)
@@ -230,7 +230,7 @@ func TestFindTemplate_MultiTemplateDir(t *testing.T) {
 // the issue link added only when the author did not write one, and always
 // with the provenance line.
 func TestDescriptionBody(t *testing.T) {
-	const provenance = "_Opened by foreman on review GO (workload wl-x)._"
+	const provenance = "_Opened by meitheal on review GO (workload wl-x)._"
 	cases := []struct {
 		name    string
 		desc    string

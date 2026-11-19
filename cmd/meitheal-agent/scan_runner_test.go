@@ -13,8 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremantools "github.com/defilantech/meitheal/pkg/agent/tools"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealtools "github.com/defilantech/meitheal/pkg/agent/tools"
 )
 
 func TestMapScanVerdict(t *testing.T) {
@@ -47,14 +47,14 @@ func scanRunnerHarness(t *testing.T, pvcName string) (*scanJobRunnerImpl, client
 	}
 	kc := fake.NewClientBuilder().WithScheme(s).Build()
 	impl := &scanJobRunnerImpl{
-		tool: &foremantools.RunScanJobTool{
+		tool: &meithealtools.RunScanJobTool{
 			Client: kc,
-			Cfg: foremantools.RunScanJobToolConfig{
-				Namespace:    "foreman-system",
+			Cfg: meithealtools.RunScanJobToolConfig{
+				Namespace:    "meitheal-system",
 				PVCName:      pvcName,
 				PollInterval: time.Millisecond,
 				PollTimeout:  5 * time.Millisecond,
-				NameFn:       func(string) string { return "foreman-scan-pinned" },
+				NameFn:       func(string) string { return "meitheal-scan-pinned" },
 			},
 		},
 	}
@@ -76,14 +76,14 @@ func scanRunnerHarnessFlipped(
 	}
 	kc := fake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&batchv1.Job{}).Build()
 	impl := &scanJobRunnerImpl{
-		tool: &foremantools.RunScanJobTool{
+		tool: &meithealtools.RunScanJobTool{
 			Client: kc,
-			Cfg: foremantools.RunScanJobToolConfig{
-				Namespace:    "foreman-system",
+			Cfg: meithealtools.RunScanJobToolConfig{
+				Namespace:    "meitheal-system",
 				PVCName:      pvcName,
 				PollInterval: time.Millisecond,
 				PollTimeout:  2 * time.Second,
-				NameFn:       func(string) string { return "foreman-scan-pinned" },
+				NameFn:       func(string) string { return "meitheal-scan-pinned" },
 			},
 		},
 	}
@@ -97,7 +97,7 @@ func flipScanJobStatusOnce(t *testing.T, kc client.Client, succeeded, failed int
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	key := types.NamespacedName{Namespace: "foreman-system", Name: "foreman-scan-pinned"}
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: "meitheal-scan-pinned"}
 	for ctx.Err() == nil {
 		var job batchv1.Job
 		if err := kc.Get(ctx, key, &job); err == nil {
@@ -113,7 +113,7 @@ func flipScanJobStatusOnce(t *testing.T, kc client.Client, succeeded, failed int
 func createdScanJob(t *testing.T, kc client.Client) *batchv1.Job {
 	t.Helper()
 	var job batchv1.Job
-	key := types.NamespacedName{Namespace: "foreman-system", Name: "foreman-scan-pinned"}
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: "meitheal-scan-pinned"}
 	if err := kc.Get(context.Background(), key, &job); err != nil {
 		t.Fatalf("scan Job %s was not created: %v", key, err)
 	}
@@ -136,31 +136,31 @@ func containerWithName(pod *corev1.PodSpec, name string) *corev1.Container {
 
 // TestScanJobRunnerStampsTaskLabels is the #893 parity check for the scan
 // gate: the clean-room scan Job must carry the originating AgenticTask
-// identity in the foreman.llmkube.dev/task-{namespace,name} labels (Job and
+// identity in the meitheal.dev/task-{namespace,name} labels (Job and
 // pod template alike), not the "unknown"/"task" defaults the renderer falls
 // back to when no taskRef is threaded through.
 func TestScanJobRunnerStampsTaskLabels(t *testing.T) {
-	runner, kc := scanRunnerHarness(t, "foreman-gate-cache")
-	emptyGate := foremanv1alpha1.ScanGate{}
+	runner, kc := scanRunnerHarness(t, "meitheal-gate-cache")
+	emptyGate := meithealv1alpha1.ScanGate{}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_, _, _ = runner.Run(
-		ctx, "foreman-system", "fix-issue-893",
-		"defilantech/LLMKube", "foreman/issue-893",
+		ctx, "meitheal-system", "fix-issue-893",
+		"defilantech/LLMKube", "meitheal/issue-893",
 		"https://github.com/Defilan/LLMKube.git",
 		"https://github.com/defilantech/LLMKube.git",
 		emptyGate.Resolve(),
 	)
 
 	job := createdScanJob(t, kc)
-	if got := job.Labels["foreman.llmkube.dev/task-name"]; got != "fix-issue-893" {
+	if got := job.Labels["meitheal.dev/task-name"]; got != "fix-issue-893" {
 		t.Errorf("scan Job task-name label = %q, want %q", got, "fix-issue-893")
 	}
-	if got := job.Labels["foreman.llmkube.dev/task-namespace"]; got != "foreman-system" {
-		t.Errorf("scan Job task-namespace label = %q, want %q", got, "foreman-system")
+	if got := job.Labels["meitheal.dev/task-namespace"]; got != "meitheal-system" {
+		t.Errorf("scan Job task-namespace label = %q, want %q", got, "meitheal-system")
 	}
-	if got := job.Spec.Template.Labels["foreman.llmkube.dev/task-name"]; got != "fix-issue-893" {
+	if got := job.Spec.Template.Labels["meitheal.dev/task-name"]; got != "fix-issue-893" {
 		t.Errorf("scan Job pod template task-name label = %q, want %q", got, "fix-issue-893")
 	}
 }
@@ -174,7 +174,7 @@ func TestScanJobRunnerStampsTaskLabels(t *testing.T) {
 func TestScanJobRunnerForwardsResolvedScan(t *testing.T) {
 	cases := []struct {
 		name string
-		gate *foremanv1alpha1.ScanGate
+		gate *meithealv1alpha1.ScanGate
 		// assertions against the scan container script
 		wantContains    []string
 		wantAbsent      []string
@@ -191,12 +191,12 @@ func TestScanJobRunnerForwardsResolvedScan(t *testing.T) {
 			},
 			wantBuilderImg:  "golang:1.26",
 			wantRunnerImg:   "alpine:3.24",
-			wantTrivyImages: 4,
+			wantTrivyImages: 2,
 		},
 		{
 			name: "overrides land verbatim: severity, ignoreUnfixed=false, subset, images",
-			gate: &foremanv1alpha1.ScanGate{
-				Images:        []string{"foreman-agent"},
+			gate: &meithealv1alpha1.ScanGate{
+				Images:        []string{"router-proxy"},
 				Severity:      []string{"medium", "CRITICAL"},
 				IgnoreUnfixed: ptr(false),
 				BuilderImage:  "mirror/golang:1.26.4",
@@ -204,14 +204,13 @@ func TestScanJobRunnerForwardsResolvedScan(t *testing.T) {
 			},
 			wantContains: []string{
 				"--severity MEDIUM,CRITICAL",
-				"=== build foreman-agent ",
-				"=== trivy foreman-agent ===",
+				"=== build router-proxy ",
+				"=== trivy router-proxy ===",
 			},
 			wantAbsent: []string{
 				"--ignore-unfixed",
 				"=== build controller ",
 				"=== trivy controller ===",
-				"=== trivy router-proxy ===",
 			},
 			wantBuilderImg:  "mirror/golang:1.26.4",
 			wantRunnerImg:   "alpine:edge",
@@ -221,13 +220,13 @@ func TestScanJobRunnerForwardsResolvedScan(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			runner, kc := scanRunnerHarness(t, "foreman-gate-cache")
+			runner, kc := scanRunnerHarness(t, "meitheal-gate-cache")
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 			_, _, _ = runner.Run(
-				ctx, "foreman-system", "scan-cfg-task",
-				"defilantech/LLMKube", "foreman/scan-cfg",
+				ctx, "meitheal-system", "scan-cfg-task",
+				"defilantech/LLMKube", "meitheal/scan-cfg",
 				"https://github.com/Defilan/LLMKube.git",
 				"https://github.com/defilantech/LLMKube.git",
 				tc.gate.Resolve(),
@@ -272,7 +271,7 @@ func TestScanJobRunnerForwardsResolvedScan(t *testing.T) {
 					claim = v.PersistentVolumeClaim.ClaimName
 				}
 			}
-			if claim != "foreman-gate-cache" {
+			if claim != "meitheal-gate-cache" {
 				t.Errorf("cache volume claim = %q, want the gate-cache PVC name", claim)
 			}
 		})
@@ -286,15 +285,15 @@ func TestScanJobRunnerForwardsResolvedScan(t *testing.T) {
 // coder "the scan failed" without a single finding to fix.
 func TestScanJobRunnerFailedScanFeedbackIncludesLogTail(t *testing.T) {
 	const findings = "=== trivy controller ===\nCVE-2024-0001  CRITICAL  openssl  fixed in 1.2.3\nSCAN FAIL\n"
-	runner, _ := scanRunnerHarnessFlipped(t, "foreman-gate-cache", 0, 1)
+	runner, _ := scanRunnerHarnessFlipped(t, "meitheal-gate-cache", 0, 1)
 	runner.tool.Cfg.LogTailFn = func(context.Context, string, string) string { return findings }
 
-	emptyGate := foremanv1alpha1.ScanGate{}
+	emptyGate := meithealv1alpha1.ScanGate{}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	pass, ran, feedback := runner.Run(
-		ctx, "foreman-system", "scan-fail-task",
-		"defilantech/LLMKube", "foreman/scan-fail",
+		ctx, "meitheal-system", "scan-fail-task",
+		"defilantech/LLMKube", "meitheal/scan-fail",
 		"https://github.com/Defilan/LLMKube.git",
 		"https://github.com/defilantech/LLMKube.git",
 		emptyGate.Resolve(),
@@ -317,14 +316,14 @@ func TestScanJobRunnerFailedScanFeedbackIncludesLogTail(t *testing.T) {
 // (pass=false, ran=false) -- a could-not-verify, never a finding against
 // the branch.
 func TestScanJobRunnerScanErrorFeedback(t *testing.T) {
-	runner, _ := scanRunnerHarness(t, "foreman-gate-cache")
+	runner, _ := scanRunnerHarness(t, "meitheal-gate-cache")
 
-	emptyGate := foremanv1alpha1.ScanGate{}
+	emptyGate := meithealv1alpha1.ScanGate{}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	pass, ran, feedback := runner.Run(
-		ctx, "foreman-system", "scan-err-task",
-		"defilantech/LLMKube", "foreman/scan-err",
+		ctx, "meitheal-system", "scan-err-task",
+		"defilantech/LLMKube", "meitheal/scan-err",
 		"https://github.com/Defilan/LLMKube.git",
 		"https://github.com/defilantech/LLMKube.git",
 		emptyGate.Resolve(),

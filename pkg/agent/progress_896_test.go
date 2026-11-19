@@ -55,7 +55,7 @@ func TestProgressMonitor_896_PostEditStreakNudgesNotTerminates(t *testing.T) {
 	verify := []string{
 		`{"command":"go build ./..."}`,
 		`{"command":"go vet ./..."}`,
-		`{"command":"go test ./pkg/foreman/agent/ -run TestX"}`,
+		`{"command":"go test ./pkg/agent/ -run TestX"}`,
 		`{"command":"git diff --stat HEAD"}`,
 	}
 	for _, cmd := range verify {

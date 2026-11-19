@@ -30,7 +30,7 @@ limitations under the License.
 // block on inventions), not smarter (finding the real defect is the
 // stronger-model / panel problem).
 //
-// Disabled by FOREMAN_GROUNDED_FINDINGS=0.
+// Disabled by MEITHEAL_GROUNDED_FINDINGS=0.
 package agent
 
 import (
@@ -41,14 +41,14 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/reviewer"
 )
 
 // groundedFindingsDisabled reports whether the grounded-finding rail is off
-// via FOREMAN_GROUNDED_FINDINGS=0. Default (unset) is enabled.
+// via MEITHEAL_GROUNDED_FINDINGS=0. Default (unset) is enabled.
 func groundedFindingsDisabled() bool {
-	return os.Getenv("FOREMAN_GROUNDED_FINDINGS") == "0"
+	return os.Getenv("MEITHEAL_GROUNDED_FINDINGS") == "0"
 }
 
 // normalizeFilePath strips leading "./" and leading "/" from a file path so
@@ -123,11 +123,11 @@ func groundedBlockingFindings(
 func enforceReviewerGroundedFindings(
 	log logr.Logger,
 	extra map[string]any,
-	verdict foremanv1alpha1.AgenticTaskVerdict,
+	verdict meithealv1alpha1.AgenticTaskVerdict,
 	changedLines func(file string) map[int]bool,
-) foremanv1alpha1.AgenticTaskVerdict {
+) meithealv1alpha1.AgenticTaskVerdict {
 	if groundedFindingsDisabled() ||
-		verdict != foremanv1alpha1.AgenticTaskVerdictNoGo ||
+		verdict != meithealv1alpha1.AgenticTaskVerdictNoGo ||
 		extra == nil {
 		return verdict
 	}
@@ -155,7 +155,7 @@ func enforceReviewerGroundedFindings(
 		extra["groundedFindingReason"] =
 			"NO-GO demoted to GO: the rejection cited no findings at all"
 		log.Info("reviewer grounded-finding: NO-GO demoted to GO; rejection cited no findings")
-		return foremanv1alpha1.AgenticTaskVerdictGo
+		return meithealv1alpha1.AgenticTaskVerdictGo
 	}
 
 	// Past this point grounding requires the diff. When it is unavailable the
@@ -187,5 +187,5 @@ func enforceReviewerGroundedFindings(
 		"NO-GO demoted to GO: 0 of %d blocking finding(s) cite a changed line", blockingCount)
 	log.Info("reviewer grounded-finding: NO-GO demoted to GO; no blocking finding cites a changed line",
 		"blockingCount", blockingCount)
-	return foremanv1alpha1.AgenticTaskVerdictGo
+	return meithealv1alpha1.AgenticTaskVerdictGo
 }

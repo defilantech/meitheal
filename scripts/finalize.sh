@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# foreman-finalize.sh — turn a GO'd Foreman agentic-coding branch into a clean,
+# finalize.sh — turn a GO'd Meitheal agentic-coding branch into a clean,
 # single-commit pull request against the base repo.
 #
 # It rebases the work onto current base (by re-applying the branch's source
@@ -8,29 +8,29 @@
 # possibly-stale generated files), drift-checks the regen, squashes to one
 # commit with an issue-derived conventional-commit subject, and opens the PR.
 #
-# Motivation: a Foreman `branchStrategy: reset` revise commits the whole tree as
+# Motivation: a Meitheal `branchStrategy: reset` revise commits the whole tree as
 # one commit whose message reflects only the last fix, and its base can lag the
 # real base so its generated files (zz_generated deepcopy, CRDs) are stale.
 # Finalizing by hand is error-prone; this codifies it.
 #
 # Usage:
-#   scripts/foreman-finalize.sh --branch <fork-branch> [options]
+#   scripts/finalize.sh --branch <fork-branch> [options]
 #
 # Options:
 #   --branch <ref>       GO'd branch on the fork (required),
-#                        e.g. foreman/build-1098-s3-source/issue-1098
+#                        e.g. meitheal/build-1098-s3-source/issue-1098
 #   --issue <N>          Issue number (default: parsed from trailing issue-N)
 #   --base <remote/br>   Base to rebase onto and PR into (default: upstream/main)
-#   --fork <remote>      Remote holding the Foreman branch (default: origin)
+#   --fork <remote>      Remote holding the Meitheal branch (default: origin)
 #   --repo <owner/name>  Base repo slug for gh (default: derived from base remote)
 #   --fork-owner <owner> Fork owner for the PR head (default: derived from fork remote)
 #   --full-test          Also run `make test` (envtest) locally; when set, this
-#                        local gate is treated as authoritative and the Foreman
+#                        local gate is treated as authoritative and the Meitheal
 #                        verify-verdict check is skipped
-#   --kube-context <ctx> kube context for the Foreman verify-verdict lookup
+#   --kube-context <ctx> kube context for the Meitheal verify-verdict lookup
 #                        (default: current kubectl context)
 #   --namespace <ns>     namespace for the verify-verdict lookup (default: default)
-#   --force              Skip the Foreman verify-verdict check (for branches you
+#   --force              Skip the Meitheal verify-verdict check (for branches you
 #                        have independently gated by hand); prints a warning
 #   --message-file <f>   Use this file as the commit message (overrides derivation)
 #   --pr-body-file <f>   Use this file as the PR body (overrides the template)
@@ -74,24 +74,24 @@ die() {
 }
 info() { echo ">> $*"; }
 
-# require_verify_verdict: refuse to finalize unless Foreman's verify stage passed
+# require_verify_verdict: refuse to finalize unless Meitheal's verify stage passed
 # for this branch. The verify stage (kind=verify) fresh-clones the pushed branch and
 # runs the deterministic gate; its GATE-PASS verdict is what makes the branch
 # trustworthy. --force overrides (for branches gated by hand); --full-test defers to
 # the local envtest run performed later in this script.
 require_verify_verdict() {
 	if ((FORCE)); then
-		info "WARNING: --force set; skipping the Foreman verify-verdict check for '$BRANCH'. Confirm the branch was independently gated (envtest) before merging."
+		info "WARNING: --force set; skipping the Meitheal verify-verdict check for '$BRANCH'. Confirm the branch was independently gated (envtest) before merging."
 		return 0
 	fi
 	if ((FULL_TEST)); then
-		info "--full-test set; the local envtest run is the authoritative gate (skipping Foreman verify-verdict lookup)"
+		info "--full-test set; the local envtest run is the authoritative gate (skipping Meitheal verify-verdict lookup)"
 		return 0
 	fi
 	command -v kubectl >/dev/null ||
-		die "kubectl is required to check the Foreman verify verdict for '$BRANCH' (or pass --full-test to gate locally, or --force to override)"
+		die "kubectl is required to check the Meitheal verify verdict for '$BRANCH' (or pass --full-test to gate locally, or --force to override)"
 	command -v jq >/dev/null ||
-		die "jq is required to parse the Foreman verify verdict (or pass --full-test / --force)"
+		die "jq is required to parse the Meitheal verify verdict (or pass --full-test / --force)"
 	local ctx_args=()
 	[[ -n "$KUBE_CONTEXT" ]] && ctx_args=(--context "$KUBE_CONTEXT")
 	local verdict
@@ -103,12 +103,12 @@ require_verify_verdict() {
 			| sort_by(.metadata.creationTimestamp) | last | (.status.verdict // "")')" ||
 		die "failed to query AgenticTasks in namespace '$NAMESPACE' (pass --kube-context / --namespace, or --full-test / --force)"
 	if [[ -z "$verdict" || "$verdict" == "null" ]]; then
-		die "no Foreman verify (kind=verify) task found for branch '$BRANCH' in namespace '$NAMESPACE'; refusing to finalize an unverified branch. Run the verify stage, or pass --full-test to gate locally, or --force to override."
+		die "no Meitheal verify (kind=verify) task found for branch '$BRANCH' in namespace '$NAMESPACE'; refusing to finalize an unverified branch. Run the verify stage, or pass --full-test to gate locally, or --force to override."
 	fi
 	if [[ "$verdict" != "GATE-PASS" ]]; then
-		die "Foreman verify for '$BRANCH' did not pass (verdict='$verdict'); refusing to finalize. Fix and re-verify, or pass --force to override."
+		die "Meitheal verify for '$BRANCH' did not pass (verdict='$verdict'); refusing to finalize. Fix and re-verify, or pass --force to override."
 	fi
-	info "Foreman verify verdict for '$BRANCH': GATE-PASS"
+	info "Meitheal verify verdict for '$BRANCH': GATE-PASS"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -226,17 +226,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# regen runs the repo's codegen targets. foreman-chart-crds regenerates the
-# Foreman chart CRDs via a SEPARATE target that only exists in repos shipping
-# Foreman; guard on its presence so this stays portable and so a Foreman-CRD
-# change does not silently drift (the chart copy is not covered by chart-crds).
+# regen runs the repo's codegen targets.
 regen() {
 	make manifests >/dev/null
 	make generate >/dev/null
 	make chart-crds >/dev/null
-	if make -n foreman-chart-crds >/dev/null 2>&1; then
-		make foreman-chart-crds >/dev/null
-	fi
 }
 
 # ---------------------------------------------------------------------------
@@ -248,7 +242,7 @@ ORIG_REF="$(git rev-parse --abbrev-ref HEAD)"
 command -v gh >/dev/null || die "gh (GitHub CLI) is required"
 gh auth status >/dev/null 2>&1 || die "gh is not authenticated (run: gh auth login)"
 
-# Refuse to finalize a branch Foreman's verify stage never blessed (#1150).
+# Refuse to finalize a branch Meitheal's verify stage never blessed (#1150).
 require_verify_verdict
 
 # A fully clean tree is required: the assemble step below stages with `git add -A`,
@@ -436,16 +430,16 @@ else
 		echo "## Testing"
 		echo
 		echo "- \`go build\` / \`go vet\` clean; \`make validate-samples\` passes."
-		echo "- CRD/codegen regeneration (manifests, generate, chart-crds, foreman-chart-crds) produces no drift."
+		echo "- CRD/codegen regeneration (manifests, generate, chart-crds) produces no drift."
 		if [[ "$FULL_TEST" == "1" ]]; then
 			echo "- \`make test\` (envtest) passes locally."
 		else
-			echo "- Full envtest suite passed in the Foreman gate (GO)."
+			echo "- Full envtest suite passed in the Meitheal gate (GO)."
 		fi
 		echo
 		echo "## AI assistance"
 		echo
-		echo "Implemented via the Foreman agentic-coding harness, then rebased onto" \
+		echo "Implemented via the Meitheal agentic-coding harness, then rebased onto" \
 			"current \`${BASE_BRANCH}\` and verified by the author. Band-3 disclosure" \
 			"per the project's AI-assisted contribution policy."
 		echo

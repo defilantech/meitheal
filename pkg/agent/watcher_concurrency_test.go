@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // #1559: a Job-mode task's work runs in an ephemeral Job pod, so it must not
@@ -53,7 +53,7 @@ type blockingExecutor struct {
 	// agents records the Agent value handed to each Execute call, so a test
 	// can assert the dispatch loop passed on the Agent it resolved instead
 	// of leaving the executor to read its own.
-	agents []*foremanv1alpha1.Agent
+	agents []*meithealv1alpha1.Agent
 
 	// wg joins the Execute calls the watcher launched. Without it the test
 	// body can return while an Execute goroutine is still running, and it
@@ -103,7 +103,7 @@ func (e *blockingExecutor) waitStarted(t *testing.T, n int) {
 func (*blockingExecutor) Kind() string { return "test-mode" }
 
 func (e *blockingExecutor) Execute(
-	ctx context.Context, _ *foremanv1alpha1.AgenticTask, agent *foremanv1alpha1.Agent,
+	ctx context.Context, _ *meithealv1alpha1.AgenticTask, agent *meithealv1alpha1.Agent,
 ) (*Result, error) {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -123,17 +123,17 @@ func (e *blockingExecutor) Execute(
 	return &Result{
 		SchemaVersion: ResultSchemaVersion,
 		Kind:          e.Kind(),
-		Verdict:       foremanv1alpha1.AgenticTaskVerdictGo,
+		Verdict:       meithealv1alpha1.AgenticTaskVerdictGo,
 		Summary:       "test",
 	}, nil
 }
 
 // executedAgents returns the Agent handed to each Execute call so far, in
 // call order.
-func (e *blockingExecutor) executedAgents() []*foremanv1alpha1.Agent {
+func (e *blockingExecutor) executedAgents() []*meithealv1alpha1.Agent {
 	e.agentsMu.Lock()
 	defer e.agentsMu.Unlock()
-	return append([]*foremanv1alpha1.Agent(nil), e.agents...)
+	return append([]*meithealv1alpha1.Agent(nil), e.agents...)
 }
 
 // modeExecutor is a blockingExecutor that also answers the watcher's
@@ -151,7 +151,7 @@ func newModeExecutor(t *testing.T, jobMode map[string]bool) *modeExecutor {
 	return &modeExecutor{blockingExecutor: newBlockingExecutor(t), jobMode: jobMode}
 }
 
-func (e *modeExecutor) SupervisesAgent(agent *foremanv1alpha1.Agent) bool {
+func (e *modeExecutor) SupervisesAgent(agent *meithealv1alpha1.Agent) bool {
 	if agent == nil {
 		return false
 	}
@@ -161,27 +161,27 @@ func (e *modeExecutor) SupervisesAgent(agent *foremanv1alpha1.Agent) bool {
 // agentCR builds an Agent whose spec.execution.mode matches what the
 // modeExecutor double will answer for it, so the fixture and the double do
 // not tell two different stories.
-func agentCR(name string, jobMode bool) *foremanv1alpha1.Agent {
-	a := &foremanv1alpha1.Agent{}
+func agentCR(name string, jobMode bool) *meithealv1alpha1.Agent {
+	a := &meithealv1alpha1.Agent{}
 	a.Name = name
 	a.Namespace = "default"
 	if jobMode {
-		a.Spec.Execution = &foremanv1alpha1.ExecutionSpec{Mode: foremanv1alpha1.ExecutionModeJob}
+		a.Spec.Execution = &meithealv1alpha1.ExecutionSpec{Mode: meithealv1alpha1.ExecutionModeJob}
 	}
 	return a
 }
 
 // taskForAgent is scheduledTask plus the agentRef the dispatch loop resolves
 // before it can decide which slot the task wants.
-func taskForAgent(name, agentName string, age time.Duration) *foremanv1alpha1.AgenticTask {
-	task := scheduledTask(name, "node-1", foremanv1alpha1.AgenticTaskKindIssueFix, age)
+func taskForAgent(name, agentName string, age time.Duration) *meithealv1alpha1.AgenticTask {
+	task := scheduledTask(name, "node-1", meithealv1alpha1.AgenticTaskKindIssueFix, age)
 	task.Spec.AgentRef = &corev1.LocalObjectReference{Name: agentName}
 	return task
 }
 
 // countPhase reports how many of the named tasks are in the given phase.
 func countPhase(
-	t *testing.T, w *AgenticTaskWatcher, phase foremanv1alpha1.AgenticTaskPhase, names ...string,
+	t *testing.T, w *AgenticTaskWatcher, phase meithealv1alpha1.AgenticTaskPhase, names ...string,
 ) int {
 	t.Helper()
 	n := 0
@@ -206,7 +206,7 @@ func pollUntilLeavesScheduled(
 		if err := w.pollOnce(context.Background(), "default"); err != nil {
 			t.Fatalf("pollOnce: %v", err)
 		}
-		if getTask(t, w.Client, name).Status.Phase != foremanv1alpha1.AgenticTaskPhaseScheduled {
+		if getTask(t, w.Client, name).Status.Phase != meithealv1alpha1.AgenticTaskPhaseScheduled {
 			return true
 		}
 		if time.Now().After(deadline) {
@@ -219,7 +219,7 @@ func pollUntilLeavesScheduled(
 // waitPhase waits for the named task to reach phase.
 func waitPhase(
 	t *testing.T, w *AgenticTaskWatcher, name string,
-	phase foremanv1alpha1.AgenticTaskPhase, timeout time.Duration,
+	phase meithealv1alpha1.AgenticTaskPhase, timeout time.Duration,
 ) bool {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -271,7 +271,7 @@ func TestPollOnce_SlotAccountingByExecutionMode(t *testing.T) {
 				}
 			}
 
-			got := countPhase(t, w, foremanv1alpha1.AgenticTaskPhaseRunning, "first", "second")
+			got := countPhase(t, w, meithealv1alpha1.AgenticTaskPhaseRunning, "first", "second")
 			if got != tc.wantRunning {
 				t.Fatalf("Running tasks: want %d got %d", tc.wantRunning, got)
 			}
@@ -306,10 +306,10 @@ func TestPollOnce_SupervisionBoundEnforced(t *testing.T) {
 		}
 	}
 
-	if got := countPhase(t, w, foremanv1alpha1.AgenticTaskPhaseRunning, names...); got != 2 {
+	if got := countPhase(t, w, meithealv1alpha1.AgenticTaskPhaseRunning, names...); got != 2 {
 		t.Fatalf("Running tasks: want 2 (the bound) got %d", got)
 	}
-	if got := countPhase(t, w, foremanv1alpha1.AgenticTaskPhaseScheduled, names...); got != 1 {
+	if got := countPhase(t, w, meithealv1alpha1.AgenticTaskPhaseScheduled, names...); got != 1 {
 		t.Fatalf("Scheduled tasks: want 1 (held back by the bound) got %d", got)
 	}
 	exec.waitStarted(t, 2)
@@ -322,12 +322,12 @@ func TestPollOnce_SupervisionBoundEnforced(t *testing.T) {
 // run, which then skips every candidate (#1635 review).
 func TestPollOnce_SkipsListWhenNoSlotCanTakeWork(t *testing.T) {
 	var lists atomic.Int32
-	held := scheduledTask("held", "node-1", foremanv1alpha1.AgenticTaskKindIssueFix, time.Hour)
-	queued := scheduledTask("queued", "node-1", foremanv1alpha1.AgenticTaskKindIssueFix, time.Minute)
+	held := scheduledTask("held", "node-1", meithealv1alpha1.AgenticTaskKindIssueFix, time.Hour)
+	queued := scheduledTask("queued", "node-1", meithealv1alpha1.AgenticTaskKindIssueFix, time.Minute)
 	c := fake.NewClientBuilder().
 		WithScheme(newTestScheme(t)).
 		WithObjects(held, queued).
-		WithStatusSubresource(&foremanv1alpha1.AgenticTask{}).
+		WithStatusSubresource(&meithealv1alpha1.AgenticTask{}).
 		WithInterceptorFuncs(interceptor.Funcs{
 			List: func(
 				ctx context.Context, cl client.WithWatch,
@@ -350,7 +350,7 @@ func TestPollOnce_SkipsListWhenNoSlotCanTakeWork(t *testing.T) {
 		t.Fatalf("pollOnce: %v", err)
 	}
 	exec.waitStarted(t, 1)
-	if got := getTask(t, w.Client, "held").Status.Phase; got != foremanv1alpha1.AgenticTaskPhaseRunning {
+	if got := getTask(t, w.Client, "held").Status.Phase; got != meithealv1alpha1.AgenticTaskPhaseRunning {
 		t.Fatalf("first poll did not claim the in-process slot: phase %s", got)
 	}
 
@@ -381,13 +381,13 @@ func TestPollOnce_ResolvesAgentOncePerPass(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(newTestScheme(t)).
 		WithObjects(objs...).
-		WithStatusSubresource(&foremanv1alpha1.AgenticTask{}).
+		WithStatusSubresource(&meithealv1alpha1.AgenticTask{}).
 		WithInterceptorFuncs(interceptor.Funcs{
 			Get: func(
 				ctx context.Context, cl client.WithWatch,
 				key client.ObjectKey, obj client.Object, opts ...client.GetOption,
 			) error {
-				if _, ok := obj.(*foremanv1alpha1.Agent); ok {
+				if _, ok := obj.(*meithealv1alpha1.Agent); ok {
 					agentGets.Add(1)
 				}
 				return cl.Get(ctx, key, obj, opts...)
@@ -454,7 +454,7 @@ func TestLaunchExecutor_ReleasesSlotOnError(t *testing.T) {
 
 			w.launchExecutor(context.Background(), task, agentCR("coder", tc.supervise), tc.supervise)
 
-			if !waitPhase(t, w, "boom", foremanv1alpha1.AgenticTaskPhaseFailed, 2*time.Second) {
+			if !waitPhase(t, w, "boom", meithealv1alpha1.AgenticTaskPhaseFailed, 2*time.Second) {
 				t.Fatalf("task phase after executor error: want Failed got %s",
 					getTask(t, w.Client, "boom").Status.Phase)
 			}
@@ -489,7 +489,7 @@ func TestPollOnce_ClaimsAcrossSlotsInOnePass(t *testing.T) {
 		t.Fatalf("pollOnce: %v", err)
 	}
 
-	if got := countPhase(t, w, foremanv1alpha1.AgenticTaskPhaseRunning,
+	if got := countPhase(t, w, meithealv1alpha1.AgenticTaskPhaseRunning,
 		"inproc", "job-a", "job-b"); got != 3 {
 		t.Fatalf("Running tasks after one pass: want 3 (one in-process, two job-mode) got %d", got)
 	}
@@ -521,10 +521,10 @@ func TestPollOnce_InProcessSlotStillSerializes(t *testing.T) {
 		t.Fatalf("pollOnce: %v", err)
 	}
 
-	if got := getTask(t, w.Client, "inproc2").Status.Phase; got != foremanv1alpha1.AgenticTaskPhaseScheduled {
+	if got := getTask(t, w.Client, "inproc2").Status.Phase; got != meithealv1alpha1.AgenticTaskPhaseScheduled {
 		t.Fatalf("second in-process task while the slot is held: want Scheduled got %s", got)
 	}
-	if got := getTask(t, w.Client, "job").Status.Phase; got != foremanv1alpha1.AgenticTaskPhaseRunning {
+	if got := getTask(t, w.Client, "job").Status.Phase; got != meithealv1alpha1.AgenticTaskPhaseRunning {
 		t.Fatalf("job-mode task should have been claimed in the same pass: want Running got %s", got)
 	}
 	exec.waitStarted(t, 2)
@@ -552,11 +552,11 @@ func TestPollOnce_SupervisionBoundEnforcedInOnePass(t *testing.T) {
 		t.Fatalf("pollOnce: %v", err)
 	}
 
-	if got := countPhase(t, w, foremanv1alpha1.AgenticTaskPhaseRunning,
+	if got := countPhase(t, w, meithealv1alpha1.AgenticTaskPhaseRunning,
 		"job-a", "job-b", "job-c"); got != 2 {
 		t.Fatalf("Running tasks after one pass: want 2 (the budget) got %d", got)
 	}
-	if got := getTask(t, w.Client, "job-c").Status.Phase; got != foremanv1alpha1.AgenticTaskPhaseScheduled {
+	if got := getTask(t, w.Client, "job-c").Status.Phase; got != meithealv1alpha1.AgenticTaskPhaseScheduled {
 		t.Fatalf("third job-mode task over the budget: want Scheduled got %s", got)
 	}
 	exec.waitStarted(t, 2)
@@ -566,7 +566,7 @@ func TestPollOnce_SupervisionBoundEnforcedInOnePass(t *testing.T) {
 // the one a uniform fleet cannot show: the two modes draw on DIFFERENT slots,
 // so a busy one must not block the other. Both directions are asserted --
 // #1559 itself (a Job-mode task claimed while an in-process run holds
-// inflight) and the claim in docs/site/foreman/README.md that a node already
+// inflight) and the claim in docs/README.md that a node already
 // supervising Job-mode work can still pick up in-process work.
 func TestPollOnce_MixedExecutionModes(t *testing.T) {
 	tests := []struct {
@@ -607,7 +607,7 @@ func TestPollOnce_MixedExecutionModes(t *testing.T) {
 				}
 			}
 
-			got := countPhase(t, w, foremanv1alpha1.AgenticTaskPhaseRunning, "inproc", "jobbed")
+			got := countPhase(t, w, meithealv1alpha1.AgenticTaskPhaseRunning, "inproc", "jobbed")
 			if got != 2 {
 				t.Fatalf("Running tasks: want 2 (one per slot) got %d", got)
 			}
@@ -648,7 +648,7 @@ func TestPollOnce_DeletedAgentIsStillClaimed(t *testing.T) {
 	if err := w.pollOnce(context.Background(), "default"); err != nil {
 		t.Fatalf("pollOnce: %v", err)
 	}
-	if got := getTask(t, w.Client, "orphan").Status.Phase; got == foremanv1alpha1.AgenticTaskPhaseScheduled {
+	if got := getTask(t, w.Client, "orphan").Status.Phase; got == meithealv1alpha1.AgenticTaskPhaseScheduled {
 		t.Fatal("task with a deleted Agent was left at Scheduled; it must be claimed and failed")
 	}
 	exec.waitStarted(t, 1)
@@ -670,13 +670,13 @@ func TestPollOnce_TransientAgentReadErrorHoldsCandidate(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(newTestScheme(t)).
 		WithObjects(task, agentCR("coder", true)).
-		WithStatusSubresource(&foremanv1alpha1.AgenticTask{}).
+		WithStatusSubresource(&meithealv1alpha1.AgenticTask{}).
 		WithInterceptorFuncs(interceptor.Funcs{
 			Get: func(
 				ctx context.Context, cl client.WithWatch,
 				key client.ObjectKey, obj client.Object, opts ...client.GetOption,
 			) error {
-				if _, ok := obj.(*foremanv1alpha1.Agent); ok && failing.Load() {
+				if _, ok := obj.(*meithealv1alpha1.Agent); ok && failing.Load() {
 					return errors.New("apiserver blip")
 				}
 				return cl.Get(ctx, key, obj, opts...)
@@ -694,7 +694,7 @@ func TestPollOnce_TransientAgentReadErrorHoldsCandidate(t *testing.T) {
 	if err := w.pollOnce(context.Background(), "default"); err != nil {
 		t.Fatalf("pollOnce: %v", err)
 	}
-	if got := getTask(t, w.Client, "queued").Status.Phase; got != foremanv1alpha1.AgenticTaskPhaseScheduled {
+	if got := getTask(t, w.Client, "queued").Status.Phase; got != meithealv1alpha1.AgenticTaskPhaseScheduled {
 		t.Fatalf("candidate phase after an unresolvable Agent: want Scheduled got %s", got)
 	}
 	if got := exec.executedAgents(); len(got) != 0 {

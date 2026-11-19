@@ -39,7 +39,7 @@ import (
 // that compounds into multi-minute prompt-eval times by turn 20+.
 //
 // 16 KiB is enough to read a typical Go file or top-level config end
-// to end (the LLMKube + Foreman codebase has very few sources past
+// to end (the LLMKube + Meitheal codebase has very few sources past
 // 8 KiB). For genuinely long files the model uses the offset / limit
 // args to read a window.
 const defaultReadMaxBytes = 16 * 1024 // 16 KiB

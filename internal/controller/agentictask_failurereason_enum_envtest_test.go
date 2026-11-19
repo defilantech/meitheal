@@ -24,7 +24,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // Every AgenticTaskFailureReason the executor can emit has to be a member of
@@ -36,23 +36,23 @@ import (
 // the generated CRD did not carry it. This pins the whole set against the live
 // CRD so a new reason cannot ship without its enum entry.
 var _ = Describe("AgenticTask failureReason enum", func() {
-	allReasons := []foremanv1alpha1.AgenticTaskFailureReason{
-		foremanv1alpha1.FailureAgentNotFound,
-		foremanv1alpha1.FailureInferenceServiceUnavailable,
-		foremanv1alpha1.FailureAuthUnavailable,
-		foremanv1alpha1.FailureGitRemoteNotConfigured,
-		foremanv1alpha1.FailureCloneFailed,
-		foremanv1alpha1.FailureRebaseConflictUnresolved,
-		foremanv1alpha1.FailureModelMisunderstood,
-		foremanv1alpha1.FailureToolFailed,
-		foremanv1alpha1.FailureMaxTurnsExhausted,
-		foremanv1alpha1.FailureLoopSpinning,
-		foremanv1alpha1.FailureConstraintViolated,
-		foremanv1alpha1.FailureTimeout,
-		foremanv1alpha1.FailureInfrastructureError,
-		foremanv1alpha1.FailureGateFailed,
-		foremanv1alpha1.FailureGateError,
-		foremanv1alpha1.FailureModelReportedError,
+	allReasons := []meithealv1alpha1.AgenticTaskFailureReason{
+		meithealv1alpha1.FailureAgentNotFound,
+		meithealv1alpha1.FailureInferenceServiceUnavailable,
+		meithealv1alpha1.FailureAuthUnavailable,
+		meithealv1alpha1.FailureGitRemoteNotConfigured,
+		meithealv1alpha1.FailureCloneFailed,
+		meithealv1alpha1.FailureRebaseConflictUnresolved,
+		meithealv1alpha1.FailureModelMisunderstood,
+		meithealv1alpha1.FailureToolFailed,
+		meithealv1alpha1.FailureMaxTurnsExhausted,
+		meithealv1alpha1.FailureLoopSpinning,
+		meithealv1alpha1.FailureConstraintViolated,
+		meithealv1alpha1.FailureTimeout,
+		meithealv1alpha1.FailureInfrastructureError,
+		meithealv1alpha1.FailureGateFailed,
+		meithealv1alpha1.FailureGateError,
+		meithealv1alpha1.FailureModelReportedError,
 	}
 
 	It("accepts every executor-emitted failure reason on a status patch", func() {
@@ -62,7 +62,7 @@ var _ = Describe("AgenticTask failureReason enum", func() {
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
 
 			patch := client.MergeFrom(task.DeepCopy())
-			task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseFailed
+			task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseFailed
 			task.Status.FailureReason = reason
 			Expect(k8sClient.Status().Patch(ctx, task, patch)).
 				To(Succeed(), "reason %q is missing from the CRD failureReason enum", reason)

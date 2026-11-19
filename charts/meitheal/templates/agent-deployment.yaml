@@ -1,4 +1,4 @@
-{{- range $name, $cfg := include "foreman.agents" . | fromYaml }}
+{{- range $name, $cfg := include "meitheal.agents" . | fromYaml }}
 ---
 {{- /* Deep-merge the legacy top-level .Values.agent as the per-agent
        defaults so users opting into agents: do not have to restate
@@ -20,10 +20,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "foreman.agent.resourceName" $ctx }}
-  namespace: {{ include "foreman.namespace" $ }}
+  name: {{ include "meitheal.agent.resourceName" $ctx }}
+  namespace: {{ include "meitheal.namespace" $ }}
   labels:
-    {{- include "foreman.agent.poolLabels" $ctx | nindent 4 }}
+    {{- include "meitheal.agent.poolLabels" $ctx | nindent 4 }}
 spec:
   replicas: {{ $agent.replicaCount }}
   {{- /* Recreate is the conservative default: it never runs two agents for a
@@ -65,7 +65,7 @@ spec:
   {{- $tgps := $agent.terminationGracePeriodSeconds | default 300 }}
   {{- /* Kind, not a single kind: the same value reaches this line as
          different Go types depending on how it was supplied. Everything
-         routed through `include "foreman.agents" | fromYaml` is float64,
+         routed through `include "meitheal.agents" | fromYaml` is float64,
          but $defaults above is a deepCopy of .Values.agent that is never
          round-tripped through YAML, and Helm's --set (strvals) parses a
          bare integer as int64. A float64-only type check therefore passed
@@ -117,7 +117,7 @@ spec:
   # pods and fought them over replicaCount (#1523).
   selector:
     matchLabels:
-      {{- include "foreman.agent.poolLabels" $ctx | nindent 6 }}
+      {{- include "meitheal.agent.poolLabels" $ctx | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -126,7 +126,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "foreman.agent.poolLabels" $ctx | nindent 8 }}
+        {{- include "meitheal.agent.poolLabels" $ctx | nindent 8 }}
         {{- with $agent.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -135,15 +135,15 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "foreman.agent.serviceAccountName" $ctx }}
+      serviceAccountName: {{ include "meitheal.agent.serviceAccountName" $ctx }}
       securityContext:
         {{- toYaml $agent.podSecurityContext | nindent 8 }}
       containers:
         - name: agent
-          image: {{ include "foreman.agent.image" $ctx }}
+          image: {{ include "meitheal.agent.image" $ctx }}
           imagePullPolicy: {{ $agent.image.pullPolicy }}
           command:
-            - /foreman-agent
+            - /meitheal-agent
           args:
             - --agent-mode={{ $agent.mode }}
             - --roles={{ join "," $agent.roles }}
@@ -158,11 +158,11 @@ spec:
             {{- if $agent.maxSupervisedTasks }}
             - --max-supervised-tasks={{ $agent.maxSupervisedTasks }}
             {{- end }}
-            {{- /* Always set: the binary default is "foreman-system", a namespace the chart never creates, so gate Jobs would land where the cache PVC does not exist. */}}
-            - --foreman-namespace={{ $agent.foremanNamespace | default (include "foreman.namespace" $) }}
-            {{- /* Thread the per-agent gate-cache PVC (foreman.gateCache.pvcName) so the gate Job mounts the claim the chart actually creates. gateCache.enabled=false leaves it empty, preserving the no-volume-mount behavior (#1538). */}}
+            {{- /* Always set: the binary default is "meitheal-system", a namespace the chart never creates, so gate Jobs would land where the cache PVC does not exist. */}}
+            - --meitheal-namespace={{ $agent.meithealNamespace | default (include "meitheal.namespace" $) }}
+            {{- /* Thread the per-agent gate-cache PVC (meitheal.gateCache.pvcName) so the gate Job mounts the claim the chart actually creates. gateCache.enabled=false leaves it empty, preserving the no-volume-mount behavior (#1538). */}}
             {{- if $agent.gateCache.enabled }}
-            - --gate-cache-pvc={{ include "foreman.gateCache.pvcName" $ctx }}
+            - --gate-cache-pvc={{ include "meitheal.gateCache.pvcName" $ctx }}
             {{- end }}
             {{- if $agent.accelerator }}
             - --accelerator={{ $agent.accelerator }}
@@ -238,7 +238,7 @@ spec:
         {{- if $agent.gateCache.enabled }}
         - name: gate-cache
           persistentVolumeClaim:
-            claimName: {{ include "foreman.gateCache.pvcName" $ctx }}
+            claimName: {{ include "meitheal.gateCache.pvcName" $ctx }}
         {{- end }}
       {{- with $agent.nodeSelector }}
       nodeSelector:

@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
-  name: modelprofiles.foreman.llmkube.dev
+  name: modelprofiles.meitheal.dev
 spec:
-  group: foreman.llmkube.dev
+  group: meitheal.dev
   names:
     kind: ModelProfile
     listKind: ModelProfileList

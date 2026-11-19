@@ -25,8 +25,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/reviewer"
 )
 
@@ -34,7 +34,7 @@ import (
 // enforceReviewerUnverifiedSummary inside the reviewer block: a GO whose
 // terminal summary admits in plain language that verification could not be
 // performed must come out of Execute as a NO-GO carrying the demotion markers
-// inertDemotion (internal/foreman/controller) keys off.
+// inertDemotion (internal/controller) keys off.
 //
 // This drives the REAL rail through Execute -> runLLMPath -> the reviewer
 // block (not a direct call to the helper), and asserts the markers on
@@ -83,11 +83,11 @@ func TestUnverifiedSummaryRail_WiredIntoRunLLMPath(t *testing.T) {
 	gitOrSkip(t)
 	root := t.TempDir()
 	bare := initBareWithSeed(t, root)
-	const branch = "foreman/review-unverified"
+	const branch = "meitheal/review-unverified"
 	csPushNonEmptyBranch(t, root, bare, branch)
 	oaiSrv := scriptedOAI(t, []string{fetchIssueBody, submitGOUnverifiedSummary})
 
-	reg := &fakeRegistry{results: map[string]*foremanagent.ToolResult{
+	reg := &fakeRegistry{results: map[string]*meithealagent.ToolResult{
 		"fetch_issue": {
 			// No path refs, so the scope-overlap rail skips instead of
 			// demoting.
@@ -109,11 +109,11 @@ func TestUnverifiedSummaryRail_WiredIntoRunLLMPath(t *testing.T) {
 	}}
 	e := reviewExecutor(t, bare, branch, reg, oaiSrv)
 
-	res, err := execWithAgent(t, e, &foremanv1alpha1.AgenticTask{
+	res, err := execWithAgent(t, e, &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "review-demo", Namespace: "default", UID: types.UID("review-demo-uid")},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  1678,
 				Branch: branch,
@@ -124,7 +124,7 @@ func TestUnverifiedSummaryRail_WiredIntoRunLLMPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("final verdict: want NO-GO got %s (the unverified-summary rail must have demoted the GO)",
 			res.Verdict)
 	}
@@ -139,7 +139,7 @@ func TestUnverifiedSummaryRail_WiredIntoRunLLMPath(t *testing.T) {
 	if got := me["verdictDemotedBy"]; got != reviewer.RailUnverifiedSummary {
 		t.Fatalf("verdictDemotedBy: want %q got %v", reviewer.RailUnverifiedSummary, got)
 	}
-	if got := me["verdictClaimed"]; got != string(foremanv1alpha1.AgenticTaskVerdictGo) {
+	if got := me["verdictClaimed"]; got != string(meithealv1alpha1.AgenticTaskVerdictGo) {
 		t.Fatalf("verdictClaimed: want the original GO archived, got %v", got)
 	}
 	if phrase, _ := me["unverifiedSummaryPhrase"].(string); !strings.Contains(phrase, "cannot verify") {

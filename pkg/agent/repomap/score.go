@@ -269,8 +269,8 @@ var knownCodeExts = []string{
 
 // pathSegments splits a file path into its directory + filename
 // components, lowercased, for tokenwise matching against the issue
-// text. "pkg/foreman/agent/repomap/walk.go" yields
-// ["pkg", "foreman", "agent", "repomap", "walk", "go"].
+// text. "pkg/agent/repomap/walk.go" yields
+// ["pkg", "meitheal", "agent", "repomap", "walk", "go"].
 func pathSegments(p string) []string {
 	p = strings.ToLower(p)
 	parts := strings.Split(p, string(filepath.Separator))

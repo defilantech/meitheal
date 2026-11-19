@@ -25,7 +25,7 @@ import (
 )
 
 // pushCollisionFixture builds the #934 scenario: a bare origin whose
-// foreman/<wl>/issue-N branch was pushed by a previous run, and a fresh
+// meitheal/<wl>/issue-N branch was pushed by a previous run, and a fresh
 // clone (the retry) with a DIFFERENT commit on the same branch name.
 // Returns the retry workspace.
 func pushCollisionFixture(t *testing.T, branch string) string {
@@ -61,7 +61,7 @@ func pushCollisionFixture(t *testing.T, branch string) string {
 // pre-#934 behavior: a retry pushing its own branch name over a previous
 // run's ref is a non-fast-forward rejection.
 func TestPush_StaleOwnedBranch_RejectedWithoutReplaceOnReject(t *testing.T) {
-	branch := "foreman/wl-x-7/issue-7"
+	branch := "meitheal/wl-x-7/issue-7"
 	work := pushCollisionFixture(t, branch)
 
 	err := Push(context.Background(), PushOptions{Workspace: work, Branch: branch})
@@ -74,7 +74,7 @@ func TestPush_StaleOwnedBranch_RejectedWithoutReplaceOnReject(t *testing.T) {
 // with ReplaceOnReject the retry replaces its predecessor's ref via
 // force-with-lease and succeeds.
 func TestPush_StaleOwnedBranch_ReplacedWithReplaceOnReject(t *testing.T) {
-	branch := "foreman/wl-x-7/issue-7"
+	branch := "meitheal/wl-x-7/issue-7"
 	work := pushCollisionFixture(t, branch)
 
 	if err := Push(context.Background(), PushOptions{
@@ -104,7 +104,7 @@ func TestPush_CleanPush_NeverForces(t *testing.T) {
 	seedOrigin(t, bare)
 	work := filepath.Join(dir, "work")
 	mustGit(t, "", "clone", bare, work)
-	mustGit(t, work, "checkout", "-b", "foreman/wl-y-1/issue-1")
+	mustGit(t, work, "checkout", "-b", "meitheal/wl-y-1/issue-1")
 	if err := os.WriteFile(filepath.Join(work, "f.txt"), []byte("x\n"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestPush_CleanPush_NeverForces(t *testing.T) {
 
 	if err := Push(context.Background(), PushOptions{
 		Workspace:       work,
-		Branch:          "foreman/wl-y-1/issue-1",
+		Branch:          "meitheal/wl-y-1/issue-1",
 		ReplaceOnReject: true,
 	}); err != nil {
 		t.Fatalf("clean push: %v", err)

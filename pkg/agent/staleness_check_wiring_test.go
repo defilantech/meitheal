@@ -37,8 +37,8 @@ import (
 
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
@@ -53,11 +53,11 @@ func (r *staleRefRegistry) Schemas() []oai.Tool { return nil }
 
 func (r *staleRefRegistry) Dispatch(
 	_ context.Context, name string, _ json.RawMessage,
-) (*foremanagent.ToolResult, error) {
+) (*meithealagent.ToolResult, error) {
 	if name != "submit_result" {
 		return nil, &unknownTool{name}
 	}
-	return &foremanagent.ToolResult{
+	return &meithealagent.ToolResult{
 		Terminal:      true,
 		Verdict:       "GO",
 		Summary:       "fixed",
@@ -140,7 +140,7 @@ func TestStalenessCheck_WiredNotesCoderPrompt(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 
 	reg := &staleRefRegistry{}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -149,8 +149,8 @@ func TestStalenessCheck_WiredNotesCoderPrompt(t *testing.T) {
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},

@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
@@ -85,16 +85,16 @@ func TestBuildDeterministicArgs_ThreadsUpstreamURL(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			task := &foremanv1alpha1.AgenticTask{
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-					Payload: foremanv1alpha1.AgenticTaskPayload{
+			task := &meithealv1alpha1.AgenticTask{
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+					Payload: meithealv1alpha1.AgenticTaskPayload{
 						Repo:  tc.repo,
 						Issue: 1259,
 					},
 				},
 			}
-			raw := buildDeterministicArgs(task, "foreman/issue-1259", "https://github.com/Defilan/LLMKube.git",
+			raw := buildDeterministicArgs(task, "meitheal/issue-1259", "https://github.com/Defilan/LLMKube.git",
 				upstreamURLForRepo(task.Spec.Payload.Repo))
 			var m map[string]any
 			if err := json.Unmarshal(raw, &m); err != nil {
@@ -126,17 +126,17 @@ func TestBuildDeterministicArgs_ThreadsBaseBranch(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			task := &foremanv1alpha1.AgenticTask{
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-					Payload: foremanv1alpha1.AgenticTaskPayload{
+			task := &meithealv1alpha1.AgenticTask{
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+					Payload: meithealv1alpha1.AgenticTaskPayload{
 						Repo:       "defilantech/LLMKube",
 						Issue:      813,
 						BaseBranch: tc.base,
 					},
 				},
 			}
-			raw := buildDeterministicArgs(task, "foreman/issue-813", "https://github.com/Defilan/LLMKube.git",
+			raw := buildDeterministicArgs(task, "meitheal/issue-813", "https://github.com/Defilan/LLMKube.git",
 				upstreamURLForRepo(task.Spec.Payload.Repo))
 			var m map[string]any
 			if err := json.Unmarshal(raw, &m); err != nil {
@@ -207,8 +207,8 @@ func TestResolveUpstreamPrefersInjectedCodeHost(t *testing.T) {
 func TestResolveUpstreamForRunUsesInjectedCodeHost(t *testing.T) {
 	ch := &recordingCodeHost{}
 	e := &NativeAgentLoopExecutor{CodeHost: ch}
-	task := &foremanv1alpha1.AgenticTask{Spec: foremanv1alpha1.AgenticTaskSpec{
-		Payload: foremanv1alpha1.AgenticTaskPayload{Repo: "group/sub/project"},
+	task := &meithealv1alpha1.AgenticTask{Spec: meithealv1alpha1.AgenticTaskSpec{
+		Payload: meithealv1alpha1.AgenticTaskPayload{Repo: "group/sub/project"},
 	}}
 	if got, want := e.resolveUpstreamForRun(task), "https://forge.example.org/group/sub/project.git"; got != want {
 		t.Errorf("resolveUpstreamForRun = %q, want %q (injected CodeHost bypassed)", got, want)
@@ -238,12 +238,12 @@ func (r *argsRegistry) Dispatch(_ context.Context, _ string, args json.RawMessag
 func TestExecuteDeterministicPassesCodeHostUpstream(t *testing.T) {
 	reg := &argsRegistry{}
 	e := &NativeAgentLoopExecutor{CodeHost: &recordingCodeHost{}}
-	task := &foremanv1alpha1.AgenticTask{Spec: foremanv1alpha1.AgenticTaskSpec{
-		Kind:    foremanv1alpha1.AgenticTaskKindIssueFix,
-		Payload: foremanv1alpha1.AgenticTaskPayload{Repo: "group/sub/project", Issue: 1},
+	task := &meithealv1alpha1.AgenticTask{Spec: meithealv1alpha1.AgenticTaskSpec{
+		Kind:    meithealv1alpha1.AgenticTaskKindIssueFix,
+		Payload: meithealv1alpha1.AgenticTaskPayload{Repo: "group/sub/project", Issue: 1},
 	}}
-	ag := &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{Tools: []string{"run_gate_job"}}}
-	e.executeDeterministic(context.Background(), task, ag, "foreman/issue-1", reg, "", time.Now())
+	ag := &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{Tools: []string{"run_gate_job"}}}
+	e.executeDeterministic(context.Background(), task, ag, "meitheal/issue-1", reg, "", time.Now())
 
 	var m map[string]any
 	if err := json.Unmarshal(reg.args, &m); err != nil {

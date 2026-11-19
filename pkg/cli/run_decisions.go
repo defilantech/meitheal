@@ -46,7 +46,7 @@ type Decision struct {
 }
 
 // checkDecisionKind rejects a kind that would steer the path out of dir.
-// `foreman decisions answer ISSUE KIND ANSWER` takes the kind straight off the
+// `meitheal decisions answer ISSUE KIND ANSWER` takes the kind straight off the
 // command line, so this is reachable input, and it is not a privilege boundary
 // so much as a way to avoid silently destroying an unrelated file: a kind with
 // a ".." in it makes ParkDecision write outside the decisions directory, and

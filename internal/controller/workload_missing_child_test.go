@@ -29,7 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // errReader is a client.Reader whose Get always fails with a non-NotFound
@@ -53,29 +53,29 @@ func laggedWorkload(t *testing.T, uncached client.Reader) (*WorkloadReconciler, 
 	t.Helper()
 
 	scheme := runtime.NewScheme()
-	if err := foremanv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("add foreman scheme: %v", err)
+	if err := meithealv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add meitheal scheme: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("add core scheme: %v", err)
 	}
 
-	child := func(name string) *foremanv1alpha1.AgenticTask {
-		return &foremanv1alpha1.AgenticTask{
+	child := func(name string) *meithealv1alpha1.AgenticTask {
+		return &meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: "default",
 				Labels:    map[string]string{labelWorkload: "lag-wl"},
 			},
-			Status: foremanv1alpha1.AgenticTaskStatus{
-				Phase: foremanv1alpha1.AgenticTaskPhasePending,
+			Status: meithealv1alpha1.AgenticTaskStatus{
+				Phase: meithealv1alpha1.AgenticTaskPhasePending,
 			},
 		}
 	}
 
-	wl := &foremanv1alpha1.Workload{
+	wl := &meithealv1alpha1.Workload{
 		ObjectMeta: metav1.ObjectMeta{Name: "lag-wl", Namespace: "default"},
-		Status: foremanv1alpha1.WorkloadStatus{
+		Status: meithealv1alpha1.WorkloadStatus{
 			Tasks: []corev1.ObjectReference{{Name: "code-1"}, {Name: "verify-1"}},
 		},
 	}
@@ -94,8 +94,8 @@ func laggedWorkload(t *testing.T, uncached client.Reader) (*WorkloadReconciler, 
 // condition reports it, so the report does not fire during informer lag.
 func TestReconcile_PlannedChildConfirmedViaUncachedReaderNotReportedMissing(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := foremanv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("add foreman scheme: %v", err)
+	if err := meithealv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add meitheal scheme: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("add core scheme: %v", err)
@@ -104,7 +104,7 @@ func TestReconcile_PlannedChildConfirmedViaUncachedReaderNotReportedMissing(t *t
 	// The API knows about both children.
 	uncached := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(
-			&foremanv1alpha1.AgenticTask{
+			&meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "code-1", Namespace: "default"},
 			},
 		).Build()
@@ -116,7 +116,7 @@ func TestReconcile_PlannedChildConfirmedViaUncachedReaderNotReportedMissing(t *t
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	var fresh foremanv1alpha1.Workload
+	var fresh meithealv1alpha1.Workload
 	if err := cached.Get(context.Background(), key, &fresh); err != nil {
 		t.Fatalf("get workload after reconcile: %v", err)
 	}
@@ -127,8 +127,8 @@ func TestReconcile_PlannedChildConfirmedViaUncachedReaderNotReportedMissing(t *t
 	if cond.Reason == "ChildrenMissing" {
 		t.Errorf("condition reports ChildrenMissing for a child the API confirms exists: %q", cond.Message)
 	}
-	if fresh.Status.Phase != foremanv1alpha1.WorkloadPhaseDispatched {
-		t.Errorf("phase = %q, want %q", fresh.Status.Phase, foremanv1alpha1.WorkloadPhaseDispatched)
+	if fresh.Status.Phase != meithealv1alpha1.WorkloadPhaseDispatched {
+		t.Errorf("phase = %q, want %q", fresh.Status.Phase, meithealv1alpha1.WorkloadPhaseDispatched)
 	}
 }
 
@@ -136,7 +136,7 @@ func TestReconcile_PlannedChildConfirmedViaUncachedReaderNotReportedMissing(t *t
 // absence must not turn a shortfall into a report. Any error other than
 // NotFound means "unconfirmed", never "missing".
 func TestConfirmMissing_ReaderErrorIsNotReported(t *testing.T) {
-	wl := &foremanv1alpha1.Workload{ObjectMeta: metav1.ObjectMeta{Name: "err-wl", Namespace: "default"}}
+	wl := &meithealv1alpha1.Workload{ObjectMeta: metav1.ObjectMeta{Name: "err-wl", Namespace: "default"}}
 	r := &WorkloadReconciler{APIReader: errReader{err: errors.New("connection refused")}}
 
 	got := r.confirmMissing(context.Background(), wl, []string{"code-1"})
@@ -149,7 +149,7 @@ func TestConfirmMissing_ReaderErrorIsNotReported(t *testing.T) {
 // directly in many tests without an API reader, so a nil reader must skip
 // the confirmation and pass the suspects through rather than panic.
 func TestConfirmMissing_NilReaderPreservesBehaviour(t *testing.T) {
-	wl := &foremanv1alpha1.Workload{ObjectMeta: metav1.ObjectMeta{Name: "nil-wl", Namespace: "default"}}
+	wl := &meithealv1alpha1.Workload{ObjectMeta: metav1.ObjectMeta{Name: "nil-wl", Namespace: "default"}}
 	r := &WorkloadReconciler{}
 
 	got := r.confirmMissing(context.Background(), wl, []string{"code-1", "verify-1"})

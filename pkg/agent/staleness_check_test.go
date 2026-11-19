@@ -22,7 +22,7 @@ import (
 	"testing"
 )
 
-// setToggle sets FOREMAN_STALENESS_CHECK for the duration of a test and
+// setToggle sets MEITHEAL_STALENESS_CHECK for the duration of a test and
 // restores the prior value on cleanup.
 func setToggle(t *testing.T, val string) {
 	t.Helper()

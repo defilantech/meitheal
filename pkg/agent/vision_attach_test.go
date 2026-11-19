@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // Attaching images to the first user message (#1466).
@@ -44,9 +44,9 @@ func writePNG(t *testing.T, dir, name string, size int) {
 	}
 }
 
-func visionAgent(max int64, count int32) *foremanv1alpha1.Agent {
-	return &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{
-		Vision: &foremanv1alpha1.VisionSpec{Enabled: true, MaxImageBytes: max, MaxImages: count},
+func visionAgent(max int64, count int32) *meithealv1alpha1.Agent {
+	return &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{
+		Vision: &meithealv1alpha1.VisionSpec{Enabled: true, MaxImageBytes: max, MaxImages: count},
 	}}
 }
 
@@ -76,9 +76,9 @@ func TestAttachImages_DisabledByDefault(t *testing.T) {
 	dir := t.TempDir()
 	writePNG(t, dir, "shot.png", 64)
 
-	for _, a := range []*foremanv1alpha1.Agent{
+	for _, a := range []*meithealv1alpha1.Agent{
 		{},
-		{Spec: foremanv1alpha1.AgentSpec{Vision: &foremanv1alpha1.VisionSpec{Enabled: false}}},
+		{Spec: meithealv1alpha1.AgentSpec{Vision: &meithealv1alpha1.VisionSpec{Enabled: false}}},
 	} {
 		parts, warns := buildUserContentParts("prompt", []string{"shot.png"}, dir, a)
 		if parts != nil {

@@ -175,7 +175,7 @@ func TestEnsureChangeRequest(t *testing.T) {
 		{
 			name:       "creates new PR",
 			repoSlug:   "defilantech/llmkube",
-			headBranch: "foreman/wl-x/issue-7",
+			headBranch: "meitheal/wl-x/issue-7",
 			baseBranch: "main",
 			title:      "Fix the thing",
 			body:       "Fixes #7",
@@ -189,7 +189,7 @@ func TestEnsureChangeRequest(t *testing.T) {
 		{
 			name:       "reuses existing PR",
 			repoSlug:   "defilantech/llmkube",
-			headBranch: "foreman/wl-x/issue-7",
+			headBranch: "meitheal/wl-x/issue-7",
 			baseBranch: "main",
 			title:      "Fix the thing",
 			body:       "Fixes #7",
@@ -203,7 +203,7 @@ func TestEnsureChangeRequest(t *testing.T) {
 		{
 			name:        "malformed repo slug returns empty",
 			repoSlug:    "bad-slug",
-			headBranch:  "foreman/wl-x/issue-7",
+			headBranch:  "meitheal/wl-x/issue-7",
 			baseBranch:  "main",
 			title:       "Fix the thing",
 			body:        "Fixes #7",
@@ -214,7 +214,7 @@ func TestEnsureChangeRequest(t *testing.T) {
 		{
 			name:       "multi-segment slug splits on last slash",
 			repoSlug:   "group/subgroup/project",
-			headBranch: "foreman/wl-x/issue-7",
+			headBranch: "meitheal/wl-x/issue-7",
 			baseBranch: "main",
 			title:      "Fix the thing",
 			body:       "Fixes #7",
@@ -232,7 +232,7 @@ func TestEnsureChangeRequest(t *testing.T) {
 		{
 			name:       "refreshes body when PR already exists",
 			repoSlug:   "defilantech/llmkube",
-			headBranch: "foreman/wl-x/issue-7",
+			headBranch: "meitheal/wl-x/issue-7",
 			baseBranch: "main",
 			title:      "Fix the thing",
 			body:       "Fixes #7",
@@ -294,7 +294,7 @@ func TestPullRequestUpdate_CallsUpdatePR(t *testing.T) {
 	}
 
 	url, err := g.PullRequestUpdate(context.Background(),
-		"defilantech/llmkube", "foreman/wl-x/issue-7", "Fixes #7 (revised)")
+		"defilantech/llmkube", "meitheal/wl-x/issue-7", "Fixes #7 (revised)")
 	if err != nil {
 		t.Fatalf("PullRequestUpdate() error = %v", err)
 	}
@@ -302,7 +302,7 @@ func TestPullRequestUpdate_CallsUpdatePR(t *testing.T) {
 		t.Errorf("PullRequestUpdate() url = %q", url)
 	}
 	if gotOwner != "defilantech" || gotRepo != "llmkube" ||
-		gotHead != "foreman/wl-x/issue-7" ||
+		gotHead != "meitheal/wl-x/issue-7" ||
 		gotBody != "Fixes #7 (revised)" || gotToken != "tok" {
 		t.Errorf("UpdatePR args wrong: owner=%q repo=%q head=%q body=%q token=%q",
 			gotOwner, gotRepo, gotHead, gotBody, gotToken)
@@ -320,7 +320,7 @@ func TestHeadCommitSubject(t *testing.T) {
 		{
 			name:       "valid subject",
 			repoSlug:   "defilantech/llmkube",
-			headBranch: "foreman/wl-x/issue-7",
+			headBranch: "meitheal/wl-x/issue-7",
 			commitFunc: func(ctx context.Context, owner, repo, ref, token string) string {
 				return "feat: add the thing"
 			},
@@ -329,7 +329,7 @@ func TestHeadCommitSubject(t *testing.T) {
 		{
 			name:       "empty subject on failure",
 			repoSlug:   "defilantech/llmkube",
-			headBranch: "foreman/wl-x/issue-7",
+			headBranch: "meitheal/wl-x/issue-7",
 			commitFunc: func(ctx context.Context, owner, repo, ref, token string) string {
 				return ""
 			},
@@ -338,14 +338,14 @@ func TestHeadCommitSubject(t *testing.T) {
 		{
 			name:        "malformed repo slug returns empty",
 			repoSlug:    "bad-slug",
-			headBranch:  "foreman/wl-x/issue-7",
+			headBranch:  "meitheal/wl-x/issue-7",
 			commitFunc:  nil,
 			wantSubject: "",
 		},
 		{
 			name:       "multi-segment slug splits on last slash",
 			repoSlug:   "group/subgroup/project",
-			headBranch: "foreman/wl-x/issue-7",
+			headBranch: "meitheal/wl-x/issue-7",
 			commitFunc: func(ctx context.Context, owner, repo, ref, token string) string {
 				if owner != "group/subgroup" || repo != "project" {
 					t.Errorf("HeadCommitSubject called with owner=%q repo=%q, want owner=%q repo=%q",

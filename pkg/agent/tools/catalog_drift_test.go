@@ -41,20 +41,20 @@ func TestCatalogNamesMatchConstructors(t *testing.T) {
 
 	if !reflect.DeepEqual(fromConstructors, fromCatalog) {
 		t.Fatalf("catalog drift: leaf catalog.CanonicalToolNames() = %v, but tool "+
-			"constructors yield %v; update pkg/foreman/agent/tools/catalog/catalog.go",
+			"constructors yield %v; update pkg/agent/tools/catalog/catalog.go",
 			fromCatalog, fromConstructors)
 	}
 }
 
 // canonicalToolSet constructs one of every tool the v0.1 surface exposes,
-// mirroring makeRegistryFactory in cmd/foreman-agent. The constructors
+// mirroring makeRegistryFactory in cmd/meitheal-agent. The constructors
 // take a zero workspace + nil collaborators on purpose: this set exists
 // only to read Name() for the drift check above, never to Dispatch().
 // canonicalToolSet is now derived from the same function production uses.
 //
 // It was previously a hand-written list, which is why the drift guard passed
 // while three tools shipped unusable: it compared this mirror against catalog,
-// and the real registration lived in a third copy in cmd/foreman-agent (#1482).
+// and the real registration lived in a third copy in cmd/meitheal-agent (#1482).
 func canonicalToolSet() []Tool {
 	return BuildAll(ToolDeps{})
 }

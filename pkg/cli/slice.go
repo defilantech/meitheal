@@ -30,12 +30,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	sigsyaml "sigs.k8s.io/yaml"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"gopkg.in/yaml.v3"
 )
 
 // slicePlan mirrors the planner's YAML output (snake_case, matching the slicer
-// experiment's PLANNER_PROMPT). It is the input to `llmkube foreman slice`.
+// experiment's PLANNER_PROMPT). It is the input to `meitheal slice`.
 type slicePlan struct {
 	Issue             int32          `yaml:"issue"`
 	Repo              string         `yaml:"repo"`
@@ -94,10 +94,10 @@ Two input modes:
 Examples:
 
   # Render a pre-made plan, dry-run:
-  llmkube foreman slice --plan slice-plan-700.yaml --dry-run
+  meitheal slice --plan slice-plan-700.yaml --dry-run
 
   # Plan issue 700 with a local model, then apply:
-  llmkube foreman slice 700 --repo defilantech/LLMKube \
+  meitheal slice 700 --repo defilantech/LLMKube \
     --planner-url http://localhost:18080 --planner-model ornith-35b \
     --repomap /tmp/repomap.txt --coder-agent coder-metal`,
 		Args: cobra.MaximumNArgs(1),
@@ -145,7 +145,7 @@ func runSlice(ctx context.Context, out io.Writer, args []string, opts *sliceOpti
 		return err
 	}
 
-	c, err := newForemanClient()
+	c, err := newMeithealClient()
 	if err != nil {
 		return err
 	}
@@ -246,25 +246,25 @@ func validateSlicePlan(p slicePlan) error {
 // integrate), then (unless --verify-agent is empty) a verify step (dependsOn
 // reconcile) that build+envtest-gates the integrated branch (#1137). The
 // integration branch and each slice branch follow the
-// foreman/slicer-<issue>-<runid>/<name> convention, where <runid> is a
+// meitheal/slicer-<issue>-<runid>/<name> convention, where <runid> is a
 // per-Workload hex segment that makes re-runs of the same issue never collide
 // with branches left on the fork by an earlier run.
-func buildSliceWorkload(p slicePlan, opts *sliceOptions) *foremanv1alpha1.Workload {
+func buildSliceWorkload(p slicePlan, opts *sliceOptions) *meithealv1alpha1.Workload {
 	runID := sliceRunID()
-	integBranch := fmt.Sprintf("foreman/slicer-%d-%s/integ", p.Issue, runID)
+	integBranch := fmt.Sprintf("meitheal/slicer-%d-%s/integ", p.Issue, runID)
 
-	steps := make([]foremanv1alpha1.PipelineStep, 0, len(p.Slices)+3)
+	steps := make([]meithealv1alpha1.PipelineStep, 0, len(p.Slices)+3)
 	sliceNames := make([]string, 0, len(p.Slices))
-	integSlices := make([]foremanv1alpha1.SliceRef, 0, len(p.Slices))
-	reconSlices := make([]foremanv1alpha1.SliceRef, 0, len(p.Slices))
+	integSlices := make([]meithealv1alpha1.SliceRef, 0, len(p.Slices))
+	reconSlices := make([]meithealv1alpha1.SliceRef, 0, len(p.Slices))
 
 	for _, s := range p.Slices {
-		branch := fmt.Sprintf("foreman/slicer-%d-%s/%s", p.Issue, runID, s.Name)
-		steps = append(steps, foremanv1alpha1.PipelineStep{
+		branch := fmt.Sprintf("meitheal/slicer-%d-%s/%s", p.Issue, runID, s.Name)
+		steps = append(steps, meithealv1alpha1.PipelineStep{
 			Name:     s.Name,
-			Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+			Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 			AgentRef: corev1.LocalObjectReference{Name: opts.coderAgent},
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:       p.Repo,
 				Issue:      p.Issue,
 				Branch:     branch,
@@ -273,15 +273,15 @@ func buildSliceWorkload(p slicePlan, opts *sliceOptions) *foremanv1alpha1.Worklo
 			},
 		})
 		sliceNames = append(sliceNames, s.Name)
-		integSlices = append(integSlices, foremanv1alpha1.SliceRef{Name: s.Name, Branch: branch, Files: s.Files})
-		reconSlices = append(reconSlices, foremanv1alpha1.SliceRef{Name: s.Name, Files: s.Files})
+		integSlices = append(integSlices, meithealv1alpha1.SliceRef{Name: s.Name, Branch: branch, Files: s.Files})
+		reconSlices = append(reconSlices, meithealv1alpha1.SliceRef{Name: s.Name, Files: s.Files})
 	}
 
-	steps = append(steps, foremanv1alpha1.PipelineStep{
+	steps = append(steps, meithealv1alpha1.PipelineStep{
 		Name:     "integrate",
-		Kind:     foremanv1alpha1.AgenticTaskKindIntegrate,
+		Kind:     meithealv1alpha1.AgenticTaskKindIntegrate,
 		AgentRef: corev1.LocalObjectReference{Name: opts.integrateAgent},
-		Payload: foremanv1alpha1.AgenticTaskPayload{
+		Payload: meithealv1alpha1.AgenticTaskPayload{
 			Repo:       p.Repo,
 			Branch:     integBranch,
 			BaseBranch: opts.baseBranch,
@@ -290,19 +290,19 @@ func buildSliceWorkload(p slicePlan, opts *sliceOptions) *foremanv1alpha1.Worklo
 		DependsOn: sliceNames,
 	})
 
-	ids := make([]foremanv1alpha1.SharedIdentifier, 0, len(p.SharedIdentifiers))
+	ids := make([]meithealv1alpha1.SharedIdentifier, 0, len(p.SharedIdentifiers))
 	for _, si := range p.SharedIdentifiers {
-		ids = append(ids, foremanv1alpha1.SharedIdentifier{
+		ids = append(ids, meithealv1alpha1.SharedIdentifier{
 			ID:           si.ID,
 			DefinedBy:    si.DefinedBy,
 			ReferencedBy: si.ReferencedBy,
 		})
 	}
-	steps = append(steps, foremanv1alpha1.PipelineStep{
+	steps = append(steps, meithealv1alpha1.PipelineStep{
 		Name:     "reconcile",
-		Kind:     foremanv1alpha1.AgenticTaskKindReconcile,
+		Kind:     meithealv1alpha1.AgenticTaskKindReconcile,
 		AgentRef: corev1.LocalObjectReference{Name: opts.reconcileAgent},
-		Payload: foremanv1alpha1.AgenticTaskPayload{
+		Payload: meithealv1alpha1.AgenticTaskPayload{
 			Repo:              p.Repo,
 			Branch:            integBranch,
 			Slices:            reconSlices,
@@ -322,11 +322,11 @@ func buildSliceWorkload(p slicePlan, opts *sliceOptions) *foremanv1alpha1.Worklo
 	// runs only after the merge and pins check out. An empty --verify-agent
 	// opts out (non-code slicing has nothing to build).
 	if opts.verifyAgent != "" {
-		steps = append(steps, foremanv1alpha1.PipelineStep{
+		steps = append(steps, meithealv1alpha1.PipelineStep{
 			Name:     "verify",
-			Kind:     foremanv1alpha1.AgenticTaskKindVerify,
+			Kind:     meithealv1alpha1.AgenticTaskKindVerify,
 			AgentRef: corev1.LocalObjectReference{Name: opts.verifyAgent},
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:       p.Repo,
 				Issue:      p.Issue,
 				Branch:     integBranch,
@@ -336,16 +336,16 @@ func buildSliceWorkload(p slicePlan, opts *sliceOptions) *foremanv1alpha1.Worklo
 		})
 	}
 
-	return &foremanv1alpha1.Workload{
+	return &meithealv1alpha1.Workload{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: foremanv1alpha1.GroupVersion.String(),
+			APIVersion: meithealv1alpha1.GroupVersion.String(),
 			Kind:       "Workload",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("slicer-%d", p.Issue),
 			Namespace: opts.namespace,
 		},
-		Spec: foremanv1alpha1.WorkloadSpec{
+		Spec: meithealv1alpha1.WorkloadSpec{
 			Intent:   fmt.Sprintf("slicer: issue #%d in %d slices", p.Issue, len(p.Slices)),
 			Repo:     p.Repo,
 			Pipeline: steps,

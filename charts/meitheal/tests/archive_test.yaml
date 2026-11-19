@@ -1,4 +1,4 @@
-suite: foreman operator terminal-task archival (#1654)
+suite: meitheal operator terminal-task archival (#1654)
 templates:
   - operator-deployment.yaml
 
@@ -19,7 +19,7 @@ tests:
       # always passes. It is a vacuous assertion, not a strong one.
       - notContains:
           path: spec.template.spec.containers[0].args
-          content: --archive-dir=/var/lib/foreman/archive
+          content: --archive-dir=/var/lib/meitheal/archive
       # Pins the arg COUNT so an unguarded flag is caught even if it
       # renders a value this suite does not name (a bare --archive-dir=,
       # say). Adding an unrelated operator flag will fail this line: that
@@ -55,16 +55,16 @@ tests:
 
   - it: renders the flag, the mount and the volume when enabled
     set:
-      foreman.archive.enabled: true
+      meitheal.archive.enabled: true
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --archive-dir=/var/lib/foreman/archive
+          content: --archive-dir=/var/lib/meitheal/archive
       - contains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
             name: archive
-            mountPath: /var/lib/foreman/archive
+            mountPath: /var/lib/meitheal/archive
       - contains:
           path: spec.template.spec.volumes
           content:
@@ -78,8 +78,8 @@ tests:
 
   - it: mounts the volume at the configured dir, not the default
     set:
-      foreman.archive.enabled: true
-      foreman.archive.dir: /mnt/elsewhere
+      meitheal.archive.enabled: true
+      meitheal.archive.dir: /mnt/elsewhere
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
@@ -94,12 +94,12 @@ tests:
       # hardcodes the mount (or vice versa) still splits them apart.
       - notContains:
           path: spec.template.spec.containers[0].args
-          content: --archive-dir=/var/lib/foreman/archive
+          content: --archive-dir=/var/lib/meitheal/archive
       - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
             name: archive
-            mountPath: /var/lib/foreman/archive
+            mountPath: /var/lib/meitheal/archive
 
   # Archival must not be coupled to any OTHER flag's guard. webhook.enabled
   # false is a documented, supported install (values.yaml:24), and under it
@@ -113,7 +113,7 @@ tests:
   - it: renders the mount and the volume even when the webhook is disabled
     set:
       webhook.enabled: false
-      foreman.archive.enabled: true
+      meitheal.archive.enabled: true
     asserts:
       - notContains:
           path: spec.template.spec.containers[0].volumeMounts
@@ -127,12 +127,12 @@ tests:
             name: webhook-certs
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --archive-dir=/var/lib/foreman/archive
+          content: --archive-dir=/var/lib/meitheal/archive
       - contains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
             name: archive
-            mountPath: /var/lib/foreman/archive
+            mountPath: /var/lib/meitheal/archive
       - contains:
           path: spec.template.spec.volumes
           content:
@@ -143,10 +143,10 @@ tests:
   #
   # values.yaml tells operators to point the volume at a PVC for real use,
   # and without an fsGroup that instruction cannot work. The operator image
-  # runs as UID 65532 under runAsNonRoot (Dockerfile.foreman-operator), and
+  # runs as UID 65532 under runAsNonRoot (Dockerfile.operator), and
   # most provisioners hand out a freshly-bound PVC owned root:root 0755, so
   # MkdirAll fails EACCES and every terminal task increments
-  # foreman_archive_failures_total{reason="write"} with zero bundles on
+  # meitheal_archive_failures_total{reason="write"} with zero bundles on
   # disk. The emptyDir default hides it completely: the kubelet creates an
   # emptyDir already owned by the pod, so the only configuration the chart
   # ships out of the box is the one configuration that does not need this.
@@ -165,7 +165,7 @@ tests:
 
   - it: renders the fsGroup when archival is enabled
     set:
-      foreman.archive.enabled: true
+      meitheal.archive.enabled: true
     asserts:
       - equal:
           path: spec.template.spec.securityContext.fsGroup
@@ -181,8 +181,8 @@ tests:
 
   - it: renders no fsGroup when archival is enabled but fsGroup is 0
     set:
-      foreman.archive.enabled: true
-      foreman.archive.fsGroup: 0
+      meitheal.archive.enabled: true
+      meitheal.archive.fsGroup: 0
     asserts:
       # 0 is the OpenShift escape hatch: the restricted-v2 SCC injects
       # fsGroup from the namespace's allocated range and rejects a pod that
@@ -198,7 +198,7 @@ tests:
 
   - it: lets an explicit operator podSecurityContext fsGroup win
     set:
-      foreman.archive.enabled: true
+      meitheal.archive.enabled: true
       operator.podSecurityContext:
         runAsNonRoot: true
         fsGroup: 1000
@@ -231,7 +231,7 @@ tests:
 
   - it: falls back to emptyDir when no volume source is configured
     set:
-      foreman.archive.enabled: true
+      meitheal.archive.enabled: true
     asserts:
       - equal:
           path: spec.template.spec.volumes[2]
@@ -241,30 +241,30 @@ tests:
 
   - it: renders a persistentVolumeClaim as the volume's only source
     set:
-      foreman.archive.enabled: true
-      foreman.archive.volume:
+      meitheal.archive.enabled: true
+      meitheal.archive.volume:
         persistentVolumeClaim:
-          claimName: foreman-archive
+          claimName: meitheal-archive
     asserts:
       - equal:
           path: spec.template.spec.volumes[2]
           value:
             name: archive
             persistentVolumeClaim:
-              claimName: foreman-archive
+              claimName: meitheal-archive
       - contains:
           path: spec.template.spec.volumes
           content:
             name: archive
             persistentVolumeClaim:
-              claimName: foreman-archive
+              claimName: meitheal-archive
 
   - it: renders a hostPath as the volume's only source
     set:
-      foreman.archive.enabled: true
-      foreman.archive.volume:
+      meitheal.archive.enabled: true
+      meitheal.archive.volume:
         hostPath:
-          path: /data/foreman-archive
+          path: /data/meitheal-archive
           type: DirectoryOrCreate
     asserts:
       - equal:
@@ -272,12 +272,12 @@ tests:
           value:
             name: archive
             hostPath:
-              path: /data/foreman-archive
+              path: /data/meitheal-archive
               type: DirectoryOrCreate
       - contains:
           path: spec.template.spec.volumes
           content:
             name: archive
             hostPath:
-              path: /data/foreman-archive
+              path: /data/meitheal-archive
               type: DirectoryOrCreate

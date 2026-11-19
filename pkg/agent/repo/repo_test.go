@@ -97,12 +97,12 @@ func TestBranchNameForIssue_Slugify(t *testing.T) {
 		title string
 		want  string
 	}{
-		{1, "Fix the typo in README", "foreman/issue-1-fix-the-typo-in-readme"},
-		{42, "Foreman M3: native loop", "foreman/issue-42-foreman-m3-native-loop"},
-		{7, "  trim  -  whitespace - and dashes  ", "foreman/issue-7-trim-whitespace-and-dashes"},
-		{99, "", "foreman/issue-99"},
+		{1, "Fix the typo in README", "meitheal/issue-1-fix-the-typo-in-readme"},
+		{42, "Meitheal M3: native loop", "meitheal/issue-42-meitheal-m3-native-loop"},
+		{7, "  trim  -  whitespace - and dashes  ", "meitheal/issue-7-trim-whitespace-and-dashes"},
+		{99, "", "meitheal/issue-99"},
 		{5, "a_very_long_title_that_definitely_will_exceed_thirty_two_chars_for_sure",
-			"foreman/issue-5-a-very-long-title-that-definitel"}, // truncated at 32 chars
+			"meitheal/issue-5-a-very-long-title-that-definitel"}, // truncated at 32 chars
 	}
 	for _, c := range cases {
 		t.Run(c.title, func(t *testing.T) {
@@ -141,7 +141,7 @@ func TestNewAuth_ExplicitTokenAndCloseRemovesFile(t *testing.T) {
 		switch {
 		case strings.HasPrefix(kv, "GIT_ASKPASS="):
 			sawAskpass = true
-		case strings.HasPrefix(kv, "FOREMAN_GIT_TOKEN="):
+		case strings.HasPrefix(kv, "MEITHEAL_GIT_TOKEN="):
 			sawTokenEnv = true
 		case strings.HasPrefix(kv, "GIT_TERMINAL_PROMPT="):
 			sawNoPrompt = true
@@ -178,7 +178,7 @@ func TestTokenFromEnvOrFile_EnvWins(t *testing.T) {
 func TestTokenFromEnvOrFile_MissingReturnsErrNoToken(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "")
 	// Point HOME at an empty dir so the fallback path resolves to a
-	// nonexistent ~/.config/foreman/github-token.
+	// nonexistent ~/.config/github-token.
 	t.Setenv("HOME", t.TempDir())
 	_, err := TokenFromEnvOrFile()
 	if !errors.Is(err, ErrNoToken) {
@@ -190,7 +190,7 @@ func TestTokenFromEnvOrFile_MissingReturnsErrNoToken(t *testing.T) {
 
 // repoIdent returns a deterministic Identity for tests.
 func repoIdent() Identity {
-	return Identity{Name: "Foreman Bot", Email: "bot@foreman.test"}
+	return Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"}
 }
 
 func TestRepoRoundTrip_CloneBranchCommitPush(t *testing.T) {
@@ -218,7 +218,7 @@ func TestRepoRoundTrip_CloneBranchCommitPush(t *testing.T) {
 	}
 
 	if err := os.WriteFile(filepath.Join(dest, "added.txt"),
-		[]byte("foreman was here\n"), 0o644); err != nil {
+		[]byte("meitheal was here\n"), 0o644); err != nil {
 		t.Fatalf("write change: %v", err)
 	}
 
@@ -260,7 +260,7 @@ func TestRepoRoundTrip_CloneBranchCommitPush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post-push log: %v: %s", err, logOut)
 	}
-	want := "Signed-off-by: Foreman Bot <bot@foreman.test>"
+	want := "Signed-off-by: Meitheal Bot <bot@meitheal.test>"
 	if !strings.Contains(string(logOut), want) {
 		t.Errorf("missing DCO trailer; commit message was:\n%s", logOut)
 	}

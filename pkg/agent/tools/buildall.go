@@ -30,7 +30,7 @@ import (
 
 // BuildAll is the single place the agent's native tool set is constructed.
 //
-// It used to live inline in cmd/foreman-agent/main.go, which made three copies
+// It used to live inline in cmd/meitheal-agent/main.go, which made three copies
 // of the same list: the runtime registry there, the webhook allow-list in
 // catalog, and a hand-written mirror in the drift test. The drift test compared
 // the two copies nobody edited, so it passed while fetch_pull_request,
@@ -57,7 +57,7 @@ func BuildAll(deps ToolDeps) []Tool {
 		&RunGateJobTool{
 			Client: deps.Client,
 			Cfg: RunGateJobToolConfig{
-				Namespace:             deps.ForemanNamespace,
+				Namespace:             deps.MeithealNamespace,
 				PVCName:               deps.GateCachePVC,
 				LogTailFn:             deps.LogTailFn,
 				CodeHost:              deps.CodeHost,
@@ -65,7 +65,7 @@ func BuildAll(deps ToolDeps) []Tool {
 			},
 		},
 		// fetch_issue: read-only GitHub issue surface for the reviewer. The
-		// same token the foreman-agent already loads at startup reaches GitHub
+		// same token the meitheal-agent already loads at startup reaches GitHub
 		// through one bounded Go-side call instead of being inherited by every
 		// bash subprocess via $GH_TOKEN. Closes #580.
 		&FetchIssueTool{
@@ -110,14 +110,14 @@ type ToolDeps struct {
 	// BashTimeout bounds a single bash invocation.
 	BashTimeout time.Duration
 
-	// Client and ForemanNamespace let run_gate_job create and watch the gate
+	// Client and MeithealNamespace let run_gate_job create and watch the gate
 	// Job in the operator's namespace.
-	Client           client.Client
-	ForemanNamespace string
+	Client            client.Client
+	MeithealNamespace string
 
 	// GateCachePVC is the submitting agent's gate-cache PVC name, threaded
 	// from --gate-cache-pvc so the gate Job mounts the per-agent claim the
-	// chart creates (foreman.gateCache.pvcName). Empty keeps the historical
+	// chart creates (meitheal.gateCache.pvcName). Empty keeps the historical
 	// "no volume mount" behavior (#1538).
 	GateCachePVC string
 

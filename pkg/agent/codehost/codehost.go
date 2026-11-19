@@ -90,7 +90,7 @@ type CodeHost interface {
 	// EnsureChangeRequest ensures a pull request exists for head → base,
 	// creating it if absent. draft opens the PR as a work-in-progress
 	// draft (a human reads it and marks it ready) rather than straight
-	// for review; the executor passes true so a Foreman PR is reviewable
+	// for review; the executor passes true so a Meitheal PR is reviewable
 	// on arrival.
 	EnsureChangeRequest(ctx context.Context, repoSlug, headBranch,
 		baseBranch, title, body string, draft bool) (url string, created bool, err error)
@@ -167,7 +167,7 @@ func (g *GitHubCodeHost) ResolveCloneURL(repoSlug string) string {
 // EnsureChangeRequest ensures a pull request exists for head → base,
 // creating it if absent. draft opens the PR as a work-in-progress draft
 // (a human reads it and marks it ready) rather than straight for review,
-// so a Foreman PR is reviewable on arrival. Returns the PR URL and
+// so a Meitheal PR is reviewable on arrival. Returns the PR URL and
 // whether it was created (true) or already existed (false).
 func (g *GitHubCodeHost) EnsureChangeRequest(
 	ctx context.Context, repoSlug, headBranch, baseBranch, title, body string, draft bool,

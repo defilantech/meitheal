@@ -1,35 +1,35 @@
-{{- if .Values.foreman.crs.enabled }}
-# Custom Resource State config for Foreman CRDs.
+{{- if .Values.meitheal.crs.enabled }}
+# Custom Resource State config for Meitheal CRDs.
 #
 # Wired into the kube-state-metrics deployment (or the
 # kube-prometheus-stack `kube-state-metrics.customResourceState` values path)
-# so Foreman Workload / AgenticTask / FleetNode status fields land as
-# Prometheus gauges. See charts/foreman/values.yaml under `foreman.crs` for
+# so Meitheal Workload / AgenticTask / FleetNode status fields land as
+# Prometheus gauges. See charts/meitheal/values.yaml under `meitheal.crs` for
 # the toggle and the alert rules that ship alongside this ConfigMap.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "foreman.fullname" . }}-crs
-  namespace: {{ .Values.foreman.crs.namespace | default (include "foreman.namespace" .) }}
+  name: {{ include "meitheal.fullname" . }}-crs
+  namespace: {{ .Values.meitheal.crs.namespace | default (include "meitheal.namespace" .) }}
   labels:
-    {{- include "foreman.labels" . | nindent 4 }}
+    {{- include "meitheal.labels" . | nindent 4 }}
 data:
-  {{ .Values.foreman.crs.configMapKey }}: |
+  {{ .Values.meitheal.crs.configMapKey }}: |
     kind: CustomResourceStateMetrics
     spec:
       resources:
         # -- AgenticTask -------------------------------------------------------
         - groupVersionKind:
-            group: foreman.llmkube.dev
+            group: meitheal.dev
             version: v1alpha1
             kind: AgenticTask
-          metricNamePrefix: foreman_agentictask
+          metricNamePrefix: meitheal_agentictask
           # Without this every series is anonymous: you can count
           # AgenticTasks by phase but cannot name the one that is stuck.
           labelsFromPath:
             name: [metadata, name]
           metrics:
-            # foreman_agentictask_info{namespace,name,workload,agent,phase,verdict}
+            # meitheal_agentictask_info{namespace,name,workload,agent,phase,verdict}
             - name: info
               help: "AgenticTask phase and verdict"
               each:
@@ -38,7 +38,7 @@ data:
                   labelsFromPath:
                     phase: [status, phase]
                     verdict: [status, verdict]
-                    workload: [metadata, labels, "foreman.llmkube.dev/workload"]
+                    workload: [metadata, labels, "meitheal.dev/workload"]
                     agent: [spec, agentRef, name]
                     # The node actually running it. Without this a running task
                     # cannot be joined to the FleetNode supervising it, which is
@@ -69,16 +69,16 @@ data:
 
         # -- Workload ----------------------------------------------------------
         - groupVersionKind:
-            group: foreman.llmkube.dev
+            group: meitheal.dev
             version: v1alpha1
             kind: Workload
-          metricNamePrefix: foreman_workload
+          metricNamePrefix: meitheal_workload
           # Without this every series is anonymous: you can count
           # Workloads by phase but cannot name the one that is stuck.
           labelsFromPath:
             name: [metadata, name]
           metrics:
-            # foreman_workload_info{namespace,name,phase,repo}
+            # meitheal_workload_info{namespace,name,phase,repo}
             - name: info
               help: "Workload phase and repo"
               each:
@@ -88,7 +88,7 @@ data:
                     phase: [status, phase]
                     repo: [spec, repo]
 
-            # foreman_workload_succeeded_tasks / _failed_tasks / _incomplete_tasks
+            # meitheal_workload_succeeded_tasks / _failed_tasks / _incomplete_tasks
             # (integer gauges = status.<field>)
             - name: succeeded_tasks
               help: "Succeeded child AgenticTasks for this Workload"
@@ -136,10 +136,10 @@ data:
 
         # -- FleetNode ---------------------------------------------------------
         - groupVersionKind:
-            group: foreman.llmkube.dev
+            group: meitheal.dev
             version: v1alpha1
             kind: FleetNode
-          metricNamePrefix: foreman_fleetnode
+          metricNamePrefix: meitheal_fleetnode
           # Without this every series is anonymous: you can count
           # FleetNodes by phase but cannot name the one that is stuck.
           labelsFromPath:
@@ -147,10 +147,10 @@ data:
             # The worker agent identity. Without this on every series,
             # heartbeat and capacity gauges cannot be joined to AgenticTask
             # (which labels node: [status, assignedNode]) without an extra
-            # join against foreman_fleetnode_info (#1779).
+            # join against meitheal_fleetnode_info (#1779).
             node: [spec, nodeName]
           metrics:
-            # foreman_fleetnode_info{name,node,accelerator,os,arch,
+            # meitheal_fleetnode_info{name,node,accelerator,os,arch,
             #                        current_task,version,agent_kind}
             - name: info
               help: "FleetNode identity and capability"
@@ -171,7 +171,7 @@ data:
                     # Empty for off-cluster agents.
                     kubernetes_node: [status, kubernetesNode]
 
-            # foreman_fleetnode_role_info{name,node,role} -- ONE SERIES PER
+            # meitheal_fleetnode_role_info{name,node,role} -- ONE SERIES PER
             # ROLE. spec.roles is a list, so the Info metric targets the array
             # and `role: []` names each element; a node registered as
             # [worker, coder, verifier] yields three series. Joining them into a
@@ -186,7 +186,7 @@ data:
                   labelsFromPath:
                     role: []
 
-            # foreman_fleetnode_heartbeat_timestamp_seconds (gauge = unix seconds
+            # meitheal_fleetnode_heartbeat_timestamp_seconds (gauge = unix seconds
             # of LastHeartbeatTime, 0 when absent).
             - name: heartbeat_timestamp_seconds
               help: "FleetNode last heartbeat unix timestamp (0 = no heartbeat)"
@@ -199,7 +199,7 @@ data:
                   path: [status]
                   valueFrom: [lastHeartbeatTime]
 
-            # foreman_fleetnode_ram_gigabytes (gauge = status.capability.totalRAMGB)
+            # meitheal_fleetnode_ram_gigabytes (gauge = status.capability.totalRAMGB)
             - name: ram_gigabytes
               help: "FleetNode total RAM in GiB"
               each:

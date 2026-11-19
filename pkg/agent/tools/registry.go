@@ -17,7 +17,7 @@ limitations under the License.
 // Package tools is the concrete implementation of agent.ToolRegistry.
 // Each tool advertises an OAI schema and runs work against a workspace
 // directory. The native loop holds an opaque agent.ToolRegistry; the
-// foreman-agent (or test code) builds a *tools.Registry and passes it
+// meitheal-agent (or test code) builds a *tools.Registry and passes it
 // in as the seam between the loop and the filesystem / shell.
 package tools
 

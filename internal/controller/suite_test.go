@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package controller_test (in-package: see go file `package controller`)
-// hosts the envtest suite for the foreman API group's reconcilers. The
+// hosts the envtest suite for the meitheal API group's reconcilers. The
 // shape mirrors internal/controller/suite_test.go so the project has a
 // single recognizable testing pattern for both API groups.
 package controller
@@ -38,7 +38,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -52,7 +52,7 @@ var (
 	k8sClient client.Client
 )
 
-func TestForemanControllers(t *testing.T) {
+func TestMeithealControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 	// GinkgoConfiguration carries the config Ginkgo derived from its
 	// command-line flags; types.NewDefaultSuiteConfig would replace that
@@ -60,7 +60,7 @@ func TestForemanControllers(t *testing.T) {
 	// -ginkgo.skip / -ginkgo.seed (#1693).
 	suiteConfig, _ := GinkgoConfiguration()
 	suiteConfig.RandomSeed = ginkgoSeed(suiteConfig.RandomSeed)
-	RunSpecs(t, "Foreman Controller Suite", suiteConfig)
+	RunSpecs(t, "Meitheal Controller Suite", suiteConfig)
 }
 
 var _ = BeforeSuite(func() {
@@ -68,10 +68,10 @@ var _ = BeforeSuite(func() {
 
 	ctx, cancel = context.WithCancel(context.TODO())
 
-	err := foremanv1alpha1.AddToScheme(scheme.Scheme)
+	err := meithealv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	By("bootstrapping test environment with foreman CRDs")
+	By("bootstrapping test environment with meitheal CRDs")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),

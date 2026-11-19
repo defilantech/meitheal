@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
-  name: agentreleases.foreman.llmkube.dev
+  name: agentreleases.meitheal.dev
 spec:
-  group: foreman.llmkube.dev
+  group: meitheal.dev
   names:
     kind: AgentRelease
     listKind: AgentReleaseList
@@ -68,7 +68,7 @@ spec:
                   AgentKind identifies which agent binary this release targets. The
                   controller uses this to filter FleetNodes by their reported AgentKind.
                 enum:
-                - foreman-agent
+                - meitheal-agent
                 - metal-agent
                 type: string
               approved:

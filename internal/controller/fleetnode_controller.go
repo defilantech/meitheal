@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // FleetNodeReconciler watches FleetNode objects and marks them NotReady when
@@ -40,15 +40,15 @@ type FleetNodeReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=fleetnodes,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=fleetnodes/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=fleetnodes/finalizers,verbs=update
+// +kubebuilder:rbac:groups=meitheal.dev,resources=fleetnodes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=meitheal.dev,resources=fleetnodes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=fleetnodes/finalizers,verbs=update
 
 // Reconcile is the entry point for FleetNode events.
 func (r *FleetNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	var node foremanv1alpha1.FleetNode
+	var node meithealv1alpha1.FleetNode
 	if err := r.Get(ctx, req.NamespacedName, &node); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -67,11 +67,11 @@ func (r *FleetNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// ownerReference for garbage collection, so one FleetNode leaks per agent
 	// restart. Reap a Draining node whose heartbeat has been silent past the
 	// drain grace; its drain will never complete.
-	if node.Status.Phase == foremanv1alpha1.FleetNodePhaseDraining {
+	if node.Status.Phase == meithealv1alpha1.FleetNodePhaseDraining {
 		if node.DrainReapable(time.Now()) {
 			return r.reapNode(ctx, &node, "orphaned Draining FleetNode (agent gone)")
 		}
-		return ctrl.Result{RequeueAfter: foremanv1alpha1.FleetNodeHeartbeatTimeout}, nil
+		return ctrl.Result{RequeueAfter: meithealv1alpha1.FleetNodeHeartbeatTimeout}, nil
 	}
 
 	now := time.Now()
@@ -96,7 +96,7 @@ func (r *FleetNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				// won the optimistic lock, the node was deleted between the
 				// Get and here): leave the decision to the next requeue.
 				if apierrors.IsConflict(err) || apierrors.IsNotFound(err) {
-					return ctrl.Result{RequeueAfter: foremanv1alpha1.FleetNodeHeartbeatTimeout}, nil
+					return ctrl.Result{RequeueAfter: meithealv1alpha1.FleetNodeHeartbeatTimeout}, nil
 				}
 				return ctrl.Result{}, err
 			}
@@ -111,15 +111,15 @@ func (r *FleetNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// namespaced, it carries no ownerReference for Kubernetes garbage
 	// collection. The replacement pod registers a new FleetNode under its own
 	// pod name, leaving the old one behind forever and causing
-	// ForemanFleetNodeHeartbeatStale to alert indefinitely (#1778).
+	// MeithealFleetNodeHeartbeatStale to alert indefinitely (#1778).
 	// Reap an in-cluster NotReady node whose heartbeat has been silent past the
 	// reap timeout. Off-cluster agents (metal Macs) leave status.kubernetesNode
 	// empty and have persistent identities, so they are not reaped.
-	if (node.Status.Phase == foremanv1alpha1.FleetNodePhaseNotReady || stale) && node.NotReadyReapable(now) {
+	if (node.Status.Phase == meithealv1alpha1.FleetNodePhaseNotReady || stale) && node.NotReadyReapable(now) {
 		return r.reapNode(ctx, &node, "orphaned in-cluster FleetNode (agent pod gone)")
 	}
 
-	desiredPhase := foremanv1alpha1.FleetNodePhaseReady
+	desiredPhase := meithealv1alpha1.FleetNodePhaseReady
 	cond := metav1.Condition{
 		Type:               "Ready",
 		Status:             metav1.ConditionTrue,
@@ -128,10 +128,10 @@ func (r *FleetNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		LastTransitionTime: metav1.NewTime(now),
 	}
 	if stale {
-		desiredPhase = foremanv1alpha1.FleetNodePhaseNotReady
+		desiredPhase = meithealv1alpha1.FleetNodePhaseNotReady
 		cond.Status = metav1.ConditionFalse
 		cond.Reason = "HeartbeatStale"
-		cond.Message = fmt.Sprintf("no heartbeat within %s", foremanv1alpha1.FleetNodeHeartbeatTimeout)
+		cond.Message = fmt.Sprintf("no heartbeat within %s", meithealv1alpha1.FleetNodeHeartbeatTimeout)
 	}
 
 	if node.Status.Phase != desiredPhase || !hasCondition(node.Status.Conditions, cond) {
@@ -145,13 +145,13 @@ func (r *FleetNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Requeue so a node that goes stale between heartbeats is detected
 	// without waiting for an external event.
-	return ctrl.Result{RequeueAfter: foremanv1alpha1.FleetNodeHeartbeatTimeout}, nil
+	return ctrl.Result{RequeueAfter: meithealv1alpha1.FleetNodeHeartbeatTimeout}, nil
 }
 
 // SetupWithManager wires the reconciler into the controller-runtime manager.
 func (r *FleetNodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&foremanv1alpha1.FleetNode{}).
+		For(&meithealv1alpha1.FleetNode{}).
 		Named("fleetnode").
 		Complete(r)
 }
@@ -165,7 +165,7 @@ func (r *FleetNodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // NotFound) and never recreate it. With preconditions, any write since our read
 // makes the delete 409, and we requeue to re-evaluate on a fresh view (a truly
 // dead node's ResourceVersion never advances, so the reap still converges).
-func (r *FleetNodeReconciler) reapNode(ctx context.Context, node *foremanv1alpha1.FleetNode, reason string) (ctrl.Result, error) {
+func (r *FleetNodeReconciler) reapNode(ctx context.Context, node *meithealv1alpha1.FleetNode, reason string) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	log.Info("reaping orphaned FleetNode",
 		"reason", reason,
@@ -178,7 +178,7 @@ func (r *FleetNodeReconciler) reapNode(ctx context.Context, node *foremanv1alpha
 		ResourceVersion: &node.ResourceVersion,
 	})
 	if apierrors.IsConflict(err) {
-		return ctrl.Result{RequeueAfter: foremanv1alpha1.FleetNodeHeartbeatTimeout}, nil
+		return ctrl.Result{RequeueAfter: meithealv1alpha1.FleetNodeHeartbeatTimeout}, nil
 	}
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)

@@ -16,8 +16,8 @@ func TestClassifyFile(t *testing.T) {
 		{"Dockerfile.coder", workClassPackaging},
 		{"docs/proposals/697-amd-vulkan-runtime-image.md", workClassDocs},
 		{"examples/amd-quickstart/README.md", workClassDocs},
-		{"config/foreman/agents/gate.yaml", workClassConfig},
-		{"pkg/foreman/agent/loop.go", workClassCodeFix},
+		{"config/agents/gate.yaml", workClassConfig},
+		{"pkg/agent/loop.go", workClassCodeFix},
 		{"internal/controller/model_controller_test.go", workClassCodeFix},
 	}
 	for _, c := range cases {
@@ -39,7 +39,7 @@ func TestClassifyFootprint(t *testing.T) {
 			"examples/amd-quickstart/README.md": 70,
 			"pkg/cli/deploy.go":                 30}, workClassDocs},
 		{"no dominant class is mixed", map[string]int{
-			"pkg/foreman/agent/loop.go":            50,
+			"pkg/agent/loop.go":                    50,
 			".github/workflows/release-please.yml": 50}, workClassMixed},
 		{"all-zero counts are mixed not random", map[string]int{
 			".github/workflows/x.yml": 0,

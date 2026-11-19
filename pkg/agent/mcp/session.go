@@ -27,9 +27,9 @@ import (
 )
 
 // Connect is the single entry point the wiring layer calls to turn a list
-// of MCP server configs into ready-to-register Foreman tools.
+// of MCP server configs into ready-to-register Meitheal tools.
 //
-// MCP must never fail a Foreman run: a server that fails to dial or list
+// MCP must never fail a Meitheal run: a server that fails to dial or list
 // its tools is logged at warning and skipped, contributing zero tools,
 // and Connect keeps going to the next server. The returned error is
 // non-nil only for a programmer error (a nil ctx); a server-level failure

@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func TestDeletedIssueReferences_RemovedBareRef(t *testing.T) {
@@ -168,7 +168,7 @@ func TestRecordDeletedIssueReferences_NoRefsNoKeys(t *testing.T) {
 }
 
 func TestRecordDeletedReferenceDisabled_ToggleOffReturnsNothing(t *testing.T) {
-	t.Setenv("FOREMAN_DELETED_REFERENCE", "0")
+	t.Setenv("MEITHEAL_DELETED_REFERENCE", "0")
 	extra := map[string]any{}
 	diff := `@@ -1,3 +1,2 @@
 -// removed, cites #1234
@@ -180,15 +180,15 @@ func TestRecordDeletedReferenceDisabled_ToggleOffReturnsNothing(t *testing.T) {
 }
 
 func TestDeletedReferenceDisabled_DefaultEnabled(t *testing.T) {
-	t.Setenv("FOREMAN_DELETED_REFERENCE", "")
+	t.Setenv("MEITHEAL_DELETED_REFERENCE", "")
 	if deletedReferenceDisabled() {
 		t.Fatal("expected the rail to be enabled by default (unset)")
 	}
-	t.Setenv("FOREMAN_DELETED_REFERENCE", "0")
+	t.Setenv("MEITHEAL_DELETED_REFERENCE", "0")
 	if !deletedReferenceDisabled() {
-		t.Fatal("expected the rail to be disabled at FOREMAN_DELETED_REFERENCE=0")
+		t.Fatal("expected the rail to be disabled at MEITHEAL_DELETED_REFERENCE=0")
 	}
-	t.Setenv("FOREMAN_DELETED_REFERENCE", "1")
+	t.Setenv("MEITHEAL_DELETED_REFERENCE", "1")
 	if deletedReferenceDisabled() {
 		t.Fatal("only \"0\" disables the rail")
 	}
@@ -207,10 +207,10 @@ func TestApplyDeletedReferenceRailForTask_FallsBackToBranchNameWhenNoResolvedBas
 		}
 		return "", context.Canceled
 	}
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind:    foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{BaseBranch: "main"},
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind:    meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{BaseBranch: "main"},
 		},
 	}
 	loopRes := &LoopResult{Terminal: &ToolResult{Extra: map[string]any{}}}

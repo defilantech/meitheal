@@ -51,7 +51,7 @@ var templateDir = filepath.Join(".github", "PULL_REQUEST_TEMPLATE")
 // deterministically (os.ReadDir orders by file name).
 //
 // An empty or non-existent workspace yields "" so the caller falls back to
-// Foreman's own body shape (the pre-#1541 behavior).
+// Meitheal's own body shape (the pre-#1541 behavior).
 func FindTemplate(workspace string) string {
 	if strings.TrimSpace(workspace) == "" {
 		return ""
@@ -101,7 +101,7 @@ func readDefaultTemplate(workspace string) (string, bool) {
 	return string(b), true
 }
 
-// PRBody composes the pull request body Foreman posts.
+// PRBody composes the pull request body Meitheal posts.
 //
 // When the target repository has a PR template (template non-blank), it is
 // used as the body's scaffolding and the reviewer's authored prose follows it,
@@ -110,14 +110,14 @@ func readDefaultTemplate(workspace string) (string, bool) {
 // The prose is APPENDED after the template, not interpolated into its
 // sections: filling "## What" would mean parsing the repo's headings, which
 // is fragile and differs per repo. The checkboxes are deliberately left
-// exactly as the repo authored them — Foreman cannot verify the claims they
+// exactly as the repo authored them — Meitheal cannot verify the claims they
 // make, and a wrongly-ticked box would be a false one — so a human still
 // ticks them when promoting the draft.
 //
 // The issue link and provenance are appended last so an agent PR is never
 // mistaken for a hand-written one (#1541).
 //
-// When template is blank the body is Foreman's own fixed shape, byte-for-byte
+// When template is blank the body is Meitheal's own fixed shape, byte-for-byte
 // identical to the pre-#1541 output: the reviewer's (diff-grounded, #1411)
 // summary, then the issue link, then the provenance line. This is the
 // regression guard: repos without a template see no change.
@@ -135,7 +135,7 @@ func PRBody(template, summary string, issue int32, workload string) string {
 		bodyB.WriteString("\n\n")
 	}
 	// Provenance always appended, template or not (#1541 step 4).
-	fmt.Fprintf(&bodyB, "Fixes #%d\n\n_Opened by foreman on review GO (workload %s)._",
+	fmt.Fprintf(&bodyB, "Fixes #%d\n\n_Opened by meitheal on review GO (workload %s)._",
 		issue, workload)
 	return bodyB.String()
 }
@@ -171,6 +171,6 @@ func DescriptionBody(desc string, issue int32, workload string) string {
 	if !ref.MatchString(desc) {
 		fmt.Fprintf(&bodyB, "Fixes %s\n\n", issueRef)
 	}
-	fmt.Fprintf(&bodyB, "_Opened by foreman on review GO (workload %s)._", workload)
+	fmt.Fprintf(&bodyB, "_Opened by meitheal on review GO (workload %s)._", workload)
 	return bodyB.String()
 }

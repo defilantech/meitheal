@@ -26,7 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // AgentReconciler is the M3 stub for Agent CR lifecycle. It exists so
@@ -34,7 +34,7 @@ import (
 // controller for it (events still flow); the M3 reconciler does not
 // write status because v0.1 keeps exactly two condition writers across
 // the system (the scheduler in agentictask_controller.go and the
-// AgenticTaskWatcher in pkg/foreman/agent). Promoting validation results
+// AgenticTaskWatcher in pkg/agent). Promoting validation results
 // to a Ready / Validated condition is a v0.2 task.
 //
 // The reconciler logs Agent create/update events so a Helm install or a
@@ -44,15 +44,15 @@ type AgentReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agents,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agents/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agents/finalizers,verbs=update
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agents,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agents/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agents/finalizers,verbs=update
 
 // Reconcile is the entry point for Agent events. M3 stub: log and exit.
 func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	var agent foremanv1alpha1.Agent
+	var agent meithealv1alpha1.Agent
 	if err := r.Get(ctx, req.NamespacedName, &agent); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -104,7 +104,7 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 // has nothing to compute from them.
 func (r *AgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&foremanv1alpha1.Agent{}).
+		For(&meithealv1alpha1.Agent{}).
 		Named("agent").
 		Complete(r)
 }

@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -23,40 +23,40 @@ import (
 func TestConfigFloorDeterministicMatchesIsDeterministicAgent(t *testing.T) {
 	cases := []struct {
 		name string
-		spec foremanv1alpha1.AgentSpec
+		spec meithealv1alpha1.AgentSpec
 		want bool
 	}{
 		{
 			name: "empty spec (v0.1 shape) -\u003e deterministic",
-			spec: foremanv1alpha1.AgentSpec{},
+			spec: meithealv1alpha1.AgentSpec{},
 			want: true,
 		},
 		{
 			name: "gate-shaped (local, no isvc) -\u003e deterministic",
-			spec: foremanv1alpha1.AgentSpec{
-				Provider: foremanv1alpha1.AgentProviderLocal,
+			spec: meithealv1alpha1.AgentSpec{
+				Provider: meithealv1alpha1.AgentProviderLocal,
 			},
 			want: true,
 		},
 		{
 			name: "cloud-proxy provider -\u003e LLM (not deterministic)",
-			spec: foremanv1alpha1.AgentSpec{
-				Provider: foremanv1alpha1.AgentProviderCloudProxy,
+			spec: meithealv1alpha1.AgentSpec{
+				Provider: meithealv1alpha1.AgentProviderCloudProxy,
 			},
 			want: false,
 		},
 		{
 			name: "local provider with inferenceServiceRef set -\u003e LLM",
-			spec: foremanv1alpha1.AgentSpec{
-				Provider:            foremanv1alpha1.AgentProviderLocal,
+			spec: meithealv1alpha1.AgentSpec{
+				Provider:            meithealv1alpha1.AgentProviderLocal,
 				InferenceServiceRef: corev1.LocalObjectReference{Name: "svc"},
 			},
 			want: false,
 		},
 		{
 			name: "local without inferenceServiceRef -\u003e deterministic",
-			spec: foremanv1alpha1.AgentSpec{
-				Provider: foremanv1alpha1.AgentProviderLocal,
+			spec: meithealv1alpha1.AgentSpec{
+				Provider: meithealv1alpha1.AgentProviderLocal,
 			},
 			want: true,
 		},
@@ -67,7 +67,7 @@ func TestConfigFloorDeterministicMatchesIsDeterministicAgent(t *testing.T) {
 			// to the deterministic check alone: an empty-prompt verifier
 			// passes iff the spec is deterministic.
 			spec := tc.spec
-			spec.Role = foremanv1alpha1.AgentRoleVerifier
+			spec.Role = meithealv1alpha1.AgentRoleVerifier
 			spec.SystemPrompt = ""
 
 			want := IsDeterministicAgent(spec)

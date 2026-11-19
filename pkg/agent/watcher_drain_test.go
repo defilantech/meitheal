@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // drainExecutor blocks in Execute until either release is closed (it then
@@ -45,14 +45,14 @@ func (e *drainExecutor) Kind() string { return "drain-test" }
 
 func (e *drainExecutor) Execute(
 	ctx context.Context,
-	task *foremanv1alpha1.AgenticTask,
-	_ *foremanv1alpha1.Agent,
+	task *meithealv1alpha1.AgenticTask,
+	_ *meithealv1alpha1.Agent,
 ) (*Result, error) {
 	select {
 	case <-e.release:
 		return NewResult(
 			e.Kind(),
-			foremanv1alpha1.AgenticTaskVerdictGo,
+			meithealv1alpha1.AgenticTaskVerdictGo,
 			"finished during drain",
 			time.Millisecond,
 		), nil
@@ -67,12 +67,12 @@ func (e *drainExecutor) Execute(
 // (Scheduled -> Running) before they trigger the drain.
 func waitForTask(
 	t *testing.T, c client.Client, name string,
-	want func(foremanv1alpha1.AgenticTaskStatus) bool,
+	want func(meithealv1alpha1.AgenticTaskStatus) bool,
 ) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		var got foremanv1alpha1.AgenticTask
+		var got meithealv1alpha1.AgenticTask
 		if err := c.Get(
 			context.Background(),
 			types.NamespacedName{Namespace: "default", Name: name}, &got,
@@ -94,7 +94,7 @@ func waitForTask(
 // Regression for defilantech/LLMKube#1438.
 func TestRun_DrainsInFlightTaskOnSigterm(t *testing.T) {
 	c := newRecoveryClient(t, scheduledTask(
-		"drain-go", "m5max-coder", foremanv1alpha1.AgenticTaskKindIssueFix, time.Minute,
+		"drain-go", "m5max-coder", meithealv1alpha1.AgenticTaskKindIssueFix, time.Minute,
 	))
 	exe := &drainExecutor{release: make(chan struct{}), cancelled: &atomic.Bool{}}
 	w := &AgenticTaskWatcher{
@@ -111,8 +111,8 @@ func TestRun_DrainsInFlightTaskOnSigterm(t *testing.T) {
 	go func() { done <- w.Run(ctx) }()
 
 	// Wait until the poll loop has claimed the task and launched the run.
-	waitForTask(t, c, "drain-go", func(s foremanv1alpha1.AgenticTaskStatus) bool {
-		return s.Phase == foremanv1alpha1.AgenticTaskPhaseRunning
+	waitForTask(t, c, "drain-go", func(s meithealv1alpha1.AgenticTaskStatus) bool {
+		return s.Phase == meithealv1alpha1.AgenticTaskPhaseRunning
 	})
 
 	// SIGTERM: the watcher stops claiming and begins draining.
@@ -135,7 +135,7 @@ func TestRun_DrainsInFlightTaskOnSigterm(t *testing.T) {
 		t.Fatal("executor was cancelled during the drain; want it to run to completion")
 	}
 	got := getTask(t, c, "drain-go")
-	if got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseSucceeded {
+	if got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseSucceeded {
 		t.Fatalf("phase = %q, want Succeeded (terminal patched during the drain)", got.Status.Phase)
 	}
 }
@@ -149,7 +149,8 @@ func TestRun_DrainsInFlightTaskOnSigterm(t *testing.T) {
 // drain); the abort itself is #1136.
 func TestRun_DrainStandsDownWhenTaskDeleted(t *testing.T) {
 	const taskName = "drain-deleted"
-	c := newRecoveryClient(t, scheduledTask(taskName, "m5max-coder", foremanv1alpha1.AgenticTaskKindIssueFix, time.Minute))
+	c := newRecoveryClient(t,
+		scheduledTask(taskName, "m5max-coder", meithealv1alpha1.AgenticTaskKindIssueFix, time.Minute))
 	exe := &drainExecutor{release: make(chan struct{}), cancelled: &atomic.Bool{}}
 	w := &AgenticTaskWatcher{
 		Client:               c,
@@ -165,8 +166,8 @@ func TestRun_DrainStandsDownWhenTaskDeleted(t *testing.T) {
 	go func() { done <- w.Run(ctx) }()
 
 	// Wait until the poll loop has claimed the task and launched the run.
-	waitForTask(t, c, taskName, func(s foremanv1alpha1.AgenticTaskStatus) bool {
-		return s.Phase == foremanv1alpha1.AgenticTaskPhaseRunning
+	waitForTask(t, c, taskName, func(s meithealv1alpha1.AgenticTaskStatus) bool {
+		return s.Phase == meithealv1alpha1.AgenticTaskPhaseRunning
 	})
 
 	// SIGTERM: the watcher stops claiming and begins draining.
@@ -174,7 +175,7 @@ func TestRun_DrainStandsDownWhenTaskDeleted(t *testing.T) {
 
 	// Delete the task out from under the in-flight run (kubectl delete
 	// workload GC-ing the child task).
-	var task foremanv1alpha1.AgenticTask
+	var task meithealv1alpha1.AgenticTask
 	if err := c.Get(
 		context.Background(),
 		types.NamespacedName{Namespace: "default", Name: taskName}, &task,
@@ -199,7 +200,7 @@ func TestRun_DrainStandsDownWhenTaskDeleted(t *testing.T) {
 	if !exe.cancelled.Load() {
 		t.Fatal("executor was NOT cancelled on task deletion; liveness must still abort the run during a drain")
 	}
-	var after foremanv1alpha1.AgenticTask
+	var after meithealv1alpha1.AgenticTask
 	if err := c.Get(
 		context.Background(),
 		types.NamespacedName{Namespace: "default", Name: taskName}, &after,
@@ -229,7 +230,7 @@ func TestPollOnce_StopsClaimingCandidatesAfterCancel(t *testing.T) {
 	base := fake.NewClientBuilder().
 		WithScheme(newTestScheme(t)).
 		WithObjects(first, second, agentCR("coder", true)).
-		WithStatusSubresource(&foremanv1alpha1.AgenticTask{}).
+		WithStatusSubresource(&meithealv1alpha1.AgenticTask{}).
 		Build()
 
 	// Pin the pass at the first candidate's claim: signal when that patch is
@@ -281,12 +282,12 @@ func TestPollOnce_StopsClaimingCandidatesAfterCancel(t *testing.T) {
 	}
 
 	// The first candidate was claimed and its run is in-flight (draining).
-	if got := getTask(t, w.Client, "first"); got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseRunning {
+	if got := getTask(t, w.Client, "first"); got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseRunning {
 		t.Fatalf("first phase = %q, want Running (claimed and in-flight)", got.Status.Phase)
 	}
 	exec.waitStarted(t, 1)
 	// The second, already-scheduled candidate must NOT have been claimed.
-	if got := getTask(t, w.Client, "second"); got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseScheduled {
+	if got := getTask(t, w.Client, "second"); got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseScheduled {
 		t.Fatalf("second phase = %q, want Scheduled (not claimed after the cancel)", got.Status.Phase)
 	}
 }
@@ -318,7 +319,7 @@ func TestPollOnce_RechecksCancellationBeforeClaim(t *testing.T) {
 	base := fake.NewClientBuilder().
 		WithScheme(newTestScheme(t)).
 		WithObjects(first, second, agentCR("coder-a", true), agentCR("coder-b", true)).
-		WithStatusSubresource(&foremanv1alpha1.AgenticTask{}).
+		WithStatusSubresource(&meithealv1alpha1.AgenticTask{}).
 		Build()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -332,7 +333,7 @@ func TestPollOnce_RechecksCancellationBeforeClaim(t *testing.T) {
 			// The pass has moved to the second candidate: its Agent Get is
 			// the last thing before its claim, so SIGTERM lands exactly at
 			// the check-then-claim boundary.
-			if a, ok := obj.(*foremanv1alpha1.Agent); ok && a.Name == "coder-b" {
+			if a, ok := obj.(*meithealv1alpha1.Agent); ok && a.Name == "coder-b" {
 				cancel()
 			}
 			return err
@@ -363,13 +364,13 @@ func TestPollOnce_RechecksCancellationBeforeClaim(t *testing.T) {
 	}
 
 	// The first candidate was claimed before the drain and is in-flight.
-	if got := getTask(t, w.Client, "first"); got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseRunning {
+	if got := getTask(t, w.Client, "first"); got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseRunning {
 		t.Fatalf("first phase = %q, want Running (claimed before the drain)", got.Status.Phase)
 	}
 	exec.waitStarted(t, 1)
 	// The cancellation landed after the second candidate's top-of-loop check:
 	// it must still stay Scheduled for the next node.
-	if got := getTask(t, w.Client, "second"); got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseScheduled {
+	if got := getTask(t, w.Client, "second"); got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseScheduled {
 		t.Fatalf(
 			"second phase = %q, want Scheduled (claim must not start after a cancel at the claim boundary)",
 			got.Status.Phase,

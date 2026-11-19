@@ -31,7 +31,7 @@ func auditCM(name, recordedAt, repo, verdict string) *corev1.ConfigMap {
 	data, _ := json.Marshal(rec)
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "foreman-audit-" + name, Namespace: "default",
+			Name: "meitheal-audit-" + name, Namespace: "default",
 			Labels: map[string]string{audit.AuditLabel: "true", audit.AuditTaskLabel: name},
 		},
 		Data: map[string]string{"audit.json": string(data)},

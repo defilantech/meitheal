@@ -38,7 +38,7 @@ import (
 // so:
 //
 //  1. The credential never sits in the tool's memory between calls.
-//  2. Rotating ~/.config/foreman/github-token while the foreman-agent
+//  2. Rotating ~/.config/github-token while the meitheal-agent
 //     is running takes effect on the next tool call.
 //  3. The tool stays a clean read-only surface even if its instance
 //     leaks into a debugger or transcript.
@@ -59,7 +59,7 @@ type TokenSource func() (string, error)
 // emitted APPROVE verdicts on diffs whose scope it had never actually
 // checked against the issue body. The fix is to stop subshelling `gh`
 // and instead expose one bounded GitHub surface (this tool) using the
-// same token the foreman-agent already loads at startup.
+// same token the meitheal-agent already loads at startup.
 //
 // Security shape vs the GH_TOKEN-env alternative:
 //
@@ -69,9 +69,9 @@ type TokenSource func() (string, error)
 //     authenticated REST writes through this tool.
 //   - The token lives behind a TokenSource closure; the struct
 //     stores no credentials between calls.
-//   - Containerised foreman-agents do not need `gh` installed in
+//   - Containerised meitheal-agents do not need `gh` installed in
 //     their image; pure Go HTTP suffices.
-//   - Token rotation surface is one file (~/.config/foreman/github-token)
+//   - Token rotation surface is one file (~/.config/github-token)
 //     instead of also a per-user `gh` config or per-process env var
 //     inherited by every bash subprocess.
 type FetchIssueTool struct {
@@ -126,7 +126,7 @@ func (t *FetchIssueTool) Schema() oai.ToolSchemaDef {
 //     string): wrapped fmt.Errorf naming the field.
 //   - token resolution failure: wrapped error citing the env var /
 //     file the operator is expected to populate; this points at the
-//     foreman-agent host, not the model.
+//     meitheal-agent host, not the model.
 //   - 404: "issue not found" so the model can choose to ERROR out
 //     rather than guess.
 //   - 401 / 403: "unauthorized" with a hint that the token is wrong
@@ -181,7 +181,7 @@ func (t *FetchIssueTool) Execute(ctx context.Context, args json.RawMessage) (*ag
 			return nil, fmt.Errorf(
 				"fetch_issue: no GitHub token "+
 					"(set GITHUB_TOKEN env or populate "+
-					"~/.config/foreman/github-token on the FleetNode): %w", err)
+					"~/.config/github-token on the FleetNode): %w", err)
 		}
 	}
 	item, err := t.workItems(token).Get(ctx, a.Repo, strconv.Itoa(a.Number))
@@ -194,7 +194,7 @@ func (t *FetchIssueTool) Execute(ctx context.Context, args json.RawMessage) (*ag
 			case herr.IsUnauthorized():
 				return nil, fmt.Errorf(
 					"fetch_issue: unauthorized for %s#%d; "+
-						"foreman-agent's GitHub token may be missing the repo scope, "+
+						"meitheal-agent's GitHub token may be missing the repo scope, "+
 						"or the issue is in a private repo not visible to it",
 					a.Repo, a.Number)
 			}

@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // TestContentReferencesModule covers the deterministic content signal the
@@ -180,10 +180,10 @@ func TestScopeOverlap_ContentVouchFeatureNamedTest(t *testing.T) {
 	}
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra, body, added,
-		foremanv1alpha1.AgenticTaskVerdictGo, []string{".py"},
+		meithealv1alpha1.AgenticTaskVerdictGo, []string{".py"},
 		TestLayout{TestRoot: "tests", SourceRoot: "pr_reviewer"},
 		added, reader.read, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("a feature-named test whose body imports the named module must keep GO; got %v (reason: %v)",
 			got, extra["demotionReason"])
 	}
@@ -219,10 +219,10 @@ func TestScopeOverlap_ContentVouchNoMatchingImportStillDemotes(t *testing.T) {
 	}
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra, body, added,
-		foremanv1alpha1.AgenticTaskVerdictGo, []string{".py"},
+		meithealv1alpha1.AgenticTaskVerdictGo, []string{".py"},
 		TestLayout{TestRoot: "tests", SourceRoot: "pr_reviewer"},
 		added, reader.read, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("a feature-named test that imports a different module must not vouch; got %v", got)
 	}
 	if v, _ := extra["scopeDriftDetected"].(bool); !v {
@@ -248,11 +248,11 @@ func TestScopeOverlap_ContentVouchOnlyReadsAddedTestFiles(t *testing.T) {
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra, body,
 		[]string{"pr_reviewer/other.py"}, // a source diff that touches nothing named
-		foremanv1alpha1.AgenticTaskVerdictGo, []string{".py"},
+		meithealv1alpha1.AgenticTaskVerdictGo, []string{".py"},
 		TestLayout{TestRoot: "tests", SourceRoot: "pr_reviewer"},
 		[]string{}, // nothing added: the vouch cannot read anything
 		reader.read, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("a test file outside the added set must not vouch; got %v", got)
 	}
 	if _, ok := extra[scopeMatchedViaContentKey]; ok {
@@ -271,10 +271,10 @@ func TestScopeOverlap_ContentVouchReadErrorDegradesToName(t *testing.T) {
 	reader := fakeReader{}
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra, body, added,
-		foremanv1alpha1.AgenticTaskVerdictGo, []string{".py"},
+		meithealv1alpha1.AgenticTaskVerdictGo, []string{".py"},
 		TestLayout{TestRoot: "tests", SourceRoot: "pr_reviewer"},
 		added, reader.read, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("an unreadable test file must not vouch; got %v", got)
 	}
 	if _, ok := extra[scopeMatchedViaContentKey]; ok {
@@ -297,10 +297,10 @@ func TestScopeOverlap_NameMatchNotReattributedToContent(t *testing.T) {
 	}
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra, body, added,
-		foremanv1alpha1.AgenticTaskVerdictGo, []string{".py"},
+		meithealv1alpha1.AgenticTaskVerdictGo, []string{".py"},
 		TestLayout{TestRoot: "tests", SourceRoot: "pr_reviewer"},
 		added, reader.read, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("a name match must keep GO; got %v", got)
 	}
 	if _, ok := extra[scopeMatchedViaContentKey]; ok {
@@ -321,9 +321,9 @@ func TestScopeOverlap_NilAddedOrReaderKeepsNameBehaviour(t *testing.T) {
 	// nil added set: the vouch is disabled, the ref stays unmatched, GO demotes.
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra, body, added,
-		foremanv1alpha1.AgenticTaskVerdictGo, []string{".py"}, TestLayout{},
+		meithealv1alpha1.AgenticTaskVerdictGo, []string{".py"}, TestLayout{},
 		nil, reader.read, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("nil added set must keep name-only behaviour (demote); got %v", got)
 	}
 	if _, ok := extra[scopeMatchedViaContentKey]; ok {
@@ -333,9 +333,9 @@ func TestScopeOverlap_NilAddedOrReaderKeepsNameBehaviour(t *testing.T) {
 	// nil reader: the vouch is disabled even though the added set is present.
 	extra = map[string]any{}
 	got = enforceReviewerScopeOverlap(logr.Discard(), extra, body, added,
-		foremanv1alpha1.AgenticTaskVerdictGo, []string{".py"}, TestLayout{},
+		meithealv1alpha1.AgenticTaskVerdictGo, []string{".py"}, TestLayout{},
 		added, nil, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("nil reader must keep name-only behaviour (demote); got %v", got)
 	}
 	if _, ok := extra[scopeMatchedViaContentKey]; ok {
@@ -359,11 +359,11 @@ func TestScopeOverlap_ContentVouchModifiedTestAddedLinesVouch(t *testing.T) {
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra, body,
 		[]string{modified}, // the diff touches the modified test file only
-		foremanv1alpha1.AgenticTaskVerdictGo, []string{".py"},
+		meithealv1alpha1.AgenticTaskVerdictGo, []string{".py"},
 		TestLayout{TestRoot: "tests", SourceRoot: "pr_reviewer"},
 		[]string{}, // nothing added: the only probe is the modified file's added lines
 		nil, addedLines.lines)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("a modified test whose added lines import the named module must keep GO; got %v (reason: %v)",
 			got, extra["demotionReason"])
 	}
@@ -399,11 +399,11 @@ func TestScopeOverlap_ContentVouchModifiedTestPreExistingImportDoesNotVouch(t *t
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra, body,
 		[]string{modified},
-		foremanv1alpha1.AgenticTaskVerdictGo, []string{".py"},
+		meithealv1alpha1.AgenticTaskVerdictGo, []string{".py"},
 		TestLayout{TestRoot: "tests", SourceRoot: "pr_reviewer"},
 		[]string{},
 		reader.read, addedLines.lines)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("a modified test whose import predates the branch must NOT vouch; got %v", got)
 	}
 	if v, _ := extra["scopeDriftDetected"].(bool); !v {
@@ -427,11 +427,11 @@ func TestScopeOverlap_ContentVouchAddedFileWholeContentNoRegression(t *testing.T
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra, body,
 		[]string{added},
-		foremanv1alpha1.AgenticTaskVerdictGo, []string{".py"},
+		meithealv1alpha1.AgenticTaskVerdictGo, []string{".py"},
 		TestLayout{TestRoot: "tests", SourceRoot: "pr_reviewer"},
 		[]string{added},
 		reader.read, nil) // readAddedLines nil: the added-file probe still fires
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("an ADDED test whose body imports the module must still vouch (no regression); got %v", got)
 	}
 	via, ok := extra[scopeMatchedViaContentKey].([]string)
@@ -459,11 +459,11 @@ func TestScopeOverlap_ContentVouchModifiedTest438Repro(t *testing.T) {
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra, body,
 		[]string{testFile},
-		foremanv1alpha1.AgenticTaskVerdictGo, []string{".py"},
+		meithealv1alpha1.AgenticTaskVerdictGo, []string{".py"},
 		TestLayout{TestRoot: "tests", SourceRoot: "pr_reviewer"},
 		[]string{},
 		nil, addedLines.lines)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("the #438 append-to-existing-test-file shape must keep GO; got %v (reason: %v)",
 			got, extra["demotionReason"])
 	}

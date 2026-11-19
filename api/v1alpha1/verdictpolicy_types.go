@@ -39,9 +39,9 @@ type VerdictPolicy struct {
 // actually correct.
 //
 // This is the single source of truth for the default list.
-// pkg/foreman/agent's defaultSelfGO variable is declared as a direct
+// pkg/agent's defaultSelfGO variable is declared as a direct
 // reference to DefaultSelfGO rather than a second copy of the same four
-// literals: api/foreman/v1alpha1 cannot import pkg/foreman/agent (that
+// literals: api/v1alpha1 cannot import pkg/agent (that
 // package already imports this one for every CRD type it consumes, so
 // the reverse import would cycle), which is why the literal classes live
 // here rather than as string(workClassX) conversions of the agent

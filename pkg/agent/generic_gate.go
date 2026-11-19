@@ -23,7 +23,7 @@ import (
 	"os/exec"
 	"strings"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // usesGenericGate reports whether a task's GateProfile should run the
@@ -31,10 +31,10 @@ import (
 // specialized Go gate (RunCoderGate). A nil profile, an empty language, or
 // an explicit "go" language all use the Go path, so existing Go tasks are
 // unaffected and the Go gate stays byte-identical.
-func usesGenericGate(profile *foremanv1alpha1.GateProfile) bool {
+func usesGenericGate(profile *meithealv1alpha1.GateProfile) bool {
 	return profile != nil &&
 		profile.Language != "" &&
-		profile.Language != foremanv1alpha1.GateLanguageGo
+		profile.Language != meithealv1alpha1.GateLanguageGo
 }
 
 // genericGateDeferredCheck names the advisory emitted when a self-gate
@@ -98,7 +98,7 @@ func isMissingRuntime(err error, output string) bool {
 func RunGenericGate(
 	ctx context.Context,
 	workspace string,
-	gate foremanv1alpha1.ResolvedGate,
+	gate meithealv1alpha1.ResolvedGate,
 	run commandRunner,
 ) (pass bool, feedback string, advisories []advisory) {
 	checks := []struct {

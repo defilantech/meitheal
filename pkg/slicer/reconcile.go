@@ -81,7 +81,7 @@ type SlicePlan struct {
 
 // ModelCaller is the injected LLM transport: prompt in, completion out. The
 // library never constructs a client or makes a network call; the experiment
-// passes a curl-to-reviewer closure and Foreman passes its own model client.
+// passes a curl-to-reviewer closure and Meitheal passes its own model client.
 type ModelCaller interface {
 	Call(prompt string) (string, error)
 }

@@ -28,20 +28,15 @@ import (
 	"time"
 )
 
-// foremanExec runs args through the real `foreman` command group and returns
-// what the command wrote to stdout. Going through NewForemanCommand rather
+// meithealExec runs args through the real `meitheal` root command and returns
+// what the command wrote to stdout. Going through NewRootCommand rather
 // than calling the constructors directly is deliberate: it exercises the
 // registration and the flag wiring instead of asserting they exist. Cobra
 // writes errors to stderr, which is discarded here so that a stdout
 // assertion cannot be satisfied by an error report.
-func foremanExec(t *testing.T, args ...string) (string, error) {
+func meithealExec(t *testing.T, args ...string) (string, error) {
 	t.Helper()
-	cmd := NewForemanCommand()
-	// Cobra dumps usage to stdout when a command errors, unless the command
-	// Execute was called on silences it. In production that is
-	// NewRootCommand, which sets SilenceUsage; setting it here models the
-	// same run rather than testing a mode the CLI never has.
-	cmd.SilenceUsage = true
+	cmd := NewRootCommand()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(io.Discard)
@@ -237,24 +232,27 @@ func TestRenderDecisions_FlattensCellsThatWouldBreakTheTable(t *testing.T) {
 }
 
 // Asserts on registered names rather than help text, so rewording a Short
-// does not fail a test about wiring. The two pre-existing registrations are
-// covered here too; nothing else pins them.
-func TestForemanCommand_RegistersItsSubcommands(t *testing.T) {
+// does not fail a test about wiring. Every command sits directly under the
+// root, with no group level in between.
+func TestRootCommand_RegistersItsSubcommands(t *testing.T) {
 	paths := [][]string{
 		{"dispatch"},
 		{"slice"},
 		{"run"},
 		{"decisions"},
 		{"decisions", "answer"},
+		{"audit"},
+		{"audit", "export"},
+		{"version"},
 	}
 	for _, path := range paths {
 		t.Run(strings.Join(path, " "), func(t *testing.T) {
-			c, _, err := NewForemanCommand().Find(path)
+			c, _, err := NewRootCommand().Find(path)
 			if err != nil {
-				t.Fatalf("foreman %s: %v", strings.Join(path, " "), err)
+				t.Fatalf("meitheal %s: %v", strings.Join(path, " "), err)
 			}
 			if want := path[len(path)-1]; c.Name() != want {
-				t.Errorf("foreman %s resolved to %q, want %q", strings.Join(path, " "), c.Name(), want)
+				t.Errorf("meitheal %s resolved to %q, want %q", strings.Join(path, " "), c.Name(), want)
 			}
 		})
 	}
@@ -270,7 +268,7 @@ func TestDecisionsCommand_RendersTheGoodOnesAndReportsTheBad(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("answer: revise\noptions: [accept, revise\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out, err := foremanExec(t, "decisions", "--decisions-dir", dir)
+	out, err := meithealExec(t, "decisions", "--decisions-dir", dir)
 	if err == nil {
 		t.Fatal("Execute() = nil, want an error naming the file that could not be read")
 	}
@@ -291,7 +289,7 @@ func TestDecisionsCommand_DoesNotClaimEmptyWhenNothingWasListed(t *testing.T) {
 	if err := os.WriteFile(notADir, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out, err := foremanExec(t, "decisions", "--decisions-dir", notADir)
+	out, err := meithealExec(t, "decisions", "--decisions-dir", notADir)
 	if err == nil {
 		t.Fatal("Execute() = nil, want an error for an unlistable decisions dir")
 	}
@@ -302,7 +300,7 @@ func TestDecisionsCommand_DoesNotClaimEmptyWhenNothingWasListed(t *testing.T) {
 
 // An empty queue is a real answer and has to be said out loud.
 func TestDecisionsCommand_EmptyDirSaysSo(t *testing.T) {
-	out, err := foremanExec(t, "decisions", "--decisions-dir", t.TempDir())
+	out, err := meithealExec(t, "decisions", "--decisions-dir", t.TempDir())
 	if err != nil {
 		t.Fatalf("Execute() = %v, want no error for an empty decisions dir", err)
 	}
@@ -316,7 +314,7 @@ func TestDecisionsCommand_MissingDir(t *testing.T) {
 	// parked decisions." turns it into a confident "nothing to do".
 	t.Run("typed and absent is an error", func(t *testing.T) {
 		typo := filepath.Join(t.TempDir(), "no-such-dir")
-		out, err := foremanExec(t, "decisions", "--decisions-dir", typo)
+		out, err := meithealExec(t, "decisions", "--decisions-dir", typo)
 		if err == nil {
 			t.Fatal("Execute() = nil, want a typo'd --decisions-dir to be refused")
 		}
@@ -332,7 +330,7 @@ func TestDecisionsCommand_MissingDir(t *testing.T) {
 	// before the first run.
 	t.Run("the default being absent is not", func(t *testing.T) {
 		t.Chdir(t.TempDir())
-		out, err := foremanExec(t, "decisions")
+		out, err := meithealExec(t, "decisions")
 		if err != nil {
 			t.Fatalf("Execute() = %v, want an absent default dir to be the normal empty state", err)
 		}
@@ -343,7 +341,7 @@ func TestDecisionsCommand_MissingDir(t *testing.T) {
 }
 
 func TestDecisionsCommand_RejectsStrayArguments(t *testing.T) {
-	_, err := foremanExec(t, "decisions", "1602", "--decisions-dir", t.TempDir())
+	_, err := meithealExec(t, "decisions", "1602", "--decisions-dir", t.TempDir())
 	if err == nil {
 		t.Fatal("Execute() = nil, want a stray argument to be refused, not ignored")
 	}
@@ -400,7 +398,7 @@ func TestDecisionsAnswerCommand(t *testing.T) {
 			dir, _ := decisionFixtureDir(t)
 			args := append([]string{"decisions", "answer"}, tc.args...)
 			args = append(args, "--decisions-dir", dir)
-			out, err := foremanExec(t, args...)
+			out, err := meithealExec(t, args...)
 			switch {
 			case tc.wantErr == "" && err != nil:
 				t.Fatalf("Execute() = %v, want no error", err)
@@ -454,7 +452,7 @@ func TestDecisionsDirIsNamedInOnePlace(t *testing.T) {
 }
 
 func TestRunCommand_RequiresQueueAndCoderAgent(t *testing.T) {
-	_, err := foremanExec(t, "run")
+	_, err := meithealExec(t, "run")
 	if err == nil {
 		t.Fatal("Execute() = nil, want the required flags to be enforced")
 	}
@@ -496,10 +494,10 @@ const runFixtureIntent = "fix the thing"
 func TestRunCommand_UsesTheOptionsItWasGiven(t *testing.T) {
 	queue, intent := runQueueFixture(t)
 	parked := filepath.Join(t.TempDir(), "parked-here")
-	out, err := foremanExec(t, "run", "--dry-run",
+	out, err := meithealExec(t, "run", "--dry-run",
 		"--queue", queue,
 		"--coder-agent", "coder-metal",
-		"--namespace", "foreman-ns",
+		"--namespace", "meitheal-ns",
 		"--decisions-dir", parked,
 		"--stall-factor", "3.5")
 	if err != nil {
@@ -508,11 +506,11 @@ func TestRunCommand_UsesTheOptionsItWasGiven(t *testing.T) {
 	want := []string{
 		"queue: " + queue,
 		"coder-agent: coder-metal",
-		"namespace: foreman-ns",
+		"namespace: meitheal-ns",
 		"decisions-dir: " + parked,
 		"stall-factor: 3.5",
 		"items: 1",
-		"issue 1602 (defilantech/LLMKube): branch foreman/wl-1602/issue-1602, intent " +
+		"issue 1602 (defilantech/LLMKube): branch meitheal/wl-1602/issue-1602, intent " +
 			intent + " (13 bytes)",
 	}
 	for _, w := range want {
@@ -536,7 +534,7 @@ func TestRunCommand_RefusesAStallFactorThatWouldKillEveryRun(t *testing.T) {
 	for _, factor := range []string{"0", "-1", "-2.5", "NaN", "Inf", "-Inf"} {
 		t.Run(factor, func(t *testing.T) {
 			queue, _ := runQueueFixture(t)
-			out, err := foremanExec(t, "run", "--dry-run",
+			out, err := meithealExec(t, "run", "--dry-run",
 				"--queue", queue, "--coder-agent", "coder-metal", "--stall-factor", factor)
 			if err == nil {
 				t.Fatalf("Execute() = nil, want --stall-factor %s refused", factor)
@@ -555,7 +553,7 @@ func TestRunCommand_RefusesAStallFactorThatWouldKillEveryRun(t *testing.T) {
 // rather than print a plan and exit 0 as though something ran.
 func TestRunCommand_RefusesALiveRunRatherThanPretending(t *testing.T) {
 	queue, _ := runQueueFixture(t)
-	out, err := foremanExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal")
+	out, err := meithealExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal")
 	if err == nil {
 		t.Fatal("Execute() = nil, want a live run refused while the effects are unwired")
 	}
@@ -573,7 +571,7 @@ func TestRunCommand_RefusesALiveRunRatherThanPretending(t *testing.T) {
 func TestRunCommand_ReportsWhatIsWrongWithTheQueue(t *testing.T) {
 	t.Run("a queue that is not there", func(t *testing.T) {
 		missing := filepath.Join(t.TempDir(), "no-queue.yaml")
-		_, err := foremanExec(t, "run", "--queue", missing, "--coder-agent", "coder-metal")
+		_, err := meithealExec(t, "run", "--queue", missing, "--coder-agent", "coder-metal")
 		if err == nil {
 			t.Fatal("Execute() = nil, want a missing queue refused")
 		}
@@ -590,7 +588,7 @@ func TestRunCommand_ReportsWhatIsWrongWithTheQueue(t *testing.T) {
 		if err := os.WriteFile(queue, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		out, err := foremanExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal")
+		out, err := meithealExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal")
 		if err == nil {
 			t.Fatal("Execute() = nil, want a malformed queue refused")
 		}
@@ -606,7 +604,7 @@ func TestRunCommand_ReportsWhatIsWrongWithTheQueue(t *testing.T) {
 		if err := os.Remove(intent); err != nil {
 			t.Fatal(err)
 		}
-		_, err := foremanExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal")
+		_, err := meithealExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal")
 		if err == nil {
 			t.Fatal("Execute() = nil, want an unreadable intent refused")
 		}

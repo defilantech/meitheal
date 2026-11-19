@@ -28,10 +28,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
-// +kubebuilder:webhook:path=/validate-foreman-llmkube-dev-v1alpha1-agentictask,mutating=false,failurePolicy=fail,sideEffects=None,groups=foreman.llmkube.dev,resources=agentictasks,verbs=create,versions=v1alpha1,name=vagentictask.foreman.llmkube.dev,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-meitheal-dev-v1alpha1-agentictask,mutating=false,failurePolicy=fail,sideEffects=None,groups=meitheal.dev,resources=agentictasks,verbs=create,versions=v1alpha1,name=vagentictask.meitheal.dev,admissionReviewVersions=v1
 
 // AgenticTaskValidator validates AgenticTask CRs at admission. Its single
 // invariant is referential integrity: a task that names an Agent via
@@ -51,12 +51,12 @@ type AgenticTaskValidator struct {
 	Client client.Client
 }
 
-var _ admission.Validator[*foremanv1alpha1.AgenticTask] = &AgenticTaskValidator{}
+var _ admission.Validator[*meithealv1alpha1.AgenticTask] = &AgenticTaskValidator{}
 
 // SetupAgenticTaskWebhookWithManager registers the AgenticTask validating
 // webhook with a reader backed by the manager's cache + client.
 func SetupAgenticTaskWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, &foremanv1alpha1.AgenticTask{}).
+	return ctrl.NewWebhookManagedBy(mgr, &meithealv1alpha1.AgenticTask{}).
 		WithValidator(&AgenticTaskValidator{Client: mgr.GetClient()}).
 		Complete()
 }
@@ -65,7 +65,7 @@ func SetupAgenticTaskWebhookWithManager(mgr ctrl.Manager) error {
 // no-ops: agentRef is effectively immutable in practice (the scheduler
 // drives the lifecycle), and re-checking on every status patch would add
 // an apiserver round-trip per reconcile for no safety gain.
-func (v *AgenticTaskValidator) ValidateCreate(ctx context.Context, task *foremanv1alpha1.AgenticTask) (admission.Warnings, error) {
+func (v *AgenticTaskValidator) ValidateCreate(ctx context.Context, task *meithealv1alpha1.AgenticTask) (admission.Warnings, error) {
 	log := logf.FromContext(ctx)
 	log.V(1).Info("validating AgenticTask create", "name", task.Name, "namespace", task.Namespace)
 
@@ -75,13 +75,13 @@ func (v *AgenticTaskValidator) ValidateCreate(ctx context.Context, task *foreman
 		return nil, nil
 	}
 
-	var agent foremanv1alpha1.Agent
+	var agent meithealv1alpha1.Agent
 	key := types.NamespacedName{Namespace: task.Namespace, Name: task.Spec.AgentRef.Name}
 	if err := v.Client.Get(ctx, key, &agent); err != nil {
 		if apierrors.IsNotFound(err) {
 			fld := field.NewPath("spec", "agentRef", "name")
 			return nil, apierrors.NewInvalid(
-				foremanv1alpha1.GroupVersion.WithKind("AgenticTask").GroupKind(),
+				meithealv1alpha1.GroupVersion.WithKind("AgenticTask").GroupKind(),
 				task.Name,
 				field.ErrorList{field.Invalid(fld, task.Spec.AgentRef.Name,
 					fmt.Sprintf("Agent %q not found in namespace %q", key.Name, key.Namespace))},
@@ -96,11 +96,11 @@ func (v *AgenticTaskValidator) ValidateCreate(ctx context.Context, task *foreman
 }
 
 // ValidateUpdate is a no-op. See ValidateCreate for why.
-func (v *AgenticTaskValidator) ValidateUpdate(_ context.Context, _, _ *foremanv1alpha1.AgenticTask) (admission.Warnings, error) {
+func (v *AgenticTaskValidator) ValidateUpdate(_ context.Context, _, _ *meithealv1alpha1.AgenticTask) (admission.Warnings, error) {
 	return nil, nil
 }
 
 // ValidateDelete is a no-op: deleting a task is always allowed.
-func (v *AgenticTaskValidator) ValidateDelete(_ context.Context, _ *foremanv1alpha1.AgenticTask) (admission.Warnings, error) {
+func (v *AgenticTaskValidator) ValidateDelete(_ context.Context, _ *meithealv1alpha1.AgenticTask) (admission.Warnings, error) {
 	return nil, nil
 }

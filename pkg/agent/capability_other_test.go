@@ -21,7 +21,7 @@ package agent
 import (
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // The non-darwin capability provider is a stub: it advertises whatever
@@ -30,7 +30,7 @@ import (
 
 func TestNewCapability_Other_PropagatesAllFlagSuppliedFields(t *testing.T) {
 	p := NewCapability(CapabilityOptions{
-		Accelerator:      foremanv1alpha1.FleetNodeAccelerator("cuda"),
+		Accelerator:      meithealv1alpha1.FleetNodeAccelerator("cuda"),
 		InstalledModels:  []string{"qwen3-coder-30b"},
 		MaxContextTokens: 32768,
 		TokensPerSecond:  85,

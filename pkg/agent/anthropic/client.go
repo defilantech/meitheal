@@ -36,7 +36,7 @@ import (
 
 // Client is a minimal client for the Anthropic Messages API.
 //
-// As with the oai client it is deliberately not the official SDK: Foreman
+// As with the oai client it is deliberately not the official SDK: Meitheal
 // needs exactly one HTTP shape, wants provider-specific retry semantics,
 // and does not want the SDK's transitive cone (#1627).
 //

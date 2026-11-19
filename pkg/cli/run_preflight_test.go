@@ -25,7 +25,7 @@ import (
 
 const (
 	preflightRepo   = "defilantech/LLMKube"
-	preflightBranch = "foreman/wl/issue-1602"
+	preflightBranch = "meitheal/wl/issue-1602"
 	preflightPRURL  = "https://github.com/x/y/pull/9"
 )
 

@@ -46,7 +46,7 @@ func scanTestJobName(t *testing.T) string {
 	if len(base) > maxTaskLen {
 		base = strings.TrimRight(base[:maxTaskLen], "-")
 	}
-	return "foreman-scan-" + base
+	return "meitheal-scan-" + base
 }
 
 // runScanJobRun submits a scan Job through Execute against a fake
@@ -63,7 +63,7 @@ func runScanJobRun(
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
 	jobName := scanTestJobName(t)
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 
 	if deadline {
 		go flipDeadlineOnce(ctx, c, key)
@@ -73,7 +73,7 @@ func runScanJobRun(
 
 	full := map[string]any{
 		"repo":    "defilantech/LLMKube",
-		"branch":  "foreman/issue-900",
+		"branch":  "meitheal/issue-900",
 		"taskRef": map[string]string{"namespace": "default", "name": "scan-900"},
 	}
 	for k, v := range args {
@@ -116,12 +116,12 @@ func scanRenderJob(t *testing.T, tweak func(*scanRendererInput)) *batchv1.Job {
 		t.Fatalf("resolveScanTargets(nil): %v", err)
 	}
 	in := scanRendererInput{
-		Name:                    "foreman-scan-test",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-scan-test",
+		Namespace:               "meitheal-system",
 		BuilderImage:            "golang:1.26",
 		RunnerImage:             "alpine:3.24",
 		Repo:                    "defilantech/LLMKube",
-		Branch:                  "foreman/issue-900",
+		Branch:                  "meitheal/issue-900",
 		Targets:                 targets,
 		Severity:                resolveScanSeverity(nil),
 		IgnoreUnfixed:           DefaultScanIgnoreUnfixed,
@@ -213,7 +213,7 @@ func TestRunScanJob_UnknownImageIDErrorsWithoutSubmit(t *testing.T) {
 	tool := &RunScanJobTool{
 		Client: c,
 		Cfg: RunScanJobToolConfig{
-			NameFn:       pinName("foreman-scan-unknown-img"),
+			NameFn:       pinName("meitheal-scan-unknown-img"),
 			PollInterval: 5 * time.Millisecond,
 			PollTimeout:  500 * time.Millisecond,
 		},
@@ -221,8 +221,8 @@ func TestRunScanJob_UnknownImageIDErrorsWithoutSubmit(t *testing.T) {
 
 	args, err := json.Marshal(map[string]any{
 		"repo":    "defilantech/LLMKube",
-		"branch":  "foreman/issue-900",
-		"images":  []string{"foreman-agent", "not-a-target"},
+		"branch":  "meitheal/issue-900",
+		"images":  []string{"router-proxy", "not-a-target"},
 		"taskRef": map[string]string{"namespace": "default", "name": "scan-900"},
 	})
 	if err != nil {
@@ -264,7 +264,7 @@ func TestRunScanJob_UpstreamURLValidation(t *testing.T) {
 
 			c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
 			jobName := scanTestJobName(t)
-			go flipStatusOnce(ctx, c, types.NamespacedName{Namespace: "foreman-system", Name: jobName}, 1, 0)
+			go flipStatusOnce(ctx, c, types.NamespacedName{Namespace: "meitheal-system", Name: jobName}, 1, 0)
 
 			tool := &RunScanJobTool{
 				Client: c,
@@ -275,7 +275,7 @@ func TestRunScanJob_UpstreamURLValidation(t *testing.T) {
 				},
 			}
 			raw, err := json.Marshal(map[string]any{
-				"repo": "defilantech/LLMKube", "branch": "foreman/x",
+				"repo": "defilantech/LLMKube", "branch": "meitheal/x",
 				"upstreamURL": tc.upstreamURL,
 				"taskRef":     map[string]string{"namespace": "default", "name": "scan"},
 			})
@@ -311,10 +311,10 @@ func TestRunScanJob_SucceededProducesSCANPASS(t *testing.T) {
 	if got, _ := res.Extra["logTail"].(string); !strings.Contains(got, "SCAN PASS") {
 		t.Errorf("logTail should carry the scan output; got %q", got)
 	}
-	if job.Labels["app.kubernetes.io/name"] != "foreman-scan" {
+	if job.Labels["app.kubernetes.io/name"] != "meitheal-scan" {
 		t.Errorf("missing canonical label: %#v", job.Labels)
 	}
-	if job.Labels["foreman.llmkube.dev/task-name"] != "scan-900" {
+	if job.Labels["meitheal.dev/task-name"] != "scan-900" {
 		t.Errorf("task-name label: %#v", job.Labels)
 	}
 
@@ -339,7 +339,7 @@ func TestRunScanJob_SucceededProducesSCANPASS(t *testing.T) {
 		t.Errorf("RunnerImage: %q", scan.Image)
 	}
 
-	// All four targets' build lines present in the builder, all four tars
+	// Every target's build line present in the builder, every tar
 	// assembled and scanned by the runner, at the CI defaults.
 	initArgs := strings.Join(init.Args, "\n")
 	scanArgs := strings.Join(scan.Args, "\n")
@@ -352,8 +352,8 @@ func TestRunScanJob_SucceededProducesSCANPASS(t *testing.T) {
 		}
 	}
 	if n := strings.Count(scanArgs, "buildah build --storage-driver=vfs --isolation=chroot "+
-		"--platform linux/amd64"); n != 4 {
-		t.Errorf("want 4 daemonless buildah lines, got %d:\n%s", n, scanArgs)
+		"--platform linux/amd64"); n != len(builtInScanTargets) {
+		t.Errorf("want %d daemonless buildah lines, got %d:\n%s", len(builtInScanTargets), n, scanArgs)
 	}
 	for _, flag := range []string{"--severity CRITICAL,HIGH", "--ignore-unfixed", "--exit-code 1 --format table"} {
 		if !strings.Contains(scanArgs, flag) {
@@ -414,7 +414,7 @@ func TestRunScanJob_PollTimeoutProducesSCANERROR(t *testing.T) {
 	defer cancel()
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-scan-stuck"
+	jobName := "meitheal-scan-stuck"
 	tool := &RunScanJobTool{
 		Client: c,
 		Cfg: RunScanJobToolConfig{
@@ -455,9 +455,9 @@ func TestRunScanJob_CreateFailureProducesSCANERROR(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	jobName := "foreman-scan-collide"
+	jobName := "meitheal-scan-collide"
 	seeded := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: jobName, Namespace: "foreman-system"},
+		ObjectMeta: metav1.ObjectMeta{Name: jobName, Namespace: "meitheal-system"},
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(gateScheme(t)).
@@ -475,7 +475,7 @@ func TestRunScanJob_CreateFailureProducesSCANERROR(t *testing.T) {
 
 	raw, err := json.Marshal(map[string]any{
 		"repo":    "defilantech/LLMKube",
-		"branch":  "foreman/issue-900",
+		"branch":  "meitheal/issue-900",
 		"taskRef": map[string]string{"namespace": "default", "name": "scan-900"},
 	})
 	if err != nil {
@@ -507,7 +507,7 @@ func TestRunScanJob_CreateFailureProducesSCANERROR(t *testing.T) {
 	// Sanity check the AlreadyExists shape on the underlying client so
 	// we are not relying on a brittle string comparison.
 	if err := c.Create(ctx, &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: jobName, Namespace: "foreman-system"},
+		ObjectMeta: metav1.ObjectMeta{Name: jobName, Namespace: "meitheal-system"},
 	}); !apierrors.IsAlreadyExists(err) {
 		t.Errorf("expected AlreadyExists; got %v", err)
 	}
@@ -565,7 +565,7 @@ func TestRenderScanJob_CloneURLOverride(t *testing.T) {
 			cloneURL: "https://github.com/Defilan/LLMKube.git",
 			mustHave: []string{
 				`"https://github.com/Defilan/LLMKube.git" /work/repo`,
-				"=== clone defilantech/LLMKube @ foreman/issue-900 ===",
+				"=== clone defilantech/LLMKube @ meitheal/issue-900 ===",
 			},
 			mustNotHave: []string{
 				`"https://github.com/defilantech/LLMKube.git"`,
@@ -631,7 +631,7 @@ func TestScanJobTrivyInstallFetchesPinnedReleaseAsset(t *testing.T) {
 // image subset renders exactly that target's build + assemble + scan
 // lines and none of the others' (the ScanGate.Images contract).
 func TestRunScanJob_SubsetImagesRendersOnlyNamedTarget(t *testing.T) {
-	targets, err := resolveScanTargets([]string{"foreman-agent"})
+	targets, err := resolveScanTargets([]string{"router-proxy"})
 	if err != nil {
 		t.Fatalf("resolveScanTargets: %v", err)
 	}
@@ -640,13 +640,13 @@ func TestRunScanJob_SubsetImagesRendersOnlyNamedTarget(t *testing.T) {
 	initArgs := strings.Join(job.Spec.Template.Spec.InitContainers[0].Args, "\n")
 	scanArgs := strings.Join(job.Spec.Template.Spec.Containers[0].Args, "\n")
 
-	if !strings.Contains(initArgs, `-o "/work/foreman-agent/linux/amd64/foreman-agent"`) {
-		t.Errorf("missing foreman-agent build line:\n%s", initArgs)
+	if !strings.Contains(initArgs, `-o "/work/router-proxy/linux/amd64/router-proxy"`) {
+		t.Errorf("missing router-proxy build line:\n%s", initArgs)
 	}
-	if !strings.Contains(scanArgs, `--input "/work/foreman-agent.tar"`) {
-		t.Errorf("missing foreman-agent scan line:\n%s", scanArgs)
+	if !strings.Contains(scanArgs, `--input "/work/router-proxy.tar"`) {
+		t.Errorf("missing router-proxy scan line:\n%s", scanArgs)
 	}
-	for _, other := range []string{"controller", "foreman-operator", "router-proxy"} {
+	for _, other := range []string{"controller"} {
 		if strings.Contains(initArgs, "-o \"/work/"+other) {
 			t.Errorf("subset leaked a build line for %q:\n%s", other, initArgs)
 		}
@@ -708,14 +708,14 @@ func TestRunScanJob_CacheVolumeConditional(t *testing.T) {
 	})
 
 	t.Run("set PVCName", func(t *testing.T) {
-		job := scanRenderJob(t, func(in *scanRendererInput) { in.PVCName = "foreman-scan-cache" })
+		job := scanRenderJob(t, func(in *scanRendererInput) { in.PVCName = "meitheal-scan-cache" })
 		var claim string
 		for _, v := range job.Spec.Template.Spec.Volumes {
 			if v.PersistentVolumeClaim != nil {
 				claim = v.PersistentVolumeClaim.ClaimName
 			}
 		}
-		if claim != "foreman-scan-cache" {
+		if claim != "meitheal-scan-cache" {
 			t.Fatalf("want the given claim mounted, got %q (%+v)", claim, job.Spec.Template.Spec.Volumes)
 		}
 	})
@@ -769,8 +769,8 @@ func TestScanJobNamePreservesUniquenessSuffixWhenTruncated(t *testing.T) {
 	if len(n1) > 63 {
 		t.Fatalf("name exceeds the 63-char k8s limit: len=%d %q", len(n1), n1)
 	}
-	if !strings.HasPrefix(n1, "foreman-scan-") {
-		t.Fatalf("lost the foreman-scan- prefix: %q", n1)
+	if !strings.HasPrefix(n1, "meitheal-scan-") {
+		t.Fatalf("lost the meitheal-scan- prefix: %q", n1)
 	}
 	if !strings.HasSuffix(n1, "-1784157000000") {
 		t.Fatalf("uniqueness suffix was truncated away: %q", n1)

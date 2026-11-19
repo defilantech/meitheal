@@ -188,7 +188,7 @@ type WorkloadSpec struct {
 	// model, or outcome CODER-GATE-FAILED), the WorkloadReconciler emits
 	// an escalation code+verify(+review) set (code-<N>-esc /
 	// verify-<N>-esc / review-<N>-esc-<i>) against this Agent, on a fresh
-	// branch foreman/<w>/issue-<N>-esc, with the failed model's summary
+	// branch meitheal/<w>/issue-<N>-esc, with the failed model's summary
 	// passed as a prompt hint.
 	//
 	// Singular (unlike EscalationReviewerAgentRefs, which fans out N
@@ -216,7 +216,7 @@ type WorkloadSpec struct {
 	EscalateOnFailure *bool `json:"escalateOnFailure,omitempty"`
 
 	// AllowOverwrite lets this Workload's coder replace a stale remote
-	// ref for its own foreman/* branch (force-with-lease compare-and-swap)
+	// ref for its own meitheal/* branch (force-with-lease compare-and-swap)
 	// instead of failing non-fast-forward. Opt-in — #573 deliberately
 	// rejected force-on-collision as a default; retry systems that
 	// re-run Workloads under the same name set this on the re-run, where
@@ -292,7 +292,7 @@ type WorkloadSpec struct {
 	//
 	// Without this field, every Workload-decomposed task falls back to the
 	// Go gate, so a Workload-driven source (a work-queue bridge) cannot run
-	// Foreman on non-Go repositories even though the language presets exist.
+	// Meitheal on non-Go repositories even though the language presets exist.
 	// +optional
 	GateProfile *GateProfile `json:"gateProfile,omitempty"`
 
@@ -461,7 +461,7 @@ type WorkloadStatus struct {
 // +kubebuilder:printcolumn:name="Failed",type=integer,JSONPath=`.status.failedTasks`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Workload is the v0.1 entrypoint to Foreman. A user creates a Workload with
+// Workload is the v0.1 entrypoint to Meitheal. A user creates a Workload with
 // a high-level Intent plus either an explicit Pipeline (full control) or an
 // Issues list + Coder/Verifier agent refs (the common shortcut). The
 // WorkloadReconciler emits one AgenticTask per pipeline step, owner-ref'd

@@ -5,9 +5,12 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
-  name: fleetnodes.foreman.llmkube.dev
+    {{- if .Values.crds.keep }}
+    helm.sh/resource-policy: keep
+    {{- end }}
+  name: fleetnodes.meitheal.dev
 spec:
-  group: foreman.llmkube.dev
+  group: meitheal.dev
   names:
     kind: FleetNode
     listKind: FleetNodeList
@@ -52,7 +55,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          FleetNode is a worker the Foreman scheduler can dispatch tasks to. It is
+          FleetNode is a worker the Meitheal scheduler can dispatch tasks to. It is
           cluster-scoped because nodes are global to the fleet; the resource is
           owned and updated by the FleetAgent running on that node.
         properties:
@@ -113,13 +116,13 @@ spec:
                   metal-agent does not register a FleetNode in v0.1, but the enum
                   documents intent for future use.
                 enum:
-                - foreman-agent
+                - meitheal-agent
                 - metal-agent
                 type: string
               agentVersion:
                 description: |-
                   AgentVersion is the observed running version of the agent, reported
-                  on heartbeat. Set by the foreman-agent using the binary's build-time
+                  on heartbeat. Set by the meitheal-agent using the binary's build-time
                   version string; empty for agents that predate this field.
                 type: string
               arch:
@@ -347,5 +350,4 @@ spec:
     storage: true
     subresources:
       status: {}
-
 {{- end }}

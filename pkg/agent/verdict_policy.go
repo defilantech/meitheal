@@ -22,16 +22,16 @@ import (
 	"strconv"
 	"strings"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/changepolicy"
 )
 
 // needsVerificationOutcome mirrors
-// internal/foreman/controller/workload_coder_escalation.go's
+// internal/controller/workload_coder_escalation.go's
 // needsVerificationOutcome constant (#1033: a load-bearing external fact
 // could not be grounded from the workspace, so escalating to a bigger
 // model cannot help). Declared independently here rather than imported:
-// pkg/foreman/agent must not depend on internal/foreman/controller (the
+// pkg/agent must not depend on internal/controller (the
 // dependency would run the wrong direction -- the controller already
 // imports nothing from here, and this package is also used by the
 // in-cluster coder Job binary, which has no business linking the
@@ -59,17 +59,17 @@ const alreadyResolvedOutcome = "ALREADY-RESOLVED"
 // "unverified" the way an uninspected ci-policy/release-policy change
 // is.
 //
-// Declared as a direct reference to foremanv1alpha1.DefaultSelfGO rather
+// Declared as a direct reference to meithealv1alpha1.DefaultSelfGO rather
 // than its own literal (which is what this var held before #1075 Task 6):
-// api/foreman/v1alpha1 owns the canonical list because
+// api/v1alpha1 owns the canonical list because
 // VerdictPolicy.Resolve must return it without importing this package
-// (this package already imports api/foreman/v1alpha1 for every CRD type,
+// (this package already imports api/v1alpha1 for every CRD type,
 // so the reverse import would cycle). Task 6's executor wiring
 // (applyWorkClassPolicyForTask below) reaches this only through
 // task.Spec.VerdictPolicy.Resolve(), which falls back to the same value
 // when a Workload never set spec.verdictPolicy; this var remains for the
 // tests in this package that exercise applyVerdictPolicy directly.
-var defaultSelfGO = foremanv1alpha1.DefaultSelfGO //nolint:unused // test-only by design (see above)
+var defaultSelfGO = meithealv1alpha1.DefaultSelfGO //nolint:unused // test-only by design (see above)
 
 // unverifiedClaimReason and unverifiedClaimHowTo are the fixed
 // whyItMatters/howToVerify strings attached to every claim-evidence
@@ -139,7 +139,7 @@ func unverifiedPolicyEntry(class workClass) map[string]string {
 func applyVerdictPolicy(
 	res *Result, changed map[string]int, selfGO []string, policy changepolicy.ChangePolicy,
 ) *Result {
-	if res == nil || res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res == nil || res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		return res
 	}
 	if res.Extra == nil {
@@ -162,7 +162,7 @@ func applyVerdictPolicy(
 	// packaging + config) is NOT downgraded just because the mix has no
 	// dominant class (#1342). class above is retained for the audit record.
 	if policy.NeedsVerification(changed, selfGO) {
-		res.Verdict = foremanv1alpha1.AgenticTaskVerdictNoGo
+		res.Verdict = meithealv1alpha1.AgenticTaskVerdictNoGo
 		res.Extra["outcome"] = needsVerificationOutcome
 		res.Extra["unverified"] = []map[string]string{unverifiedPolicyEntry(class)}
 		return res

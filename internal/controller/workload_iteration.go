@@ -29,7 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/reviewer"
 )
 
@@ -56,7 +56,7 @@ const defaultMaxReviewIterations = 1
 
 // effectiveMaxReviewIterations resolves the *int32 three-state:
 // nil defaults, explicit values (including 0) win.
-func effectiveMaxReviewIterations(w *foremanv1alpha1.Workload) int {
+func effectiveMaxReviewIterations(w *meithealv1alpha1.Workload) int {
 	if w.Spec.MaxReviewIterations == nil {
 		return defaultMaxReviewIterations
 	}
@@ -160,7 +160,7 @@ type suppressedDemotion struct {
 
 // taskStepLabel names a child for operator-facing prose: its step label
 // when it carries one, its object name otherwise.
-func taskStepLabel(t *foremanv1alpha1.AgenticTask) string {
+func taskStepLabel(t *meithealv1alpha1.AgenticTask) string {
 	if label := t.Labels[labelStep]; label != "" {
 		return label
 	}
@@ -172,7 +172,7 @@ func taskStepLabel(t *foremanv1alpha1.AgenticTask) string {
 // (#1636). It returns the rail's demotionReason so the caller can record
 // why the fix iteration did not run.
 //
-// enforceReviewerIssueAsk (pkg/foreman/agent/executor_native.go) rewrites a
+// enforceReviewerIssueAsk (pkg/agent/executor_native.go) rewrites a
 // reviewer's GO to NO-GO when it cannot verify that the stated issue ask
 // covers the fetched issue body. That is a statement about verification
 // confidence, not about the change. Treating it as a rejection opens a fix
@@ -206,7 +206,7 @@ func taskStepLabel(t *foremanv1alpha1.AgenticTask) string {
 // promoteTerminalOutcome lifts only outcome / unverified / resolvedBy to
 // the top level, so reading these keys from extra directly (as this
 // predicate first shipped) never matched anything the executor emits.
-func inertDemotion(t *foremanv1alpha1.AgenticTask) (reason string, inert bool) {
+func inertDemotion(t *meithealv1alpha1.AgenticTask) (reason string, inert bool) {
 	if t.Status.Result == nil || len(t.Status.Result.Raw) == 0 {
 		return "", false
 	}
@@ -224,7 +224,7 @@ func inertDemotion(t *foremanv1alpha1.AgenticTask) (reason string, inert bool) {
 		by != reviewer.RailScopeOverlap && by != reviewer.RailUnverifiedSummary {
 		return "", false
 	}
-	if claimed, _ := modelExtra["verdictClaimed"].(string); claimed != string(foremanv1alpha1.AgenticTaskVerdictGo) {
+	if claimed, _ := modelExtra["verdictClaimed"].(string); claimed != string(meithealv1alpha1.AgenticTaskVerdictGo) {
 		return "", false
 	}
 	if findings, _ := reviewer.ParseFindings(modelExtra); len(findings) > 0 {
@@ -261,10 +261,10 @@ func inertDemotion(t *foremanv1alpha1.AgenticTask) (reason string, inert bool) {
 // only once the round is complete, because an in-flight round may still
 // produce a NO-GO that iterates anyway.
 func noGoReviewRound(
-	children []foremanv1alpha1.AgenticTask, n int32, k int,
-) ([]*foremanv1alpha1.AgenticTask, []suppressedDemotion) {
+	children []meithealv1alpha1.AgenticTask, n int32, k int,
+) ([]*meithealv1alpha1.AgenticTask, []suppressedDemotion) {
 	var total, terminal int
-	var noGo []*foremanv1alpha1.AgenticTask
+	var noGo []*meithealv1alpha1.AgenticTask
 	var suppressed []suppressedDemotion
 	for i := range children {
 		iter, ok := reviewIterationOf(children[i].Labels[labelStep], n)
@@ -273,11 +273,11 @@ func noGoReviewRound(
 		}
 		total++
 		phase := children[i].Status.Phase
-		if phase == foremanv1alpha1.AgenticTaskPhaseSucceeded ||
-			phase == foremanv1alpha1.AgenticTaskPhaseFailed {
+		if phase == meithealv1alpha1.AgenticTaskPhaseSucceeded ||
+			phase == meithealv1alpha1.AgenticTaskPhaseFailed {
 			terminal++
 		}
-		if children[i].Status.Verdict != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		if children[i].Status.Verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
 			continue
 		}
 		if reason, inert := inertDemotion(&children[i]); inert {
@@ -333,8 +333,8 @@ func noGoReviewRound(
 // restrict invocation to issue-batch mode (user-authored Pipeline step
 // names could false-match the synthesized naming scheme).
 func reviewIterationSteps(
-	w *foremanv1alpha1.Workload, children []foremanv1alpha1.AgenticTask,
-) (steps []foremanv1alpha1.PipelineStep, iterated []int32, suppressed []suppressedDemotion) {
+	w *meithealv1alpha1.Workload, children []meithealv1alpha1.AgenticTask,
+) (steps []meithealv1alpha1.PipelineStep, iterated []int32, suppressed []suppressedDemotion) {
 	maxIter := effectiveMaxReviewIterations(w)
 	if maxIter <= 0 ||
 		len(w.Spec.ReviewerAgentRefs) == 0 ||
@@ -356,7 +356,7 @@ func reviewIterationSteps(
 	}
 
 	for _, n := range w.Spec.Issues {
-		branch := fmt.Sprintf("foreman/%s/issue-%d", w.Name, n)
+		branch := fmt.Sprintf("meitheal/%s/issue-%d", w.Name, n)
 		issueIterated := false
 		for k := 1; k <= maxIter; k++ {
 			noGo, inert := noGoReviewRound(children, n, k-1)
@@ -367,11 +367,11 @@ func reviewIterationSteps(
 			codeName := codeStepName(n, k)
 			verifyName := verifyStepName(n, k)
 			if _, ok := existing[codeName]; !ok {
-				steps = append(steps, foremanv1alpha1.PipelineStep{
+				steps = append(steps, meithealv1alpha1.PipelineStep{
 					Name:     codeName,
-					Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+					Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 					AgentRef: *coderRef,
-					Payload: foremanv1alpha1.AgenticTaskPayload{
+					Payload: meithealv1alpha1.AgenticTaskPayload{
 						Repo:   w.Spec.Repo,
 						Issue:  n,
 						Branch: branch,
@@ -381,7 +381,7 @@ func reviewIterationSteps(
 						// this in-review revision does not revert work merged since
 						// the prior attempt (#1029).
 						ReviseFromBranch: branch,
-						BranchStrategy:   foremanv1alpha1.BranchStrategyRebase,
+						BranchStrategy:   meithealv1alpha1.BranchStrategyRebase,
 						AllowOverwrite:   true,
 						Prompt:           reviewFeedbackPrompt(noGo),
 						PromptPrefix:     intentPromptPrefix(w),
@@ -396,12 +396,12 @@ func reviewIterationSteps(
 			if w.Spec.VerifierAgentRef != nil {
 				reviewDep = verifyName
 				if _, ok := existing[verifyName]; !ok {
-					steps = append(steps, foremanv1alpha1.PipelineStep{
+					steps = append(steps, meithealv1alpha1.PipelineStep{
 						Name:      verifyName,
-						Kind:      foremanv1alpha1.AgenticTaskKindVerify,
+						Kind:      meithealv1alpha1.AgenticTaskKindVerify,
 						AgentRef:  *w.Spec.VerifierAgentRef,
 						DependsOn: []string{codeName},
-						Payload: foremanv1alpha1.AgenticTaskPayload{
+						Payload: meithealv1alpha1.AgenticTaskPayload{
 							Repo:   w.Spec.Repo,
 							Issue:  n,
 							Branch: branch,
@@ -418,12 +418,12 @@ func reviewIterationSteps(
 				if _, ok := existing[name]; ok {
 					continue
 				}
-				steps = append(steps, foremanv1alpha1.PipelineStep{
+				steps = append(steps, meithealv1alpha1.PipelineStep{
 					Name:      name,
-					Kind:      foremanv1alpha1.AgenticTaskKindReview,
+					Kind:      meithealv1alpha1.AgenticTaskKindReview,
 					AgentRef:  reviewerRef,
 					DependsOn: []string{reviewDep},
-					Payload: foremanv1alpha1.AgenticTaskPayload{
+					Payload: meithealv1alpha1.AgenticTaskPayload{
 						Repo:            w.Spec.Repo,
 						Issue:           n,
 						Branch:          branch,
@@ -460,7 +460,7 @@ func reviewIterationSteps(
 // workspace really does start from the prior attempt's files, so the
 // prompt directs the model to amend that work as a delta rather than
 // rebuild the fix from scratch.
-func reviewFeedbackPrompt(noGo []*foremanv1alpha1.AgenticTask) string {
+func reviewFeedbackPrompt(noGo []*meithealv1alpha1.AgenticTask) string {
 	var b strings.Builder
 	b.WriteString("The reviewer rejected the previous attempt on this issue (verdict NO-GO).\n")
 	b.WriteString("Your workspace already contains that previous attempt: the working branch was\n")
@@ -478,11 +478,11 @@ func reviewFeedbackPrompt(noGo []*foremanv1alpha1.AgenticTask) string {
 // reviewFeedbackSection renders one NO-GO reviewer's summary +
 // findings. The structured findings live in the review task's
 // status.result at extra.modelExtra (the reviewer's submit_result
-// extra; see pkg/foreman/agent/reviewer). Rendering is best-effort:
+// extra; see pkg/agent/reviewer). Rendering is best-effort:
 // findings that fail the strict schema fall back to their raw JSON so
 // legacy map-shaped findings ("scope_creep" + "*_details" keys) still
 // reach the coder, and a result-less task degrades to a one-liner.
-func reviewFeedbackSection(t *foremanv1alpha1.AgenticTask) string {
+func reviewFeedbackSection(t *meithealv1alpha1.AgenticTask) string {
 	label := taskStepLabel(t)
 
 	var envelope struct {
@@ -555,8 +555,8 @@ func reviewFeedbackSection(t *foremanv1alpha1.AgenticTask) string {
 // always kept. Issue-batch only; explicit Pipeline mode returns the
 // input unchanged.
 func activeChildren(
-	w *foremanv1alpha1.Workload, children []foremanv1alpha1.AgenticTask,
-) []foremanv1alpha1.AgenticTask {
+	w *meithealv1alpha1.Workload, children []meithealv1alpha1.AgenticTask,
+) []meithealv1alpha1.AgenticTask {
 	if len(w.Spec.Pipeline) > 0 || len(w.Spec.Issues) == 0 {
 		return children
 	}
@@ -579,7 +579,7 @@ func activeChildren(
 		}
 	}
 
-	active := make([]foremanv1alpha1.AgenticTask, 0, len(children))
+	active := make([]meithealv1alpha1.AgenticTask, 0, len(children))
 	for i := range children {
 		step := children[i].Labels[labelStep]
 		superseded := false
@@ -604,7 +604,7 @@ func activeChildren(
 // over the given step names, for status.reviewIterations. Recomputed
 // from observed state (not incremented) so reconcile echoes cannot
 // inflate it.
-func countReviewIterations(w *foremanv1alpha1.Workload, stepNames map[string]struct{}) int32 {
+func countReviewIterations(w *meithealv1alpha1.Workload, stepNames map[string]struct{}) int32 {
 	var total int32
 	for _, n := range w.Spec.Issues {
 		best := 0
@@ -631,7 +631,7 @@ func countReviewIterations(w *foremanv1alpha1.Workload, stepNames map[string]str
 // steady-state reconcile neither churns LastTransitionTime nor re-fires the
 // event.
 func (r *WorkloadReconciler) recordSuppressedDemotions(
-	ctx context.Context, w *foremanv1alpha1.Workload, suppressed []suppressedDemotion,
+	ctx context.Context, w *meithealv1alpha1.Workload, suppressed []suppressedDemotion,
 ) error {
 	if len(suppressed) == 0 {
 		return nil
@@ -685,8 +685,8 @@ func (r *WorkloadReconciler) recordSuppressedDemotions(
 // refreshed children slice so escalation and rollup see the new tasks
 // as in-flight; on a no-op it returns the input slice.
 func (r *WorkloadReconciler) emitReviewIterations(
-	ctx context.Context, w *foremanv1alpha1.Workload, children []foremanv1alpha1.AgenticTask,
-) ([]foremanv1alpha1.AgenticTask, error) {
+	ctx context.Context, w *meithealv1alpha1.Workload, children []meithealv1alpha1.AgenticTask,
+) ([]meithealv1alpha1.AgenticTask, error) {
 	log := logf.FromContext(ctx).WithName("workload").WithValues("workload", client.ObjectKeyFromObject(w))
 
 	if len(w.Spec.Pipeline) > 0 {
@@ -741,7 +741,7 @@ func (r *WorkloadReconciler) emitReviewIterations(
 	// the operator knows to set spec.revisionCoderAgentRef.
 	if r.Recorder != nil && w.Spec.RevisionCoderAgentRef == nil {
 		for _, s := range steps {
-			if s.Kind != foremanv1alpha1.AgenticTaskKindIssueFix {
+			if s.Kind != meithealv1alpha1.AgenticTaskKindIssueFix {
 				continue
 			}
 			r.Recorder.Eventf(w, nil, corev1.EventTypeWarning, "RevisionUnderIssueFixProfile", "Reconcile",
@@ -820,7 +820,7 @@ func (r *WorkloadReconciler) emitReviewIterations(
 		if _, ok := existing[ref.Name]; ok {
 			continue
 		}
-		children = append(children, foremanv1alpha1.AgenticTask{
+		children = append(children, meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      ref.Name,
 				Namespace: ref.Namespace,

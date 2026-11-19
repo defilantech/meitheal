@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // The create-ordering race (a dependent created before its dependency) is
@@ -50,15 +50,15 @@ var _ = Describe("AgenticTaskReconciler missing dependency (#1687)", func() {
 		task.Spec.DependsOn = []string{"ghost-task"}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
 		// Still legal to wait; the task stays Pending, not Failed.
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 		cond := findCondition(fresh.Status.Conditions, "DepWaitStarted")
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Reason).To(Equal("DependencyAbsent"))
@@ -71,14 +71,14 @@ var _ = Describe("AgenticTaskReconciler missing dependency (#1687)", func() {
 		task.Spec.DependsOn = []string{"ghost-task"}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 		Expect(findCondition(fresh.Status.Conditions, "Failed")).To(BeNil())
 	})
 
@@ -88,7 +88,7 @@ var _ = Describe("AgenticTaskReconciler missing dependency (#1687)", func() {
 		task.Spec.DependsOn = []string{"ghost-task"}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 		// Age the WAIT past its TimeoutSeconds budget by backdating the
 		// DepWaitStarted condition, which is what depWaitExpired measures
 		// from. Do NOT try to backdate metadata.creationTimestamp: the API
@@ -108,10 +108,10 @@ var _ = Describe("AgenticTaskReconciler missing dependency (#1687)", func() {
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseFailed))
-		Expect(fresh.Status.Verdict).To(Equal(foremanv1alpha1.AgenticTaskVerdictIncomplete))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseFailed))
+		Expect(fresh.Status.Verdict).To(Equal(meithealv1alpha1.AgenticTaskVerdictIncomplete))
 		failedCond := findCondition(fresh.Status.Conditions, "Failed")
 		Expect(failedCond).NotTo(BeNil())
 		Expect(failedCond.Reason).To(Equal("MissingDependency"))
@@ -128,26 +128,26 @@ var _ = Describe("AgenticTaskReconciler missing dependency (#1687)", func() {
 		task.Spec.DependsOn = []string{dep.Name}
 		Expect(k8sClient.Create(ctx, task)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, task) })
-		setPhase(task, foremanv1alpha1.AgenticTaskPhasePending)
+		setPhase(task, meithealv1alpha1.AgenticTaskPhasePending)
 
 		// Reconcile while the dep is absent: surfaces the wait, stays Pending.
 		_, err := reconciler.Reconcile(ctx, reqFor(task))
 		Expect(err).NotTo(HaveOccurred())
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhasePending))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhasePending))
 
 		// The dep now appears (Succeeded on target) and the task dispatches.
-		setPhase(dep, foremanv1alpha1.AgenticTaskPhaseSucceeded)
+		setPhase(dep, meithealv1alpha1.AgenticTaskPhaseSucceeded)
 		patch := client.MergeFrom(dep.DeepCopy())
-		dep.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+		dep.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 		Expect(k8sClient.Status().Patch(ctx, dep, patch)).To(Succeed())
 
 		node := newFleetNode("late-dep-node")
 		Expect(k8sClient.Create(ctx, node)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, node) })
-		setNodeReady(node, foremanv1alpha1.FleetNodeCapability{
-			Accelerator:    foremanv1alpha1.FleetNodeAccelerator("metal"),
+		setNodeReady(node, meithealv1alpha1.FleetNodeCapability{
+			Accelerator:    meithealv1alpha1.FleetNodeAccelerator("metal"),
 			TotalRAMGB:     128,
 			AvailableRAMGB: 96,
 		})
@@ -156,7 +156,7 @@ var _ = Describe("AgenticTaskReconciler missing dependency (#1687)", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(k8sClient.Get(ctx, nn(task), &fresh)).To(Succeed())
-		Expect(fresh.Status.Phase).To(Equal(foremanv1alpha1.AgenticTaskPhaseScheduled))
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.AgenticTaskPhaseScheduled))
 		Expect(fresh.Status.AssignedNode).To(Equal(node.Name))
 	})
 })
@@ -227,8 +227,8 @@ func TestDepWaitExpired(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			task := &foremanv1alpha1.AgenticTask{
-				Spec: foremanv1alpha1.AgenticTaskSpec{
+			task := &meithealv1alpha1.AgenticTask{
+				Spec: meithealv1alpha1.AgenticTaskSpec{
 					TimeoutSeconds: tc.timeoutSec,
 				},
 			}

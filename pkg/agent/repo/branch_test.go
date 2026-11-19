@@ -78,15 +78,15 @@ func TestCreateBranchFromUpstream(t *testing.T) {
 
 	if err := CreateBranchFromUpstream(context.Background(), UpstreamBranchOptions{
 		Workspace:   workspace,
-		Branch:      "foreman/issue-813-test",
+		Branch:      "meitheal/issue-813-test",
 		UpstreamURL: bareUpstream,
 		BaseBranch:  "main",
 	}); err != nil {
 		t.Fatalf("CreateBranchFromUpstream: %v", err)
 	}
 
-	if cur := gitOut(t, workspace, "branch", "--show-current"); cur != "foreman/issue-813-test" {
-		t.Errorf("current branch = %q, want foreman/issue-813-test", cur)
+	if cur := gitOut(t, workspace, "branch", "--show-current"); cur != "meitheal/issue-813-test" {
+		t.Errorf("current branch = %q, want meitheal/issue-813-test", cur)
 	}
 	if got := gitOut(t, workspace, "rev-parse", "HEAD"); got != upstreamTip {
 		t.Errorf("branch HEAD = %s, want upstream tip %s (stale fork tip was %s)", got, upstreamTip, forkTip)
@@ -109,7 +109,7 @@ func TestCreateBranchFromUpstream_DefaultsBaseToMain(t *testing.T) {
 	workspace := mustClone(t, bareUpstream, filepath.Join(dir, "workspace"))
 	if err := CreateBranchFromUpstream(context.Background(), UpstreamBranchOptions{
 		Workspace:   workspace,
-		Branch:      "foreman/test",
+		Branch:      "meitheal/test",
 		UpstreamURL: bareUpstream,
 		// BaseBranch intentionally empty -> defaults to main.
 	}); err != nil {
@@ -162,7 +162,7 @@ func TestCreateBranchFromUpstream_FetchFailureErrors(t *testing.T) {
 
 	err := CreateBranchFromUpstream(context.Background(), UpstreamBranchOptions{
 		Workspace:   workspace,
-		Branch:      "foreman/test",
+		Branch:      "meitheal/test",
 		UpstreamURL: filepath.Join(dir, "does-not-exist.git"),
 		BaseBranch:  "main",
 	})
@@ -196,7 +196,7 @@ func TestCreateBranchFromRemoteRef(t *testing.T) {
 
 	bare := initBareOrigin(t, filepath.Join(dir, "fork"))
 	seedOrigin(t, bare)
-	const branch = "foreman/wl/issue-641"
+	const branch = "meitheal/wl/issue-641"
 	priorSHA := pushPriorAttempt(t, bare, filepath.Join(dir, "prior"), branch, "fix.txt")
 
 	// Revision workspace: a fresh clone, like the executor makes.
@@ -236,7 +236,7 @@ func TestRebaseOntoBase(t *testing.T) {
 	seedOrigin(t, bare)
 
 	// Prior attempt: a branch cut from the seed base, adding fix.txt.
-	const branch = "foreman/wl/issue-1029"
+	const branch = "meitheal/wl/issue-1029"
 	pushPriorAttempt(t, bare, filepath.Join(dir, "prior"), branch, "fix.txt")
 
 	// Base advances AFTER the prior attempt: main gains merged.txt.
@@ -304,9 +304,9 @@ func TestCreateBranchFromRemoteRef_MissingRef(t *testing.T) {
 
 	found, err := CreateBranchFromRemoteRef(context.Background(), RemoteRefBranchOptions{
 		Workspace: workspace,
-		Branch:    "foreman/wl/issue-999",
+		Branch:    "meitheal/wl/issue-999",
 		Remote:    "origin",
-		Ref:       "foreman/wl/issue-999",
+		Ref:       "meitheal/wl/issue-999",
 	})
 	if err != nil {
 		t.Fatalf("missing ref must not error: %v", err)
@@ -367,7 +367,7 @@ func TestRebaseOntoBase_LeaveConflictsLeavesMidRebase(t *testing.T) {
 	bare := initBareOrigin(t, filepath.Join(dir, "origin"))
 	seedOrigin(t, bare)
 
-	const branch = "foreman/wl/issue-1839"
+	const branch = "meitheal/wl/issue-1839"
 	pushPriorWithFile(t, bare, filepath.Join(dir, "prior"), branch, "conflict.txt", "from prior attempt\n")
 	// Base gains a DIFFERENT edit to the same new file after the prior attempt.
 	mainWork := mustClone(t, bare, filepath.Join(dir, "main-work"))
@@ -405,7 +405,7 @@ func TestRebaseOntoBase_ConflictAbortsByDefault(t *testing.T) {
 	bare := initBareOrigin(t, filepath.Join(dir, "origin"))
 	seedOrigin(t, bare)
 
-	const branch = "foreman/wl/issue-1839-abort"
+	const branch = "meitheal/wl/issue-1839-abort"
 	pushPriorWithFile(t, bare, filepath.Join(dir, "prior"), branch, "conflict.txt", "from prior attempt\n")
 	mainWork := mustClone(t, bare, filepath.Join(dir, "main-work"))
 	commitFile(t, mainWork, "conflict.txt", "from base\n")
@@ -485,7 +485,7 @@ func setupMidRebaseConflict(t *testing.T, dir, branch string) (string, *RebaseCo
 func TestRebaseUnresolved_AbortedRebaseCaughtByIsAncestor(t *testing.T) {
 	gitOrSkip(t)
 	dir := t.TempDir()
-	workspace, rce := setupMidRebaseConflict(t, dir, "foreman/wl/issue-1839-abort-hole")
+	workspace, rce := setupMidRebaseConflict(t, dir, "meitheal/wl/issue-1839-abort-hole")
 
 	mustGit(t, workspace, "rebase", "--abort")
 
@@ -504,7 +504,7 @@ func TestRebaseUnresolved_AbortedRebaseCaughtByIsAncestor(t *testing.T) {
 func TestRebaseUnresolved_GenuineResolvePasses(t *testing.T) {
 	gitOrSkip(t)
 	dir := t.TempDir()
-	workspace, rce := setupMidRebaseConflict(t, dir, "foreman/wl/issue-1839-resolve")
+	workspace, rce := setupMidRebaseConflict(t, dir, "meitheal/wl/issue-1839-resolve")
 
 	if err := os.WriteFile(filepath.Join(workspace, "conflict.txt"),
 		[]byte("from base since the prior attempt\nfrom prior attempt\n"), 0o644); err != nil {
@@ -541,7 +541,7 @@ func TestBaseEnv(t *testing.T) {
 		_ = os.Unsetenv(name)
 	}
 	t.Setenv("HOME", "/tmp/llmkube-baseenv-home")
-	t.Setenv("FOREMAN_TEST_SECRET", "do-not-forward")
+	t.Setenv("MEITHEAL_TEST_SECRET", "do-not-forward")
 
 	// Failure messages name unexpected variables, never their values:
 	// printing the whole slice would dump the process environment into
@@ -586,7 +586,7 @@ func TestBaseEnv(t *testing.T) {
 	}
 
 	if secret := slices.IndexFunc(got, func(e string) bool {
-		return strings.HasPrefix(e, "FOREMAN_TEST_SECRET=")
+		return strings.HasPrefix(e, "MEITHEAL_TEST_SECRET=")
 	}); secret >= 0 {
 		t.Errorf("baseEnv() forwarded the sentinel secret: %s", got[secret])
 	}

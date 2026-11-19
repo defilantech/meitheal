@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// foreman-agent is the Foreman node-side daemon. One instance runs on each
+// meitheal-agent is the Meitheal node-side daemon. One instance runs on each
 // host in the fleet. It is responsible for two things:
 //
 //  1. FleetNode registration + heartbeat (M1): keep the FleetNode CR
@@ -66,15 +66,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	inferencev1alpha1 "github.com/defilantech/llmkube/api/v1alpha1"
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/changepolicy"
 	"github.com/defilantech/meitheal/pkg/agent/codehost"
 	"github.com/defilantech/meitheal/pkg/agent/forge"
 	"github.com/defilantech/meitheal/pkg/agent/githubprfetch"
 	"github.com/defilantech/meitheal/pkg/agent/mcp"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
-	foremantools "github.com/defilantech/meitheal/pkg/agent/tools"
+	meithealtools "github.com/defilantech/meitheal/pkg/agent/tools"
 	"github.com/defilantech/meitheal/pkg/agent/worktracker"
 	"github.com/defilantech/meitheal/pkg/selfupdate"
 )
@@ -139,7 +139,7 @@ func mustForgeSeams(name, apiBaseURL, gitRemoteURL string) forgeSeams {
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(foremanv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(meithealv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(inferencev1alpha1.AddToScheme(scheme))
 }
 
@@ -186,7 +186,7 @@ func main() {
 		inferenceURLHostOverride string
 
 		// M4 gate-tool flags
-		foremanNamespace     string
+		meithealNamespace    string
 		gateCachePVC         string
 		commitAuthorName     string
 		commitAuthorEmail    string
@@ -208,7 +208,7 @@ func main() {
 	)
 
 	flag.StringVar(&fleetNodeName, "fleet-node-name", "",
-		"Identity of this node in Foreman. Defaults to a sanitized OS hostname.")
+		"Identity of this node in Meitheal. Defaults to a sanitized OS hostname.")
 	flag.StringVar(&tailscaleAddr, "tailscale-addr", "",
 		"Tailscale IP or MagicDNS name this node listens on (advertised on FleetNode.spec).")
 	flag.StringVar(&kubeContext, "kube-context", "",
@@ -227,18 +227,18 @@ func main() {
 		"Accelerator label override. Defaults to metal on darwin; required on linux in v0.1.")
 	flag.StringVar(&installedModels, "installed-models", "",
 		"Comma-separated Model CR names this node has cached locally.")
-	flag.DurationVar(&heartbeat, "heartbeat-interval", foremanagent.DefaultHeartbeatInterval,
+	flag.DurationVar(&heartbeat, "heartbeat-interval", meithealagent.DefaultHeartbeatInterval,
 		"How often to patch FleetNode.status with a fresh heartbeat.")
-	flag.DurationVar(&taskPollInterval, "task-poll-interval", foremanagent.DefaultWatcherInterval,
+	flag.DurationVar(&taskPollInterval, "task-poll-interval", meithealagent.DefaultWatcherInterval,
 		"How often the AgenticTask watcher polls the cluster for new assignments.")
 	flag.StringVar(&taskNamespace, "task-namespace", "default",
 		"Namespace the AgenticTask watcher reads from.")
-	flag.IntVar(&maxSupervised, "max-supervised-tasks", foremanagent.DefaultMaxSupervisedTasks,
+	flag.IntVar(&maxSupervised, "max-supervised-tasks", meithealagent.DefaultMaxSupervisedTasks,
 		"How many Job-mode tasks this node supervises concurrently. Their work runs "+
 			"in a coder Job pod, so they do not hold the single in-process slot. "+
 			"0 (or less) means unset and keeps the default; pass 1 to serialize "+
 			"Job-mode work.")
-	flag.DurationVar(&stubSleep, "stub-sleep", foremanagent.DefaultStubSleep,
+	flag.DurationVar(&stubSleep, "stub-sleep", meithealagent.DefaultStubSleep,
 		"How long the StubExecutor blocks per task. Only used when --executor=stub (the only v0.1 option).")
 	flag.IntVar(&maxCtx, "max-context-tokens", 0,
 		"Advertised max context window in tokens (0 = unset).")
@@ -273,7 +273,7 @@ func main() {
 		"How many recent turns the stream replays to a viewer that attaches mid-run.")
 
 	// M3 Phase F: default flipped to native. The stub executor is
-	// kept around for development + tests, but production foreman-
+	// kept around for development + tests, but production meitheal-
 	// agent runs the native loop. Set --agent-mode=stub explicitly
 	// to fall back to the M2 placeholder.
 	flag.StringVar(&agentMode, "agent-mode", "native",
@@ -291,11 +291,11 @@ func main() {
 		"Rewrite the host of the resolved InferenceService URL to this value (e.g. 127.0.0.1) "+
 			"and substitute the live port from the v1 Endpoints object the metal-agent "+
 			"maintains for the InferenceService. Use for off-cluster, same-host installs "+
-			"(foreman-agent on the same Mac as the metal-agent) where cluster DNS does not "+
+			"(meitheal-agent on the same Mac as the metal-agent) where cluster DNS does not "+
 			"resolve but the local llama-server's port rolls on every respawn. The "+
 			"controller-runtime cache re-reads the current port on each task dispatch, so "+
 			"this stays current without restart.")
-	flag.StringVar(&commitAuthorName, "commit-author-name", "Foreman Bot",
+	flag.StringVar(&commitAuthorName, "commit-author-name", "Meitheal Bot",
 		"git author name for branches produced by the native loop.")
 	flag.StringVar(&commitAuthorEmail, "commit-author-email", "",
 		"git author email. Required when --agent-mode=native.")
@@ -307,28 +307,28 @@ func main() {
 			"--commit-author-email so existing deployments are unchanged.")
 	flag.BoolVar(&keepWorkspace, "keep-workspace", false,
 		"Preserve the per-task clone workspace after the run. Useful for debugging; default removes it.")
-	flag.StringVar(&foremanNamespace, "foreman-namespace", "foreman-system",
-		"Namespace the M4 run_gate_job tool submits gate Jobs into. Defaults to foreman-system.")
+	flag.StringVar(&meithealNamespace, "meitheal-namespace", "meitheal-system",
+		"Namespace the M4 run_gate_job tool submits gate Jobs into. Defaults to meitheal-system.")
 	flag.StringVar(&gateCachePVC, "gate-cache-pvc", "",
 		"Name of the gate-cache PVC the run_gate_job tool mounts at /cache. Empty disables the "+
-			"volume mount. The chart renders the per-agent claim (foreman.gateCache.pvcName) here "+
+			"volume mount. The chart renders the per-agent claim (meitheal.gateCache.pvcName) here "+
 			"so named agent pools mount the PVC that actually exists (#1538).")
-	flag.StringVar(&coderGitSecret, "coder-git-secret", "foreman-git-credentials",
+	flag.StringVar(&coderGitSecret, "coder-git-secret", "meitheal-git-credentials",
 		"Name of the Secret the coder Job projects as GITHUB_TOKEN for the clone + push (#620). "+
-			"Point this at an existing git Secret (e.g. foreman-github) to reuse it instead of "+
-			"creating foreman-git-credentials.")
+			"Point this at an existing git Secret (e.g. meitheal-github) to reuse it instead of "+
+			"creating meitheal-git-credentials.")
 	flag.StringVar(&coderGitSecretKey, "coder-git-secret-key", "token",
 		"Key within --coder-git-secret that holds the token (e.g. GITHUB_TOKEN when reusing an "+
 			"existing git Secret).")
 
 	flag.BoolVar(&selfUpdateEnabled, "self-update", true,
 		"Enable self-update from FleetNode.status.updateRequest. Only engages when running from the "+
-			"managed install root (~/Library/Application Support/llmkube/foreman-agent on macOS). "+
+			"managed install root (~/Library/Application Support/meitheal/meitheal-agent on macOS). "+
 			"Set to false to disable entirely (e.g. for tests or manual installs outside the managed layout).")
 	flag.StringVar(&installRoot, "install-root", "",
 		"Override the managed install root path. Defaults to the platform-specific location "+
-			"(~/Library/Application Support/llmkube/foreman-agent on macOS, "+
-			"~/.local/share/llmkube/foreman-agent on Linux). "+
+			"(~/Library/Application Support/meitheal/meitheal-agent on macOS, "+
+			"~/.local/share/meitheal/meitheal-agent on Linux). "+
 			"Only used when --self-update=true.")
 
 	showVersion := flag.Bool("version", false, "Print version information and exit.")
@@ -337,7 +337,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("foreman-agent version %s\n", Version)
+		fmt.Printf("meitheal-agent version %s\n", Version)
 		fmt.Printf("  git commit: %s\n", GitCommit)
 		fmt.Printf("  build date: %s\n", BuildDate)
 		os.Exit(0)
@@ -364,7 +364,7 @@ func main() {
 	if agentMode == "native" {
 		// M4: relaxed from os.Exit to warnings. Deterministic Agents
 		// (e.g. the M4 gate) never clone or push from the
-		// foreman-agent Pod, so a gate-only install legitimately has
+		// meitheal-agent Pod, so a gate-only install legitimately has
 		// no git remote URL and no commit author. When a coder task
 		// actually arrives that needs these, the native executor
 		// fails that task with a clean reason
@@ -403,14 +403,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	spec := foremanv1alpha1.FleetNodeSpec{
+	spec := meithealv1alpha1.FleetNodeSpec{
 		NodeName:      fleetNodeName,
 		TailscaleAddr: tailscaleAddr,
 		Roles:         splitCSV(rolesFlag),
 	}
 
-	provider := foremanagent.NewCapability(foremanagent.CapabilityOptions{
-		Accelerator:      foremanv1alpha1.FleetNodeAccelerator(acceleratorFlag),
+	provider := meithealagent.NewCapability(meithealagent.CapabilityOptions{
+		Accelerator:      meithealv1alpha1.FleetNodeAccelerator(acceleratorFlag),
 		InstalledModels:  splitCSV(installedModels),
 		MaxContextTokens: clampInt32(maxCtx),
 		TokensPerSecond:  clampInt32(tokensPerSec),
@@ -421,12 +421,12 @@ func main() {
 	// the binary is running from the managed install root. Dev builds and
 	// direct invocations outside the managed layout skip the update path
 	// entirely so `go run` and test environments are never affected.
-	var updater foremanagent.UpdateApplier
+	var updater meithealagent.UpdateApplier
 	if selfUpdateEnabled {
 		root := installRoot
 		if root == "" {
 			var err error
-			root, err = selfupdate.ResolveInstallRoot("foreman-agent")
+			root, err = selfupdate.ResolveInstallRoot("meitheal-agent")
 			if err != nil {
 				setupLog.Error(err, "failed to resolve self-update install root; self-update disabled")
 			}
@@ -438,12 +438,12 @@ func main() {
 					OS:             goruntime.GOOS,
 					Arch:           goruntime.GOARCH,
 					InstallRoot:    root,
-					BinaryName:     "foreman-agent",
+					BinaryName:     "meitheal-agent",
 					Verifier:       &selfupdate.SHA256Verifier{},
 					HTTPClient:     &http.Client{Timeout: 10 * time.Minute},
 					Log:            ctrl.Log.WithName("selfupdate"),
 				}
-				updater = foremanagent.UpdateApplierFunc(func(version, url, sha256 string) (bool, error) {
+				updater = meithealagent.UpdateApplierFunc(func(version, url, sha256 string) (bool, error) {
 					res, err := u.MaybeApply(selfupdate.Target{
 						Version: version,
 						URL:     url,
@@ -462,7 +462,7 @@ func main() {
 		setupLog.Info("self-update disabled via --self-update=false")
 	}
 
-	reg := &foremanagent.Registrar{
+	reg := &meithealagent.Registrar{
 		Client:   kc,
 		NodeName: fleetNodeName,
 		Spec:     spec,
@@ -470,7 +470,7 @@ func main() {
 		Provider: provider,
 		Interval: heartbeat,
 		Version:  Version,
-		Kind:     "foreman-agent",
+		Kind:     "meitheal-agent",
 		OS:       goruntime.GOOS,
 		Arch:     goruntime.GOARCH,
 		// The chart sets FLEET_NODE_NAME from the downward API
@@ -499,19 +499,19 @@ func main() {
 	// separate coder Job pod via `run-task`, whose executor is built in
 	// RunTask and has no stream: streaming that path needs per-Job discovery
 	// and is deliberately out of scope here.
-	var turnStream *foremanagent.TurnStream
+	var turnStream *meithealagent.TurnStream
 	if turnStreamAddr != "" && turnStreamAddr != "0" {
-		turnStream = foremanagent.NewTurnStream(turnStreamCapacity)
+		turnStream = meithealagent.NewTurnStream(turnStreamCapacity)
 	}
 
 	// Executor: M2 stub or M3 native. Selection via --agent-mode.
-	var executor foremanagent.Executor
+	var executor meithealagent.Executor
 	switch agentMode {
 	case "stub":
-		executor = &foremanagent.StubExecutor{SleepDuration: stubSleep}
+		executor = &meithealagent.StubExecutor{SleepDuration: stubSleep}
 	case "native":
 		seams := mustForgeSeams(forgeName, forgeAPIBaseURL, gitRemoteURL)
-		executor = &foremanagent.NativeAgentLoopExecutor{
+		executor = &meithealagent.NativeAgentLoopExecutor{
 			Stream:                       turnStream,
 			Client:                       kc,
 			WorkspaceRoot:                workspaceDir,
@@ -526,19 +526,19 @@ func main() {
 				Email: committerEmail(commitCommitterEmail, commitAuthorEmail),
 			},
 			KeepWorkspace:   keepWorkspace,
-			RegistryFactory: makeRegistryFactory(kc, kcs, foremanNamespace, gateCachePVC, seams),
+			RegistryFactory: makeRegistryFactory(kc, kcs, meithealNamespace, gateCachePVC, seams),
 			CodeHost:        seams.codeHost,
 			WorkItems:       seams.workItems,
 			ChangePolicy:    changepolicy.NewDefaultPolicy(),
 			// CoderJobSubmitter routes Job-mode Agents to an ephemeral
 			// per-task Job (#620). Wired ONLY on the watcher executor: the
 			// run-task path (which the Job itself runs) builds its executor
-			// inside foremanagent.RunTask without a submitter, so it runs
+			// inside meithealagent.RunTask without a submitter, so it runs
 			// the loop in-process and cannot recurse into another Job.
-			CoderJobSubmitter: &foremantools.RunCoderJob{
+			CoderJobSubmitter: &meithealtools.RunCoderJob{
 				Client: kc,
-				Cfg: foremantools.RunCoderJobConfig{
-					Namespace:               foremanNamespace,
+				Cfg: meithealtools.RunCoderJobConfig{
+					Namespace:               meithealNamespace,
 					GitCredentialsSecret:    coderGitSecret,
 					GitCredentialsSecretKey: coderGitSecretKey,
 					// Propagate the watcher's git remote + commit identity
@@ -557,20 +557,20 @@ func main() {
 			},
 			// EnvtestJobRunner verifies envtest-backed packages post-push in a
 			// clean-room Job (#859).
-			EnvtestJobRunner: makeEnvtestJobRunner(kc, foremanNamespace, makePodLogTailFn(kcs)),
+			EnvtestJobRunner: makeEnvtestJobRunner(kc, meithealNamespace, makePodLogTailFn(kcs)),
 			// ScanJobRunner reproduces the release-image CVE scan gate
 			// post-push for tasks that declare a spec.scanGate (#1798). The
 			// scan reuses the gate's cache claim: same clone, same Go module
 			// and build caches, one PVC -- mirroring the BuildAll ToolDeps
 			// wiring that hands every Job the --gate-cache-pvc value.
-			ScanJobRunner: makeScanJobRunner(kc, foremanNamespace, gateCachePVC, makePodLogTailFn(kcs)),
+			ScanJobRunner: makeScanJobRunner(kc, meithealNamespace, gateCachePVC, makePodLogTailFn(kcs)),
 		}
 	default:
 		setupLog.Error(nil, "unknown --agent-mode", "value", agentMode, "valid", "stub|native")
 		os.Exit(1)
 	}
 
-	watcher := &foremanagent.AgenticTaskWatcher{
+	watcher := &meithealagent.AgenticTaskWatcher{
 		Client:             kc,
 		NodeName:           fleetNodeName,
 		Namespace:          taskNamespace,
@@ -585,7 +585,7 @@ func main() {
 	reg.Watcher = watcher
 
 	cap := provider.Capability()
-	setupLog.Info("foreman-agent started",
+	setupLog.Info("meitheal-agent started",
 		"fleetNode", fleetNodeName,
 		"tailscaleAddr", tailscaleAddr,
 		"roles", spec.Roles,
@@ -610,7 +610,7 @@ func main() {
 	// whole agent down, so a failure to listen is logged and swallowed --
 	// losing the view of a run is not a reason to stop doing the run.
 	g.Go(func() error {
-		srv := &foremanagent.TurnStreamServer{Addr: turnStreamAddr, Stream: turnStream}
+		srv := &meithealagent.TurnStreamServer{Addr: turnStreamAddr, Stream: turnStream}
 		if err := srv.Start(gctx); err != nil {
 			setupLog.Error(err, "turn stream server stopped", "addr", turnStreamAddr)
 		}
@@ -618,21 +618,21 @@ func main() {
 	})
 
 	if err := g.Wait(); err != nil {
-		if errors.Is(err, foremanagent.ErrSelfUpdateRestart) {
+		if errors.Is(err, meithealagent.ErrSelfUpdateRestart) {
 			// Self-update applied: exit cleanly so launchd/systemd
 			// restarts the process onto the new binary. The macOS plist
 			// uses KeepAlive=true so launchd relaunches on any exit;
 			// the systemd unit uses Restart=always (same effect).
-			setupLog.Info("foreman-agent exiting for self-update restart")
+			setupLog.Info("meitheal-agent exiting for self-update restart")
 			os.Exit(0)
 		}
-		setupLog.Error(err, "foreman-agent exited with error")
+		setupLog.Error(err, "meitheal-agent exited with error")
 		os.Exit(1)
 	}
-	setupLog.Info("foreman-agent stopped cleanly")
+	setupLog.Info("meitheal-agent stopped cleanly")
 }
 
-// runTaskCommand implements `foreman-agent run-task`: run exactly ONE
+// runTaskCommand implements `meitheal-agent run-task`: run exactly ONE
 // AgenticTask to completion and exit. It is the entrypoint the coder Job
 // (#620) runs. The Job's ServiceAccount provides in-cluster credentials;
 // off-cluster invocations fall back to the standard kubeconfig discovery
@@ -656,7 +656,7 @@ func runTaskCommand(args []string) {
 		commitAuthorEmail        string
 		commitCommitterName      string
 		commitCommitterEmail     string
-		foremanNamespace         string
+		meithealNamespace        string
 		gateCachePVC             string
 		keepWorkspace            bool
 	)
@@ -667,7 +667,7 @@ func runTaskCommand(args []string) {
 	fs.StringVar(&namespace, "namespace", "default",
 		"Namespace of the AgenticTask to run.")
 	fs.StringVar(&workspaceDir, "workspace-dir", "",
-		"Working directory for the per-task clone. Defaults to $HOME/foreman-workspaces.")
+		"Working directory for the per-task clone. Defaults to $HOME/meitheal-workspaces.")
 	fs.StringVar(&kubeContext, "kube-context", "",
 		"kubeconfig context override. Ignored in-cluster.")
 	fs.StringVar(&gitRemoteURL, "git-remote-url", "",
@@ -679,7 +679,7 @@ func runTaskCommand(args []string) {
 	fs.StringVar(&inferenceURLHostOverride, "inference-base-url-host-override", "",
 		"Rewrite the host of the resolved InferenceService URL and substitute the live port "+
 			"from the v1 Endpoints object (off-cluster same-host installs).")
-	fs.StringVar(&commitAuthorName, "commit-author-name", "Foreman Bot",
+	fs.StringVar(&commitAuthorName, "commit-author-name", "Meitheal Bot",
 		"git author name for the produced branch.")
 	fs.StringVar(&commitAuthorEmail, "commit-author-email", "",
 		"git author email. Required for coder tasks that commit.")
@@ -689,7 +689,7 @@ func runTaskCommand(args []string) {
 	fs.StringVar(&commitCommitterEmail, "commit-committer-email", "",
 		"git committer email for the DCO sign-off trailer. Defaults to "+
 			"--commit-author-email so existing deployments are unchanged.")
-	fs.StringVar(&foremanNamespace, "foreman-namespace", "foreman-system",
+	fs.StringVar(&meithealNamespace, "meitheal-namespace", "meitheal-system",
 		"Namespace deterministic tools (e.g. run_gate_job) submit Jobs into.")
 	fs.StringVar(&gateCachePVC, "gate-cache-pvc", "",
 		"Name of the gate-cache PVC the run_gate_job tool mounts at /cache. Empty disables the "+
@@ -730,7 +730,7 @@ func runTaskCommand(args []string) {
 	defer cancel()
 
 	seams := mustForgeSeams(forgeName, forgeAPIBaseURL, gitRemoteURL)
-	res, err := foremanagent.RunTask(ctx, foremanagent.RunTaskConfig{
+	res, err := meithealagent.RunTask(ctx, meithealagent.RunTaskConfig{
 		AttemptKey:                   attemptKey,
 		Client:                       kc,
 		Task:                         types.NamespacedName{Namespace: namespace, Name: taskName},
@@ -744,7 +744,7 @@ func runTaskCommand(args []string) {
 			Email: committerEmail(commitCommitterEmail, commitAuthorEmail),
 		},
 		KeepWorkspace:   keepWorkspace,
-		RegistryFactory: makeRegistryFactory(kc, kcs, foremanNamespace, gateCachePVC, seams),
+		RegistryFactory: makeRegistryFactory(kc, kcs, meithealNamespace, gateCachePVC, seams),
 		CodeHost:        seams.codeHost,
 		WorkItems:       seams.workItems,
 		ChangePolicy:    changepolicy.NewDefaultPolicy(),
@@ -882,9 +882,9 @@ func gateActiveDeadlineSeconds(n *int64) int32 {
 // adding MCP tools to the already-filtered registry, is what makes the
 // bypass actually work.
 func assembleAgentRegistry(
-	log logr.Logger, native []foremantools.Tool, whitelist []string, mcpTools []foremantools.Tool,
-) (foremanagent.ToolRegistry, error) {
-	r, err := foremantools.New(native...)
+	log logr.Logger, native []meithealtools.Tool, whitelist []string, mcpTools []meithealtools.Tool,
+) (meithealagent.ToolRegistry, error) {
+	r, err := meithealtools.New(native...)
 	if err != nil {
 		return nil, fmt.Errorf("default registry: %w", err)
 	}
@@ -903,7 +903,7 @@ func assembleAgentRegistry(
 }
 
 // makeRegistryFactory returns a RegistryFactory closure that captures
-// the controller-runtime client + clientset + foreman namespace. The
+// the controller-runtime client + clientset + meitheal namespace. The
 // returned closure builds every tool the v0.1 surface exposes
 // (read_file, write_file, str_replace, grep, bash, submit_result, and
 // the M4 deterministic run_gate_job), filters that native set down to
@@ -921,19 +921,19 @@ func assembleAgentRegistry(
 // gate being closed runs the loop with native tools only, exactly like
 // before MCP existed.
 func makeRegistryFactory(
-	kc client.Client, kcs kubernetes.Interface, foremanNamespace, gateCachePVC string, seams forgeSeams,
+	kc client.Client, kcs kubernetes.Interface, meithealNamespace, gateCachePVC string, seams forgeSeams,
 ) func(
-	ctx context.Context, workspace string, ag *foremanv1alpha1.Agent, workloadMCPEnabled bool,
-) (foremanagent.ToolRegistry, error) {
+	ctx context.Context, workspace string, ag *meithealv1alpha1.Agent, workloadMCPEnabled bool,
+) (meithealagent.ToolRegistry, error) {
 	logTail := makePodLogTailFn(kcs)
 	return func(
-		ctx context.Context, workspace string, ag *foremanv1alpha1.Agent, workloadMCPEnabled bool,
-	) (foremanagent.ToolRegistry, error) {
+		ctx context.Context, workspace string, ag *meithealv1alpha1.Agent, workloadMCPEnabled bool,
+	) (meithealagent.ToolRegistry, error) {
 		bashTimeout := time.Duration(ag.Spec.BashTimeoutSeconds) * time.Second
 		if bashTimeout <= 0 {
 			bashTimeout = 30 * time.Second
 		}
-		// Constructed in pkg/foreman/agent/tools so there is exactly one list.
+		// Constructed in pkg/agent/tools so there is exactly one list.
 		// Keeping it here made a third copy that drifted from the webhook
 		// allow-list, shipping three tools registered but unusable (#1482).
 		// GateActiveDeadlineSeconds threads the verifying Agent's
@@ -944,11 +944,11 @@ func makeRegistryFactory(
 		if ag.Spec.Execution != nil {
 			gateDeadline = gateActiveDeadlineSeconds(ag.Spec.Execution.ActiveDeadlineSeconds)
 		}
-		native := foremantools.BuildAll(foremantools.ToolDeps{
+		native := meithealtools.BuildAll(meithealtools.ToolDeps{
 			Workspace:                 workspace,
 			BashTimeout:               bashTimeout,
 			Client:                    kc,
-			ForemanNamespace:          foremanNamespace,
+			MeithealNamespace:         meithealNamespace,
 			GateCachePVC:              gateCachePVC,
 			LogTailFn:                 logTail,
 			Token:                     repo.TokenFromEnvOrFile,
@@ -962,7 +962,7 @@ func makeRegistryFactory(
 			PullRequests: seams.pullRequests,
 		})
 
-		var mcpTools []foremantools.Tool
+		var mcpTools []meithealtools.Tool
 		// Gate-decision log (fires for EVERY run, both kinds) so we can see
 		// exactly which input decides whether MCP registers. logf.FromContext
 		// carries the executor's task/ns values, so this line correlates to the
@@ -975,8 +975,8 @@ func makeRegistryFactory(
 		if ag.Spec.MCP != nil && ag.Spec.MCP.Enabled && workloadMCPEnabled {
 			log := logf.FromContext(ctx)
 			// MCP header secrets resolve from the AGENT's own namespace,
-			// like provider auth (apiKeySecretRef) does — not foremanNamespace
-			// (the operator's namespace, which defaults to foreman-system). The
+			// like provider auth (apiKeySecretRef) does — not meithealNamespace
+			// (the operator's namespace, which defaults to meitheal-system). The
 			// Agent CR and its secrets live together (e.g. default/gateway-token),
 			// so an mcp-context7 secret sits beside the Agent, not by the operator.
 			secretNS := ag.Namespace
@@ -1046,7 +1046,7 @@ func makePodLogTailFn(kcs kubernetes.Interface) func(ctx context.Context, namesp
 				return ""
 			}
 			defer func() { _ = stream.Close() }()
-			buf := make([]byte, foremantools.MaxLogTailBytes)
+			buf := make([]byte, meithealtools.MaxLogTailBytes)
 			n, _ := io.ReadFull(stream, buf)
 			return string(buf[:n])
 		}
@@ -1094,9 +1094,9 @@ func sanitizeName(s string) string {
 // could not be judged (ran=false -> could-not-verify), so a GO stands.
 func mapGateVerdict(verdict string) (pass bool, ran bool) {
 	switch verdict {
-	case foremantools.VerdictGatePass:
+	case meithealtools.VerdictGatePass:
 		return true, true
-	case foremantools.VerdictGateFail:
+	case meithealtools.VerdictGateFail:
 		return false, true
 	default: // VerdictGateError, "", unknown
 		return false, false
@@ -1108,14 +1108,14 @@ func mapGateVerdict(verdict string) (pass bool, ran bool) {
 // RunGateJobTool scoped to the `test` make target (the fast tier already ran
 // fmt/vet/lint/build).
 func makeEnvtestJobRunner(
-	kc client.Client, foremanNamespace string,
+	kc client.Client, meithealNamespace string,
 	logTailFn func(ctx context.Context, namespace, jobName string) string,
-) foremanagent.EnvtestJobRunner {
+) meithealagent.EnvtestJobRunner {
 	return &envtestJobRunnerImpl{
-		tool: &foremantools.RunGateJobTool{
+		tool: &meithealtools.RunGateJobTool{
 			Client: kc,
-			Cfg: foremantools.RunGateJobToolConfig{
-				Namespace:    foremanNamespace,
+			Cfg: meithealtools.RunGateJobToolConfig{
+				Namespace:    meithealNamespace,
 				LogTailFn:    logTailFn,
 				PollInterval: 5 * time.Second,
 				PollTimeout:  10 * time.Minute,
@@ -1125,7 +1125,7 @@ func makeEnvtestJobRunner(
 }
 
 type envtestJobRunnerImpl struct {
-	tool *foremantools.RunGateJobTool
+	tool *meithealtools.RunGateJobTool
 }
 
 func (e *envtestJobRunnerImpl) Run(
@@ -1145,7 +1145,7 @@ func (e *envtestJobRunnerImpl) Run(
 		// "no upstream", so an unset repo slug degrades exactly as before.
 		"upstreamURL": upstreamURL,
 		// taskRef stamps the gate Job + pod with the originating AgenticTask
-		// identity (foreman.llmkube.dev/task-{namespace,name} labels) so a
+		// identity (meitheal.dev/task-{namespace,name} labels) so a
 		// gate Job/pod can be traced back to its task (#893). Without it the
 		// renderer falls back to "unknown".
 		"taskRef": map[string]string{
@@ -1181,9 +1181,9 @@ func (e *envtestJobRunnerImpl) Run(
 // (ran=false -> could-not-verify), never a finding against the branch.
 func mapScanVerdict(verdict string) (pass bool, ran bool) {
 	switch verdict {
-	case foremantools.VerdictScanPass:
+	case meithealtools.VerdictScanPass:
 		return true, true
-	case foremantools.VerdictScanFail:
+	case meithealtools.VerdictScanFail:
 		return false, true
 	default: // VerdictScanError, "", unknown
 		return false, false
@@ -1197,14 +1197,14 @@ func mapScanVerdict(verdict string) (pass bool, ran bool) {
 // mounts at /cache): the scan's Go builds hit the same GOMODCACHE/GOCACHE,
 // so a warm gate cache warms the scan too and one claim suffices.
 func makeScanJobRunner(
-	kc client.Client, foremanNamespace, gateCachePVC string,
+	kc client.Client, meithealNamespace, gateCachePVC string,
 	logTailFn func(ctx context.Context, namespace, jobName string) string,
-) foremanagent.ScanJobRunner {
+) meithealagent.ScanJobRunner {
 	return &scanJobRunnerImpl{
-		tool: &foremantools.RunScanJobTool{
+		tool: &meithealtools.RunScanJobTool{
 			Client: kc,
-			Cfg: foremantools.RunScanJobToolConfig{
-				Namespace:    foremanNamespace,
+			Cfg: meithealtools.RunScanJobToolConfig{
+				Namespace:    meithealNamespace,
 				PVCName:      gateCachePVC,
 				LogTailFn:    logTailFn,
 				PollInterval: 5 * time.Second,
@@ -1222,13 +1222,13 @@ func makeScanJobRunner(
 }
 
 type scanJobRunnerImpl struct {
-	tool *foremantools.RunScanJobTool
+	tool *meithealtools.RunScanJobTool
 }
 
 func (s *scanJobRunnerImpl) Run(
 	ctx context.Context,
 	taskNamespace, taskName, repository, branch, cloneURL, upstreamURL string,
-	scan foremanv1alpha1.ResolvedScan,
+	scan meithealv1alpha1.ResolvedScan,
 ) (pass bool, ran bool, feedback string) {
 	args, err := json.Marshal(map[string]any{
 		"repo":        repository,
@@ -1245,7 +1245,7 @@ func (s *scanJobRunnerImpl) Run(
 		"builderImage":  scan.BuilderImage,
 		"runnerImage":   scan.RunnerImage,
 		// taskRef stamps the scan Job + pod with the originating AgenticTask
-		// identity (foreman.llmkube.dev/task-{namespace,name} labels) so a
+		// identity (meitheal.dev/task-{namespace,name} labels) so a
 		// scan Job/pod can be traced back to its task (#893, the envtest
 		// runner's stamping contract applied to the scan gate).
 		"taskRef": map[string]string{

@@ -62,15 +62,15 @@ var gateExemptCIChecks = map[string]string{
 		"step, which no pull request runs; the tree derives from go.mod, so it carries no per-branch " +
 		"signal, and gating it would make every gate run install go-licenses and walk three GOOS " +
 		"module graphs",
-	"setup-test-e2e":                "provisions an e2e cluster; lifecycle, not a branch check",
-	"cleanup-test-e2e":              "tears down an e2e cluster; lifecycle, not a branch check",
-	"test-e2e":                      "needs a live cluster the gate Job does not own",
-	"test-e2e-rbac":                 "creates a kind cluster (Docker) the gate Job neither has nor owns",
-	"test-e2e-apisix":               "creates a kind cluster (Docker) and installs APISIX; the gate Job has neither",
-	"test-e2e-multinode":            "creates a two-worker kind cluster (Docker); the gate Job has neither",
-	"docker-build":                  "image build, not a branch check",
-	"docker-build-foreman-agent":    "image build, not a branch check",
-	"docker-build-foreman-operator": "image build, not a branch check",
+	"setup-test-e2e":                 "provisions an e2e cluster; lifecycle, not a branch check",
+	"cleanup-test-e2e":               "tears down an e2e cluster; lifecycle, not a branch check",
+	"test-e2e":                       "needs a live cluster the gate Job does not own",
+	"test-e2e-rbac":                  "creates a kind cluster (Docker) the gate Job neither has nor owns",
+	"test-e2e-apisix":                "creates a kind cluster (Docker) and installs APISIX; the gate Job has neither",
+	"test-e2e-multinode":             "creates a two-worker kind cluster (Docker); the gate Job has neither",
+	"docker-build":                   "image build, not a branch check",
+	"docker-build-meitheal-agent":    "image build, not a branch check",
+	"docker-build-meitheal-operator": "image build, not a branch check",
 }
 
 // golangciConfigTargets maps a golangci-lint --config= value used by a
@@ -185,7 +185,7 @@ var gateOutOfLoopChecks = map[string]string{
 		"until the merge base is resolved below the checks loop",
 }
 
-// TestDefaultGateChecksCoverCI pins the Foreman gate against the
+// TestDefaultGateChecksCoverCI pins the Meitheal gate against the
 // make-invoked subset of CI. A GATE-PASS is read by operators, and by the
 // verdict machinery, as "this branch is expected to pass CI"; that is
 // only true while the gate's check list covers the CI checks this test
@@ -223,8 +223,8 @@ func TestDefaultGateChecksCoverCI(t *testing.T) {
 // CI steps it excuses. A stale entry silently widens the next real gap.
 //
 // It is load-bearing for a second reason that is easy to destroy while
-// tidying up. docker-build, docker-build-foreman-agent,
-// docker-build-foreman-operator, test-e2e and setup-test-e2e appear in
+// tidying up. docker-build, docker-build-meitheal-agent,
+// docker-build-meitheal-operator, test-e2e and setup-test-e2e appear in
 // the workflows ONLY as bare lines inside a `run: |` block, so they are
 // reachable only through makeLineRe's optional `run:` prefix. Drop that
 // half of the pattern and ciBlockingChecks returns a smaller CI:
@@ -246,7 +246,7 @@ func TestGateExemptionsAreLive(t *testing.T) {
 // against for the other map.
 func TestGateOutOfLoopChecksAreLive(t *testing.T) {
 	args := renderGateArgsForTest(t, map[string]any{
-		"repo": "defilantech/LLMKube", "branch": "foreman/x", "baseBranch": "main",
+		"repo": "defilantech/LLMKube", "branch": "meitheal/x", "baseBranch": "main",
 	})
 	for target := range gateOutOfLoopChecks {
 		if !strings.Contains(args, "make "+target) {

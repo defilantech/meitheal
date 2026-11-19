@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // ScanJobRunner submits a clean-room gate Job that builds each release
@@ -12,7 +12,7 @@ import (
 // container-image vulnerability scan over it, polls to terminal, and
 // reports the outcome. It lives in this package (not tools) because tools
 // imports agent (for ToolResult), so the agent package cannot import tools
-// without a cycle; cmd/foreman-agent wires a closure over the tools-side
+// without a cycle; cmd/meitheal-agent wires a closure over the tools-side
 // scan gate Job runner into the executor's ScanJobRunner field.
 type ScanJobRunner interface {
 	// Run reports (pass, ran, feedback). ran is false when the scan Job
@@ -22,7 +22,7 @@ type ScanJobRunner interface {
 	// the finding table on failure.
 	//
 	// taskNamespace/taskName identify the originating AgenticTask so the
-	// submitted Job carries the foreman.llmkube.dev/task-{namespace,name}
+	// submitted Job carries the meitheal.dev/task-{namespace,name}
 	// labels and a Job/pod can be traced back to its task (#893 parity).
 	//
 	// upstreamURL is the CANONICAL repo clone URL, separate from cloneURL
@@ -38,7 +38,7 @@ type ScanJobRunner interface {
 	Run(
 		ctx context.Context,
 		taskNamespace, taskName, repository, branch, cloneURL, upstreamURL string,
-		scan foremanv1alpha1.ResolvedScan,
+		scan meithealv1alpha1.ResolvedScan,
 	) (pass bool, ran bool, feedback string)
 }
 
@@ -71,7 +71,7 @@ func evaluatePostPushScan(
 	ctx context.Context,
 	scanDeclared bool,
 	runner ScanJobRunner,
-	scan foremanv1alpha1.ResolvedScan,
+	scan meithealv1alpha1.ResolvedScan,
 	taskNamespace, taskName, repository, branch, cloneURL, upstreamURL string,
 ) (scanGateVerdict, string) {
 	if !scanDeclared || runner == nil {
@@ -96,7 +96,7 @@ const defaultMaxScanIterations = 1
 
 // effectiveMaxScanIterations resolves the *int32 three-state: nil (or
 // a nil agent) defaults; explicit values (including 0) win.
-func effectiveMaxScanIterations(agent *foremanv1alpha1.Agent) int {
+func effectiveMaxScanIterations(agent *meithealv1alpha1.Agent) int {
 	if agent == nil || agent.Spec.MaxScanIterations == nil {
 		return defaultMaxScanIterations
 	}

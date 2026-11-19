@@ -19,7 +19,7 @@ package agent
 import (
 	"context"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // Executor runs an AgenticTask and produces a structured Result. v0.1
@@ -54,8 +54,8 @@ type Executor interface {
 	// must produce a terminal outcome for it rather than retry.
 	Execute(
 		ctx context.Context,
-		task *foremanv1alpha1.AgenticTask,
-		agent *foremanv1alpha1.Agent,
+		task *meithealv1alpha1.AgenticTask,
+		agent *meithealv1alpha1.Agent,
 	) (*Result, error)
 }
 
@@ -79,5 +79,5 @@ type Executor interface {
 // property answers only the first half, and computing the second half in the
 // watcher would leak executor wiring into the dispatch loop.
 type SupervisingExecutor interface {
-	SupervisesAgent(agent *foremanv1alpha1.Agent) bool
+	SupervisesAgent(agent *meithealv1alpha1.Agent) bool
 }

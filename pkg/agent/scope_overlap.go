@@ -24,7 +24,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // lineSuffixPattern matches the trailing line citation on a file reference
@@ -393,13 +393,13 @@ func enforceReviewerScopeOverlap(
 	extra map[string]any,
 	issueBody string,
 	diffFiles []string,
-	verdict foremanv1alpha1.AgenticTaskVerdict,
+	verdict meithealv1alpha1.AgenticTaskVerdict,
 	sourceExtensions []string,
 	testLayout TestLayout,
 	addedFiles []string,
 	readFile func(relPath string) ([]byte, error),
 	readAddedLines func(relPath string) (string, error),
-) foremanv1alpha1.AgenticTaskVerdict {
+) meithealv1alpha1.AgenticTaskVerdict {
 	if extra == nil {
 		return verdict
 	}
@@ -496,7 +496,7 @@ func enforceReviewerScopeOverlap(
 		return verdict
 	}
 
-	if verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		extra["scopeDriftNotDemoted"] = scopeNotDemotedAlreadyNonGo
 		log.Info("reviewer scope: diff touches none of the files the issue names; verdict already non-GO, annotating only",
 			"verdict", verdict, "scopeRefs", refs)
@@ -521,5 +521,5 @@ func enforceReviewerScopeOverlap(
 		len(refs), strings.Join(refs, ", "))
 	log.Info("reviewer scope: drift detected on GO verdict; demoting to NO-GO",
 		"scopeRefs", refs, "diffFiles", diffFiles)
-	return foremanv1alpha1.AgenticTaskVerdictNoGo
+	return meithealv1alpha1.AgenticTaskVerdictNoGo
 }

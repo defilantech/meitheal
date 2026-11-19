@@ -27,7 +27,7 @@ import (
 type CloneOptions struct {
 	// RemoteURL is the source URL to clone from. HTTPS preferred for
 	// the GIT_ASKPASS auth path; SSH works too but expects the
-	// foreman-agent's host key to be configured.
+	// meitheal-agent's host key to be configured.
 	RemoteURL string
 
 	// Dest is the local directory to clone into. Must not exist yet,
@@ -58,7 +58,7 @@ func Clone(ctx context.Context, opts CloneOptions) error {
 	}
 
 	// Refuse to clone into an existing non-empty dir; this protects
-	// the foreman-agent from being pointed at $HOME by mistake.
+	// the meitheal-agent from being pointed at $HOME by mistake.
 	if entries, err := os.ReadDir(opts.Dest); err == nil && len(entries) > 0 {
 		return fmt.Errorf("Clone: dest %q is not empty", opts.Dest)
 	} else if err != nil && !os.IsNotExist(err) {

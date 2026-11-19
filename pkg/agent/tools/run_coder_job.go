@@ -49,7 +49,7 @@ var coderJobTemplate string
 // reproduces the RunTask verdict vocabulary (GO / NO-GO / INCOMPLETE)
 // plus a synthetic ERROR for run-failures the run-task body never reached
 // a verdict for (image-pull, OOM, deadline, apiserver poll lag). These
-// match foremanv1alpha1.AgenticTaskVerdict string values so the executor
+// match meithealv1alpha1.AgenticTaskVerdict string values so the executor
 // can pass them straight through.
 const (
 	coderVerdictGo         = "GO"
@@ -58,19 +58,19 @@ const (
 	coderVerdictError      = "ERROR"
 )
 
-// RunCoderJobConfig is the static configuration the foreman-agent hands
+// RunCoderJobConfig is the static configuration the meitheal-agent hands
 // to the submitter. Per-run values (task name/namespace) come through
 // RunCoderJobArgs. Defaults mirror the gate Job where they overlap
 // (resources, TTL, poll cadence) and the Agent's ExecutionSpec where the
 // installer overrides them (image, SA, deadline, resources).
 type RunCoderJobConfig struct {
 	// Namespace is where the coder Job is submitted. Defaults to
-	// "foreman-system".
+	// "meitheal-system".
 	Namespace string
 
-	// Image is the per-task container image (foreman-agent binary plus
+	// Image is the per-task container image (meitheal-agent binary plus
 	// the project toolchain). Comes from Agent.spec.execution.image.
-	// Defaults to "ghcr.io/defilantech/foreman-agent:latest" so the
+	// Defaults to "ghcr.io/defilantech/meitheal-agent:latest" so the
 	// zero-value config is constructable in tests.
 	Image string
 
@@ -98,7 +98,7 @@ type RunCoderJobConfig struct {
 	// GitCredentialsSecret is the Secret name holding the GitHub token for
 	// the clone + push. The template projects it as the GITHUB_TOKEN env
 	// var (read by the run-task body via repo.TokenFromEnvOrFile) and also
-	// mounts it at /secrets/git. Defaults to "foreman-git-credentials".
+	// mounts it at /secrets/git. Defaults to "meitheal-git-credentials".
 	GitCredentialsSecret string
 
 	// GitCredentialsSecretKey is the key within GitCredentialsSecret that
@@ -175,7 +175,7 @@ type RunCoderJobConfig struct {
 	LogTailFn func(ctx context.Context, namespace, jobName string) string
 
 	// NameFn lets tests pin Job names so polling can resolve them. Default
-	// produces "foreman-coder-<task-name>-<unix-ms>".
+	// produces "meitheal-coder-<task-name>-<unix-ms>".
 	NameFn func(taskName string) string
 }
 
@@ -225,14 +225,14 @@ type CoderJobResult struct {
 	// FailureReason is a short machine-ish reason. On an ERROR verdict it is
 	// a job-infrastructure tag (job-failed, poll-timeout, create-failed,
 	// render-failed); on INCOMPLETE it carries the typed failure reason
-	// lifted from the in-pod FOREMAN-RESULT envelope when present.
+	// lifted from the in-pod MEITHEAL-RESULT envelope when present.
 	FailureReason string
 
 	// LogTail is the captured pod log tail, for operator triage.
 	LogTail string
 
 	// ResultExtra is the full Extra map of the in-pod executor's Result
-	// envelope, parsed from the FOREMAN-RESULT line. The in-pod native
+	// envelope, parsed from the MEITHEAL-RESULT line. The in-pod native
 	// executor already promotes terminal machine outcomes
 	// (ALREADY-RESOLVED / NEEDS-VERIFICATION) to its top-level
 	// extra.outcome; carrying the map through lets the Job-mode
@@ -249,14 +249,14 @@ type CoderJobResult struct {
 // polls for terminal Job status, fetches the pod log tail, and parses the
 // RunTask result + sentinel out of it. It is the sibling of
 // RunGateJobTool: same render -> create -> poll -> log-tail -> map
-// structure, but the Job runs `foreman-agent run-task` rather than the
+// structure, but the Job runs `meitheal-agent run-task` rather than the
 // gate's `make <checks>`.
 //
 // RunCoderJob is NOT an LLM tool (it has no Schema / Execute on the
 // agent.Tool interface): the executor calls Run directly when an Agent's
 // ExecutionSpec selects Job mode. The seam that lets the agent package
 // reach this code without an import cycle (tools imports agent, not the
-// reverse) is agent.CoderJobSubmitter; cmd/foreman-agent wires a closure
+// reverse) is agent.CoderJobSubmitter; cmd/meitheal-agent wires a closure
 // over Run into the executor.
 type RunCoderJob struct {
 	// Client is the controller-runtime client used to Create + Get the
@@ -441,7 +441,7 @@ func (r *RunCoderJob) Run(ctx context.Context, args RunCoderJobArgs) (CoderJobRe
 		// Succeeded Job but no recognizable result line: treat as a
 		// run-failure rather than silently dropping it.
 		res.Verdict = coderVerdictError
-		res.FailureReason = "no FOREMAN-RESULT line in pod log"
+		res.FailureReason = "no MEITHEAL-RESULT line in pod log"
 		res.Summary = "coder Job completed but emitted no parseable result"
 	}
 	if res.Verdict == coderVerdictError && res.FailureReason == "" {
@@ -505,7 +505,7 @@ func (r *RunCoderJob) errorResult(jobName, namespace, reason, logTail string) Co
 
 // reapPreviousJobs deletes any existing coder Job for the given task so a
 // re-dispatch does not leave the previous Job running alongside the new one
-// (#1535). Every coder Job carries the foreman.llmkube.dev/task-name label,
+// (#1535). Every coder Job carries the meitheal.dev/task-name label,
 // so it is the reliable selector. Deletion uses background propagation so
 // the orphan's pods are removed too, rather than relying on GC timing alone.
 func (r *RunCoderJob) reapPreviousJobs(ctx context.Context, namespace, taskName string) error {
@@ -530,7 +530,7 @@ func (r *RunCoderJob) reapPreviousJobs(ctx context.Context, namespace, taskName 
 // taskNameLabel is the label every coder Job carries identifying the
 // AgenticTask it runs. It is set in coder_job_template.yaml at creation and
 // is what reapPreviousJobs selects on.
-const taskNameLabel = "foreman.llmkube.dev/task-name"
+const taskNameLabel = "meitheal.dev/task-name"
 
 // --- result parsing -------------------------------------------------------
 
@@ -668,10 +668,10 @@ func applyResourceOverrides(job *batchv1.Job, res *corev1.ResourceRequirements) 
 // RunCoderJobConfig stays trivially constructable in tests.
 func applyCoderConfigDefaults(c RunCoderJobConfig) RunCoderJobConfig {
 	if c.Namespace == "" {
-		c.Namespace = "foreman-system"
+		c.Namespace = "meitheal-system"
 	}
 	if c.Image == "" {
-		c.Image = "ghcr.io/defilantech/foreman-agent:latest"
+		c.Image = "ghcr.io/defilantech/meitheal-agent:latest"
 	}
 	if c.ActiveDeadlineSeconds == 0 {
 		c.ActiveDeadlineSeconds = 3600
@@ -682,7 +682,7 @@ func applyCoderConfigDefaults(c RunCoderJobConfig) RunCoderJobConfig {
 	c.CPURequest, c.CPULimit, c.MemRequest, c.MemLimit = defaultJobResources(
 		c.CPURequest, c.CPULimit, c.MemRequest, c.MemLimit)
 	if c.GitCredentialsSecret == "" {
-		c.GitCredentialsSecret = "foreman-git-credentials"
+		c.GitCredentialsSecret = "meitheal-git-credentials"
 	}
 	if c.GitCredentialsSecretKey == "" {
 		c.GitCredentialsSecretKey = "token"
@@ -701,7 +701,7 @@ func applyCoderConfigDefaults(c RunCoderJobConfig) RunCoderJobConfig {
 	return c
 }
 
-// coderJobName builds the coder Job name "foreman-coder-<task>-<unix-ms>",
+// coderJobName builds the coder Job name "meitheal-coder-<task>-<unix-ms>",
 // trimmed to the 63-char k8s object-name limit by truncating the TASK
 // portion, never the trailing <unix-ms> disambiguator. The #1405 retry loop
 // submits a second coder Job for the same task while the prior attempt's Job
@@ -710,7 +710,7 @@ func applyCoderConfigDefaults(c RunCoderJobConfig) RunCoderJobConfig {
 // the prior Job (AlreadyExists -> ERROR -> could-not-recover). Keeping the
 // suffix guarantees each submission gets a distinct name.
 func coderJobName(taskName string, unixMilli int64) string {
-	const prefix = "foreman-coder-"
+	const prefix = "meitheal-coder-"
 	suffix := fmt.Sprintf("-%d", unixMilli)
 	budget := 63 - len(prefix) - len(suffix)
 	if budget < 0 {

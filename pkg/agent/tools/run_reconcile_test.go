@@ -50,13 +50,13 @@ func reconcileFixture(t *testing.T, integBranch string, files map[string]string)
 }
 
 func TestRunReconcile_CleanIsGatePass(t *testing.T) {
-	ws := reconcileFixture(t, "foreman/s/integ", map[string]string{
+	ws := reconcileFixture(t, "meitheal/s/integ", map[string]string{
 		"config/exp.yaml":  "emit rocm_smi_gpu_temp here",
 		"config/dash.json": `{"expr":"rocm_smi_gpu_temp"}`,
 	})
 	tool := &RunReconcileTool{Workspace: ws}
 	args, _ := json.Marshal(map[string]any{
-		"branch": "foreman/s/integ",
+		"branch": "meitheal/s/integ",
 		"slices": []map[string]any{
 			{"name": "exp", "files": []string{"config/exp.yaml"}},
 			{"name": "dash", "files": []string{"config/dash.json"}},
@@ -76,13 +76,13 @@ func TestRunReconcile_CleanIsGatePass(t *testing.T) {
 
 func TestRunReconcile_DriftIsGateFail(t *testing.T) {
 	// the exporter emits a DIFFERENT metric than the dashboard queries.
-	ws := reconcileFixture(t, "foreman/s/integ", map[string]string{
+	ws := reconcileFixture(t, "meitheal/s/integ", map[string]string{
 		"config/exp.yaml":  "emit rocm_smi_temperature_edge here",
 		"config/dash.json": `{"expr":"rocm_smi_gpu_temp"}`,
 	})
 	tool := &RunReconcileTool{Workspace: ws}
 	args, _ := json.Marshal(map[string]any{
-		"branch": "foreman/s/integ",
+		"branch": "meitheal/s/integ",
 		"slices": []map[string]any{
 			{"name": "exp", "files": []string{"config/exp.yaml"}},
 			{"name": "dash", "files": []string{"config/dash.json"}},

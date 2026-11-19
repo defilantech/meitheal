@@ -44,7 +44,7 @@ type CommitOptions struct {
 	Message string
 
 	// Author and Committer drive the sign-off. v0.1 sets both to the
-	// same Identity (the foreman bot user); v0.2 may distinguish.
+	// same Identity (the meitheal bot user); v0.2 may distinguish.
 	Author    Identity
 	Committer Identity
 }
@@ -173,7 +173,7 @@ func SoftResetToBase(ctx context.Context, workspace string, base string) error {
 // Sign-off uses git's built-in -s, which appends "Signed-off-by: <name>
 // <email>" where the identity is the Committer. The Author identity is
 // also set explicitly so the commit's author block reflects the bot
-// (rather than whoever ran the foreman-agent process).
+// (rather than whoever ran the meitheal-agent process).
 func Commit(ctx context.Context, opts CommitOptions) (string, error) {
 	if opts.Workspace == "" {
 		return "", fmt.Errorf("Commit: Workspace is required")

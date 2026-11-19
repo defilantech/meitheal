@@ -26,7 +26,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
 
@@ -82,8 +82,8 @@ func gpOriginHasBranch(t *testing.T, origin, branch string) bool {
 	return strings.Contains(string(out), branch)
 }
 
-func gpAgent(role foremanv1alpha1.AgentRole) *foremanv1alpha1.Agent {
-	return &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{Role: role}}
+func gpAgent(role meithealv1alpha1.AgentRole) *meithealv1alpha1.Agent {
+	return &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{Role: role}}
 }
 
 func gpLoopResult(outcome string) *LoopResult {
@@ -95,24 +95,24 @@ func gpLoopResult(outcome string) *LoopResult {
 }
 
 func TestMaybePreserveGateFailedBranch(t *testing.T) {
-	ident := repo.Identity{Name: "Foreman Bot", Email: "bot@example.com"}
+	ident := repo.Identity{Name: "Meitheal Bot", Email: "bot@example.com"}
 	newExec := func() *NativeAgentLoopExecutor {
 		return &NativeAgentLoopExecutor{CommitAuthor: ident, CommitCommitter: ident}
 	}
-	newTask := func(branch string) *foremanv1alpha1.AgenticTask {
-		return &foremanv1alpha1.AgenticTask{
-			Spec: foremanv1alpha1.AgenticTaskSpec{
-				Payload: foremanv1alpha1.AgenticTaskPayload{Issue: 1109, Branch: branch},
+	newTask := func(branch string) *meithealv1alpha1.AgenticTask {
+		return &meithealv1alpha1.AgenticTask{
+			Spec: meithealv1alpha1.AgenticTaskSpec{
+				Payload: meithealv1alpha1.AgenticTaskPayload{Issue: 1109, Branch: branch},
 			},
 		}
 	}
 
 	t.Run("coder CODER-GATE-FAILED with changes preserves the branch", func(t *testing.T) {
-		const branch = "foreman/gp/preserve"
+		const branch = "meitheal/gp/preserve"
 		ws, origin := gpSetupWorkspace(t, branch, true)
 		r := &Result{Extra: map[string]any{}}
 		newExec().maybePreserveGateFailedBranch(context.Background(), logr.Discard(),
-			gpAgent(foremanv1alpha1.AgentRoleCoder), newTask(branch), ws, branch, nil,
+			gpAgent(meithealv1alpha1.AgentRoleCoder), newTask(branch), ws, branch, nil,
 			gpLoopResult(CoderGateFailedOutcome), r)
 
 		if !gpOriginHasBranch(t, origin, branch) {
@@ -127,11 +127,11 @@ func TestMaybePreserveGateFailedBranch(t *testing.T) {
 	})
 
 	t.Run("non-gate INCOMPLETE outcome is not preserved", func(t *testing.T) {
-		const branch = "foreman/gp/nongate"
+		const branch = "meitheal/gp/nongate"
 		ws, origin := gpSetupWorkspace(t, branch, true)
 		r := &Result{Extra: map[string]any{}}
 		newExec().maybePreserveGateFailedBranch(context.Background(), logr.Discard(),
-			gpAgent(foremanv1alpha1.AgentRoleCoder), newTask(branch), ws, branch, nil,
+			gpAgent(meithealv1alpha1.AgentRoleCoder), newTask(branch), ws, branch, nil,
 			gpLoopResult("STUCK-LOOP-DETECTED"), r)
 
 		if gpOriginHasBranch(t, origin, branch) {
@@ -143,11 +143,11 @@ func TestMaybePreserveGateFailedBranch(t *testing.T) {
 	})
 
 	t.Run("reviewer role is not preserved", func(t *testing.T) {
-		const branch = "foreman/gp/reviewer"
+		const branch = "meitheal/gp/reviewer"
 		ws, origin := gpSetupWorkspace(t, branch, true)
 		r := &Result{Extra: map[string]any{}}
 		newExec().maybePreserveGateFailedBranch(context.Background(), logr.Discard(),
-			gpAgent(foremanv1alpha1.AgentRoleReviewer), newTask(branch), ws, branch, nil,
+			gpAgent(meithealv1alpha1.AgentRoleReviewer), newTask(branch), ws, branch, nil,
 			gpLoopResult(CoderGateFailedOutcome), r)
 
 		if gpOriginHasBranch(t, origin, branch) {
@@ -156,11 +156,11 @@ func TestMaybePreserveGateFailedBranch(t *testing.T) {
 	})
 
 	t.Run("coder gate-failed but no changes is not preserved", func(t *testing.T) {
-		const branch = "foreman/gp/nochange"
+		const branch = "meitheal/gp/nochange"
 		ws, origin := gpSetupWorkspace(t, branch, false)
 		r := &Result{Extra: map[string]any{}}
 		newExec().maybePreserveGateFailedBranch(context.Background(), logr.Discard(),
-			gpAgent(foremanv1alpha1.AgentRoleCoder), newTask(branch), ws, branch, nil,
+			gpAgent(meithealv1alpha1.AgentRoleCoder), newTask(branch), ws, branch, nil,
 			gpLoopResult(CoderGateFailedOutcome), r)
 
 		if gpOriginHasBranch(t, origin, branch) {
@@ -182,15 +182,15 @@ func TestMaybePreserveGateFailedBranch(t *testing.T) {
 // here (it derives its own context and returns a terminal envelope before
 // mapLoopError), so a cancelled ctx here means the parent is genuinely gone.
 func TestPreserveUnsuccessfulLoopBranch_CancelledParentStillPreserves(t *testing.T) {
-	ident := repo.Identity{Name: "Foreman Bot", Email: "bot@example.com"}
+	ident := repo.Identity{Name: "Meitheal Bot", Email: "bot@example.com"}
 	e := &NativeAgentLoopExecutor{CommitAuthor: ident, CommitCommitter: ident}
 
-	const branch = "foreman/wl-cancel/issue-1715"
+	const branch = "meitheal/wl-cancel/issue-1715"
 	ws, origin := gpSetupWorkspace(t, branch, true)
 
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Payload: foremanv1alpha1.AgenticTaskPayload{Issue: 1715},
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Payload: meithealv1alpha1.AgenticTaskPayload{Issue: 1715},
 		},
 	}
 
@@ -199,7 +199,7 @@ func TestPreserveUnsuccessfulLoopBranch_CancelledParentStillPreserves(t *testing
 
 	r := &Result{}
 	got := e.preserveUnsuccessfulLoopBranch(ctx, logr.Discard(),
-		gpAgent(foremanv1alpha1.AgentRoleCoder), task, ws, branch, nil, r)
+		gpAgent(meithealv1alpha1.AgentRoleCoder), task, ws, branch, nil, r)
 
 	if !gpOriginHasBranch(t, origin, branch) {
 		t.Error("branch not preserved under a cancelled parent context")
@@ -219,20 +219,20 @@ func TestPreserveUnsuccessfulLoopBranch_CancelledParentStillPreserves(t *testing
 // case where the agent died without warning -- and the nil Result must pass
 // straight through rather than be dereferenced or replaced.
 func TestPreserveUnsuccessfulLoopBranch_NilResultStillPreserves(t *testing.T) {
-	ident := repo.Identity{Name: "Foreman Bot", Email: "bot@example.com"}
+	ident := repo.Identity{Name: "Meitheal Bot", Email: "bot@example.com"}
 	e := &NativeAgentLoopExecutor{CommitAuthor: ident, CommitCommitter: ident}
 
-	const branch = "foreman/wl-nilres/issue-1715"
+	const branch = "meitheal/wl-nilres/issue-1715"
 	ws, origin := gpSetupWorkspace(t, branch, true)
 
-	task := &foremanv1alpha1.AgenticTask{
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Payload: foremanv1alpha1.AgenticTaskPayload{Issue: 1715},
+	task := &meithealv1alpha1.AgenticTask{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Payload: meithealv1alpha1.AgenticTaskPayload{Issue: 1715},
 		},
 	}
 
 	got := e.preserveUnsuccessfulLoopBranch(context.Background(), logr.Discard(),
-		gpAgent(foremanv1alpha1.AgentRoleCoder), task, ws, branch, nil, nil)
+		gpAgent(meithealv1alpha1.AgentRoleCoder), task, ws, branch, nil, nil)
 
 	if got != nil {
 		t.Errorf("nil Result must pass through unchanged, got %+v", got)

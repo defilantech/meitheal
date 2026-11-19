@@ -2,7 +2,7 @@ package agent
 
 import "sort"
 
-// MCPCallEvent is a single MCP tool call observed during a Foreman run. It
+// MCPCallEvent is a single MCP tool call observed during a Meitheal run. It
 // mirrors the per-call "mcp tool call" record the MCP registry accumulates
 // over a task. CallError is non-empty only when the call failed at the
 // transport/protocol level (e.g. a network or HTTP error); a tool-level
@@ -71,10 +71,10 @@ func aggregateMCPCalls(events []MCPCallEvent) []MCPToolStat {
 	return out
 }
 
-// MCPAudit captures MCP usage for a Foreman run: how many MCP servers were
+// MCPAudit captures MCP usage for a Meitheal run: how many MCP servers were
 // configured, how many tools were added to the registry, and a per-tool call
-// histogram. It is pure data; embedding it into the foreman.audit.v1 record
-// (the foreman-audit-<task> ConfigMap) is a deliberate follow-up, not part of
+// histogram. It is pure data; embedding it into the meitheal.audit.v1 record
+// (the meitheal-audit-<task> ConfigMap) is a deliberate follow-up, not part of
 // these aggregation functions.
 type MCPAudit struct {
 	ServersConfigured int           `json:"serversConfigured"`

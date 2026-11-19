@@ -36,16 +36,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/yaml"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/githubissue"
 )
 
 // Labels stamped on every task a single dispatch invocation creates, so the
 // batch can be queried, watched, and cleaned up as a unit.
 const (
-	dispatchRunLabel   = "foreman.llmkube.dev/dispatch-run"
-	dispatchIssueLabel = "foreman.llmkube.dev/issue"
-	dispatchAgentLabel = "foreman.llmkube.dev/agent"
+	dispatchRunLabel   = "meitheal.dev/dispatch-run"
+	dispatchIssueLabel = "meitheal.dev/issue"
+	dispatchAgentLabel = "meitheal.dev/agent"
 )
 
 // Best-effort writers for progress/UI output: the destination is the command's
@@ -55,7 +55,7 @@ func fprintf(w io.Writer, format string, a ...any) { _, _ = fmt.Fprintf(w, forma
 func fprintln(w io.Writer, a ...any)               { _, _ = fmt.Fprintln(w, a...) }
 func fprint(w io.Writer, a ...any)                 { _, _ = fmt.Fprint(w, a...) }
 
-// dispatchOptions holds the resolved flags for one `foreman dispatch` run.
+// dispatchOptions holds the resolved flags for one `meitheal dispatch` run.
 type dispatchOptions struct {
 	repo             string
 	agents           []string
@@ -82,29 +82,11 @@ type taskResult struct {
 	Issue    int
 	Agent    string
 	Node     string
-	Phase    foremanv1alpha1.AgenticTaskPhase
-	Verdict  foremanv1alpha1.AgenticTaskVerdict
+	Phase    meithealv1alpha1.AgenticTaskPhase
+	Verdict  meithealv1alpha1.AgenticTaskVerdict
 	Branch   string
-	Reason   foremanv1alpha1.AgenticTaskFailureReason
+	Reason   meithealv1alpha1.AgenticTaskFailureReason
 	Duration time.Duration
-}
-
-// NewForemanCommand is the `llmkube foreman` group: operate the Foreman
-// agentic-coding harness from the CLI.
-func NewForemanCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "foreman",
-		Short: "Operate the Foreman agentic-coding harness",
-		Long: `Operate the Foreman agentic-coding harness.
-
-Foreman runs coder and reviewer agents as AgenticTasks against a fleet of
-heterogeneous executors. These subcommands create and watch those tasks.`,
-	}
-	cmd.AddCommand(newDispatchCommand())
-	cmd.AddCommand(newSliceCommand())
-	cmd.AddCommand(newRunCommand())
-	cmd.AddCommand(newDecisionsCommand())
-	return cmd
 }
 
 func newDispatchCommand() *cobra.Command {
@@ -122,16 +104,16 @@ GitHub (title + body) unless overridden with --prompt-file.
 
 Examples:
   # Two issues, one per box, watched to completion:
-  llmkube foreman dispatch --repo defilantech/LLMKube \
+  meitheal dispatch --repo defilantech/LLMKube \
     --agents gateway-coder-amd,coder-metal 813 854
 
   # Override one issue's prompt; create and detach:
-  llmkube foreman dispatch --repo defilantech/LLMKube --agents coder-metal \
+  meitheal dispatch --repo defilantech/LLMKube --agents coder-metal \
     --prompt-file 813=/tmp/813.md --no-wait 813 854
 
   # In-place PR refresh: restore an existing branch and push an update on top:
-  llmkube foreman dispatch --repo defilantech/LLMKube --agents coder-go \
-    --revise-from-branch foreman/adhoc/issue-991 \
+  meitheal dispatch --repo defilantech/LLMKube --agents coder-go \
+    --revise-from-branch meitheal/adhoc/issue-991 \
     --prompt-file 991=feedback.md 991`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -202,7 +184,7 @@ func runDispatch(ctx context.Context, out io.Writer, args []string, opts *dispat
 
 	runID := newRunID()
 	assignments := assignAgents(issues, opts.agents)
-	tasks := make([]*foremanv1alpha1.AgenticTask, 0, len(assignments))
+	tasks := make([]*meithealv1alpha1.AgenticTask, 0, len(assignments))
 	for _, a := range assignments {
 		tasks = append(tasks, buildTask(opts.namespace, runID, opts.repo, a, prompts[a.Issue], opts))
 	}
@@ -211,7 +193,7 @@ func runDispatch(ctx context.Context, out io.Writer, args []string, opts *dispat
 		return printTasksYAML(out, tasks)
 	}
 
-	c, err := newForemanClient()
+	c, err := newMeithealClient()
 	if err != nil {
 		return err
 	}
@@ -290,11 +272,11 @@ func validateReviseFromBranch(issues []int, flag string) error {
 // branchStrategyIfRevision pairs BranchStrategy with ReviseFromBranch: the
 // rebase strategy is what makes the executor actually restore the prior
 // attempt (#1042), so the two must move together.
-func branchStrategyIfRevision(ref string) foremanv1alpha1.BranchStrategy {
+func branchStrategyIfRevision(ref string) meithealv1alpha1.BranchStrategy {
 	if ref == "" {
 		return ""
 	}
-	return foremanv1alpha1.BranchStrategyRebase
+	return meithealv1alpha1.BranchStrategyRebase
 }
 
 // parsePromptOverrides reads each ISSUE=PATH spec into a map of issue ->
@@ -337,8 +319,8 @@ func taskName(issue int, runID string) string {
 // buildTask constructs the AgenticTask for one assignment.
 func buildTask(
 	namespace, runID, repo string, a taskAssignment, prompt string, opts *dispatchOptions,
-) *foremanv1alpha1.AgenticTask {
-	return &foremanv1alpha1.AgenticTask{
+) *meithealv1alpha1.AgenticTask {
+	return &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      taskName(a.Issue, runID),
 			Namespace: namespace,
@@ -348,11 +330,11 @@ func buildTask(
 				dispatchAgentLabel: a.Agent,
 			},
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind:           foremanv1alpha1.AgenticTaskKindIssueFix,
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind:           meithealv1alpha1.AgenticTaskKindIssueFix,
 			AgentRef:       &corev1.LocalObjectReference{Name: a.Agent},
 			TimeoutSeconds: opts.timeoutSecs,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:         repo,
 				Issue:        int32(a.Issue), //nolint:gosec // G115: issue numbers are positive and bounded by parseIssues
 				Prompt:       prompt,
@@ -376,12 +358,12 @@ func buildTask(
 }
 
 // isTerminalPhase reports whether a task has reached a terminal state.
-func isTerminalPhase(p foremanv1alpha1.AgenticTaskPhase) bool {
-	return p == foremanv1alpha1.AgenticTaskPhaseSucceeded || p == foremanv1alpha1.AgenticTaskPhaseFailed
+func isTerminalPhase(p meithealv1alpha1.AgenticTaskPhase) bool {
+	return p == meithealv1alpha1.AgenticTaskPhaseSucceeded || p == meithealv1alpha1.AgenticTaskPhaseFailed
 }
 
 // resultFromTask snapshots a task's terminal status into a taskResult.
-func resultFromTask(t *foremanv1alpha1.AgenticTask) taskResult {
+func resultFromTask(t *meithealv1alpha1.AgenticTask) taskResult {
 	r := taskResult{
 		Issue:   int(t.Spec.Payload.Issue),
 		Node:    t.Status.AssignedNode,
@@ -404,8 +386,8 @@ func resultFromTask(t *foremanv1alpha1.AgenticTask) taskResult {
 func exitErrFromResults(results []taskResult) error {
 	bad := make([]string, 0, len(results))
 	for _, r := range results {
-		ok := r.Phase == foremanv1alpha1.AgenticTaskPhaseSucceeded &&
-			(r.Verdict == foremanv1alpha1.AgenticTaskVerdictGo || r.Verdict == foremanv1alpha1.AgenticTaskVerdictGatePass)
+		ok := r.Phase == meithealv1alpha1.AgenticTaskPhaseSucceeded &&
+			(r.Verdict == meithealv1alpha1.AgenticTaskVerdictGo || r.Verdict == meithealv1alpha1.AgenticTaskVerdictGatePass)
 		if !ok {
 			bad = append(bad, fmt.Sprintf("#%d", r.Issue))
 		}
@@ -457,15 +439,15 @@ func newRunID() string {
 	return time.Now().Format("20060102-150405")
 }
 
-// newForemanClient builds a controller-runtime client with the foreman scheme
+// newMeithealClient builds a controller-runtime client with the meitheal scheme
 // registered, using the ambient kubeconfig.
-func newForemanClient() (client.Client, error) {
+func newMeithealClient() (client.Client, error) {
 	cfg, err := config.GetConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
 	}
-	if err := foremanv1alpha1.AddToScheme(scheme.Scheme); err != nil {
-		return nil, fmt.Errorf("failed to register foreman scheme: %w", err)
+	if err := meithealv1alpha1.AddToScheme(scheme.Scheme); err != nil {
+		return nil, fmt.Errorf("failed to register meitheal scheme: %w", err)
 	}
 	return client.New(cfg, client.Options{Scheme: scheme.Scheme})
 }
@@ -476,7 +458,7 @@ func newForemanClient() (client.Client, error) {
 // interrupted (ctx cancelled); the returned results are then partial.
 func watchTasks(
 	ctx context.Context, c client.Client, out io.Writer, namespace string,
-	tasks []*foremanv1alpha1.AgenticTask, poll time.Duration,
+	tasks []*meithealv1alpha1.AgenticTask, poll time.Duration,
 ) ([]taskResult, error) {
 	if poll <= 0 {
 		poll = 5 * time.Second
@@ -486,11 +468,11 @@ func watchTasks(
 		names[i] = t.Name
 	}
 	for {
-		fetched := make([]*foremanv1alpha1.AgenticTask, 0, len(names))
+		fetched := make([]*meithealv1alpha1.AgenticTask, 0, len(names))
 		done := 0
 		phases := map[string]int{}
 		for _, name := range names {
-			var t foremanv1alpha1.AgenticTask
+			var t meithealv1alpha1.AgenticTask
 			if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &t); err != nil {
 				return nil, fmt.Errorf("get task %s: %w", name, err)
 			}
@@ -498,7 +480,7 @@ func watchTasks(
 			fetched = append(fetched, &tc)
 			phase := string(t.Status.Phase)
 			if phase == "" {
-				phase = string(foremanv1alpha1.AgenticTaskPhasePending)
+				phase = string(meithealv1alpha1.AgenticTaskPhasePending)
 			}
 			phases[phase]++
 			if isTerminalPhase(t.Status.Phase) {
@@ -544,9 +526,9 @@ func formatPhaseCounts(phases map[string]int) string {
 }
 
 // printTasksYAML renders the tasks as a multi-document YAML stream for --dry-run.
-func printTasksYAML(out io.Writer, tasks []*foremanv1alpha1.AgenticTask) error {
+func printTasksYAML(out io.Writer, tasks []*meithealv1alpha1.AgenticTask) error {
 	for i, t := range tasks {
-		t.APIVersion = foremanv1alpha1.GroupVersion.String()
+		t.APIVersion = meithealv1alpha1.GroupVersion.String()
 		t.Kind = "AgenticTask"
 		b, err := yaml.Marshal(t)
 		if err != nil {

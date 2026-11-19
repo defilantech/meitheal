@@ -1,4 +1,4 @@
-// Package mcp provides Foreman's agents with a thin wrapper over the
+// Package mcp provides Meitheal's agents with a thin wrapper over the
 // official Model Context Protocol Go SDK, giving live documentation
 // lookups via remote MCP servers.
 //
@@ -116,7 +116,7 @@ func dial(ctx context.Context, cfg ServerConfig) (*Session, error) {
 	}
 
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{
-		Name:    "llmkube-foreman",
+		Name:    "meitheal",
 		Version: "0.1.0",
 	}, nil)
 

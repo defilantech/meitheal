@@ -17,7 +17,7 @@ limitations under the License.
 package controller
 
 import (
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // Validated-condition plumbing (#1609). The judgment itself lives on
@@ -28,6 +28,6 @@ const conditionValidated = "Validated"
 
 // validateAgentConfig is the config floor behind the Validated condition;
 // see AgentSpec.ConfigFloor for the rules and the incident behind them.
-func validateAgentConfig(spec *foremanv1alpha1.AgentSpec) (valid bool, reason, message string) {
+func validateAgentConfig(spec *meithealv1alpha1.AgentSpec) (valid bool, reason, message string) {
 	return spec.ConfigFloor()
 }

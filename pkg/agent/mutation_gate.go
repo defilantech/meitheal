@@ -30,7 +30,7 @@ limitations under the License.
 //     backup, re-run the package tests, and flag any package whose tests still
 //     pass (the tests do not bite). Files are always restored.
 //
-// Both are disabled by FOREMAN_MUTATION_GATE=0. Neuter-survival for controller
+// Both are disabled by MEITHEAL_MUTATION_GATE=0. Neuter-survival for controller
 // packages runs in the post-push envtest gate Job (v1.1), not here.
 package agent
 
@@ -103,9 +103,9 @@ func changedNonTestGoFiles(ctx context.Context, workspace string, run commandRun
 }
 
 // mutationGateDisabled reports whether the mutation gate (presence + neuter) is
-// turned off via FOREMAN_MUTATION_GATE=0. Default (unset) is enabled.
+// turned off via MEITHEAL_MUTATION_GATE=0. Default (unset) is enabled.
 func mutationGateDisabled() bool {
-	return os.Getenv("FOREMAN_MUTATION_GATE") == "0"
+	return os.Getenv("MEITHEAL_MUTATION_GATE") == "0"
 }
 
 // addedFuncRe matches an added unified-diff line introducing a Go function or

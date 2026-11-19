@@ -39,12 +39,12 @@ func getHistogramMetric(t *testing.T, h *prometheus.HistogramVec, labels []strin
 	return &m
 }
 
-// The operator registers ForemanCollectors itself (cmd/foreman-operator tests
+// The operator registers MeithealCollectors itself (cmd/meitheal-operator tests
 // that); importing this package must not register anything in
 // controller-runtime's registry, or every binary that imports it would export
 // them.
 func TestImportRegistersNothingInControllerRuntime(t *testing.T) {
-	for _, c := range ForemanCollectors {
+	for _, c := range MeithealCollectors {
 		if ctrlmetrics.Registry.Unregister(c) {
 			t.Errorf("collector %T was registered in controller-runtime's registry on import", c)
 		}
@@ -57,7 +57,7 @@ func TestRecordTaskOutcomeCounter(t *testing.T) {
 	RecordTaskOutcome("coder", "issue-fix", "GO", "MODEL-DECIDED", 42.0, 17)
 
 	var m dto.Metric
-	obs := ForemanTaskCompletedTotal.WithLabelValues("coder", "issue-fix", "GO", "MODEL-DECIDED")
+	obs := MeithealTaskCompletedTotal.WithLabelValues("coder", "issue-fix", "GO", "MODEL-DECIDED")
 	if err := obs.Write(&m); err != nil {
 		t.Fatalf("failed to write metric: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestRecordTaskOutcomeCounter(t *testing.T) {
 func TestRecordTaskOutcomeDuration(t *testing.T) {
 	// A positive elapsedSec must land in the duration histogram.
 	RecordTaskOutcome("coder", "issue-fix", "NO-GO", "ALREADY-RESOLVED", 88.0, 0)
-	m := getHistogramMetric(t, ForemanTaskDurationSeconds, []string{"coder", "issue-fix", "NO-GO"}, 1.0)
+	m := getHistogramMetric(t, MeithealTaskDurationSeconds, []string{"coder", "issue-fix", "NO-GO"}, 1.0)
 	if m.GetHistogram().GetSampleCount() == 0 {
 		t.Error("expected duration sample count > 0 after a positive observation")
 	}
@@ -82,7 +82,7 @@ func TestRecordTaskOutcomeSkipsZeroDurationAndTurns(t *testing.T) {
 
 	// Read the series directly without observing (getHistogramMetric would
 	// observe its own value and inflate the count).
-	durObs, err := ForemanTaskDurationSeconds.GetMetricWithLabelValues("verifier", "verify", "GATE-PASS")
+	durObs, err := MeithealTaskDurationSeconds.GetMetricWithLabelValues("verifier", "verify", "GATE-PASS")
 	if err != nil {
 		t.Fatalf("failed to get duration metric: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestRecordTaskOutcomeSkipsZeroDurationAndTurns(t *testing.T) {
 		t.Errorf("zero elapsedSec must not observe duration, got %d samples", got)
 	}
 
-	turnsObs, err := ForemanTaskTurns.GetMetricWithLabelValues("verifier", "verify")
+	turnsObs, err := MeithealTaskTurns.GetMetricWithLabelValues("verifier", "verify")
 	if err != nil {
 		t.Fatalf("failed to get turns metric: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestRecordTaskOutcomeSkipsZeroDurationAndTurns(t *testing.T) {
 func TestRecordTaskOutcomeTurns(t *testing.T) {
 	// A positive turn count must land in the turns histogram.
 	RecordTaskOutcome("coder", "issue-fix", "GO", "", 12.0, 9)
-	m := getHistogramMetric(t, ForemanTaskTurns, []string{"coder", "issue-fix"}, 3.0)
+	m := getHistogramMetric(t, MeithealTaskTurns, []string{"coder", "issue-fix"}, 3.0)
 	if m.GetHistogram().GetSampleCount() == 0 {
 		t.Error("expected turns sample count > 0 after a positive observation")
 	}
@@ -121,13 +121,13 @@ func TestRecordWorkloadOutcome(t *testing.T) {
 	RecordWorkloadOutcome("failed")
 
 	var m dto.Metric
-	if err := ForemanWorkloadCompletedTotal.WithLabelValues("completed").Write(&m); err != nil {
+	if err := MeithealWorkloadCompletedTotal.WithLabelValues("completed").Write(&m); err != nil {
 		t.Fatalf("failed to write completed metric: %v", err)
 	}
 	if got := m.GetCounter().GetValue(); got < 1 {
 		t.Errorf("expected completed workload counter >= 1, got %f", got)
 	}
-	if err := ForemanWorkloadCompletedTotal.WithLabelValues("failed").Write(&m); err != nil {
+	if err := MeithealWorkloadCompletedTotal.WithLabelValues("failed").Write(&m); err != nil {
 		t.Fatalf("failed to write failed metric: %v", err)
 	}
 	if got := m.GetCounter().GetValue(); got < 1 {

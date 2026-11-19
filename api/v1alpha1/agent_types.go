@@ -58,7 +58,7 @@ const (
 //
 // Air-gapped orgs MUST keep non-local Agents out of dispatch; both the
 // operator-level kill switch (--allow-cloud-providers flag, chart value
-// foreman.allowCloudProviders) and the per-Workload opt-in
+// meitheal.allowCloudProviders) and the per-Workload opt-in
 // (Workload.spec.allowCloudReviewers) gate every non-local provider,
 // including anthropic.
 // +kubebuilder:validation:Enum=local;cloud-proxy;anthropic
@@ -123,7 +123,7 @@ type ProviderConfig struct {
 type ExecutionMode string
 
 const (
-	// ExecutionModeInProcess (default) runs the loop in the foreman-agent
+	// ExecutionModeInProcess (default) runs the loop in the meitheal-agent
 	// process, co-located with a locally-installed model + toolchain (the
 	// Mac metal-agent path). Unchanged v0.1 behavior.
 	ExecutionModeInProcess ExecutionMode = "InProcess"
@@ -141,7 +141,7 @@ type ExecutionSpec struct {
 	// +kubebuilder:default=InProcess
 	// +optional
 	Mode ExecutionMode `json:"mode,omitempty"`
-	// Image is the per-task Job image: the foreman-agent binary plus the
+	// Image is the per-task Job image: the meitheal-agent binary plus the
 	// project toolchain (go/make/git). Required when Mode is Job.
 	// +optional
 	Image string `json:"image,omitempty"`
@@ -197,7 +197,7 @@ type AgentSpec struct {
 	// the v0.1 behavior (resolve InferenceServiceRef). v0.2 adds
 	// "cloud-proxy" for OpenAI-compatible HTTP endpoints (typically a
 	// LiteLLM gateway); see ProviderConfig. Cloud-proxy Agents are
-	// subject to the foreman-operator's --allow-cloud-providers kill
+	// subject to the meitheal-operator's --allow-cloud-providers kill
 	// switch and to per-Workload spec.allowCloudReviewers gating.
 	// +kubebuilder:default=local
 	// +optional
@@ -221,7 +221,7 @@ type AgentSpec struct {
 	Model string `json:"model,omitempty"`
 
 	// InferenceServiceRef names the LLMKube InferenceService in the same
-	// namespace that serves this Agent's model. The foreman-agent
+	// namespace that serves this Agent's model. The meitheal-agent
 	// resolves it to a base URL ("http://<svc>.<ns>.svc:<port>/v1") at
 	// task time. v0.1 uses inferenceServiceRef exclusively; v0.2 may
 	// introduce an external-provider URL form.

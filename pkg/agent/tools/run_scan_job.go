@@ -76,7 +76,7 @@ const TrivyVersion = "v0.74.0"
 //
 // It is deliberately NOT registered in BuildAll or
 // catalog.canonicalToolNames: the scan gate is executor-dispatched (the
-// cmd/foreman-agent wiring sub constructs this tool and closes over it
+// cmd/meitheal-agent wiring sub constructs this tool and closes over it
 // into the executor's ScanJobRunner seam), never model-facing. The
 // catalog drift test stays balanced because neither side gains a name.
 // Schema is still advertised faithfully -- a future Agent that wants it
@@ -97,7 +97,7 @@ type RunScanJobTool struct {
 // images, severity) come through Execute's args JSON.
 type RunScanJobToolConfig struct {
 	// Namespace is where the scan Job is submitted. Defaults to
-	// "foreman-system" if empty.
+	// "meitheal-system" if empty.
 	Namespace string
 
 	// PVCName is the persistent volume claim mounted at /cache for
@@ -161,7 +161,7 @@ type RunScanJobToolConfig struct {
 
 	// NameFn lets tests pin Job names so polling can resolve them
 	// without listing. Default produces
-	// "foreman-scan-<task-name>-<unix-ms>".
+	// "meitheal-scan-<task-name>-<unix-ms>".
 	NameFn func(taskName string) string
 }
 
@@ -227,13 +227,13 @@ func (RunScanJobTool) Schema() oai.ToolSchemaDef {
 "type": "object",
 "properties": {
   "repo":    {"type": "string", "description": "owner/name slug of the repo (e.g. defilantech/LLMKube)"},
-  "branch":  {"type": "string", "description": "branch on the fork to scan, e.g. foreman/issue-503"},
+  "branch":  {"type": "string", "description": "branch on the fork to scan, e.g. meitheal/issue-503"},
   "cloneURL": {"type": "string",
     "description": "when set, clone this URL verbatim instead of the configured host + repo (fork push target)"},
   "upstreamURL": {"type": "string",
     "description": "canonical repo URL, surfaced on the Job for provenance"},
   "images":  {"type": "array", "items": {"type": "string"},
-    "description": "scan-target ids (controller, foreman-operator, foreman-agent, router-proxy); empty means all"},
+    "description": "scan-target ids (controller, meitheal-operator, meitheal-agent, router-proxy); empty means all"},
   "severity": {"type": "array", "items": {"type": "string"},
     "description": "Trivy severity floor; empty means CRITICAL,HIGH"},
   "ignoreUnfixed": {"type": "boolean",
@@ -542,7 +542,7 @@ func resolveScanCloneURL(cfg RunScanJobToolConfig, repoSlug, explicit string) st
 // override the fields they care about.
 func applyScanConfigDefaults(c RunScanJobToolConfig) RunScanJobToolConfig {
 	if c.Namespace == "" {
-		c.Namespace = "foreman-system"
+		c.Namespace = "meitheal-system"
 	}
 	if c.BuilderImage == "" {
 		c.BuilderImage = "golang:1.26"
@@ -577,7 +577,7 @@ func applyScanConfigDefaults(c RunScanJobToolConfig) RunScanJobToolConfig {
 	return c
 }
 
-// scanJobName builds the scan Job name "foreman-scan-<task>-<unix-ms>",
+// scanJobName builds the scan Job name "meitheal-scan-<task>-<unix-ms>",
 // trimmed to the 63-char k8s object-name limit by truncating the TASK
 // portion, never the trailing <unix-ms> disambiguator. The gateJobName
 // lesson applies verbatim (#768): a retry loop submits a second scan Job
@@ -585,7 +585,7 @@ func applyScanConfigDefaults(c RunScanJobToolConfig) RunScanJobToolConfig {
 // from the right would cut off the timestamp and collide with the prior
 // Job. Keeping the suffix guarantees each submission gets a distinct name.
 func scanJobName(taskName string, unixMilli int64) string {
-	const prefix = "foreman-scan-"
+	const prefix = "meitheal-scan-"
 	suffix := fmt.Sprintf("-%d", unixMilli)
 	budget := 63 - len(prefix) - len(suffix)
 	if budget < 0 {

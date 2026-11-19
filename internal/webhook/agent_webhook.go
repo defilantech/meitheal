@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package webhook holds the foreman-operator's admission webhooks. Each
+// Package webhook holds the meitheal-operator's admission webhooks. Each
 // kind gets a controller-runtime CustomValidator that surfaces an
 // invariant violation at `kubectl apply` time instead of letting the CR
 // reach the executor and fail at dispatch.
 //
 // The validators are deliberately a mirror of the runtime enforcement in
-// pkg/foreman/agent: the webhook must never reject a CR the executor would
+// pkg/agent: the webhook must never reject a CR the executor would
 // happily run, nor accept one that the executor would fail on. Where the
 // two could drift, the runtime code is the source of truth and the
 // validator is documented against the exact predicate it copies.
@@ -37,11 +37,11 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/tools/catalog"
 )
 
-// +kubebuilder:webhook:path=/validate-foreman-llmkube-dev-v1alpha1-agent,mutating=false,failurePolicy=fail,sideEffects=None,groups=foreman.llmkube.dev,resources=agents,verbs=create;update,versions=v1alpha1,name=vagent.foreman.llmkube.dev,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-meitheal-dev-v1alpha1-agent,mutating=false,failurePolicy=fail,sideEffects=None,groups=meitheal.dev,resources=agents,verbs=create;update,versions=v1alpha1,name=vagent.meitheal.dev,admissionReviewVersions=v1
 
 // AgentValidator validates Agent CRs at admission. It enforces the same
 // invariants the NativeAgentLoopExecutor relies on at dispatch time, so a
@@ -49,17 +49,17 @@ import (
 // INCOMPLETE task later.
 type AgentValidator struct{}
 
-var _ admission.Validator[*foremanv1alpha1.Agent] = &AgentValidator{}
+var _ admission.Validator[*meithealv1alpha1.Agent] = &AgentValidator{}
 
 // SetupAgentWebhookWithManager registers the Agent validating webhook.
 func SetupAgentWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, &foremanv1alpha1.Agent{}).
+	return ctrl.NewWebhookManagedBy(mgr, &meithealv1alpha1.Agent{}).
 		WithValidator(&AgentValidator{}).
 		Complete()
 }
 
 // ValidateCreate validates an Agent on creation.
-func (v *AgentValidator) ValidateCreate(ctx context.Context, agent *foremanv1alpha1.Agent) (admission.Warnings, error) {
+func (v *AgentValidator) ValidateCreate(ctx context.Context, agent *meithealv1alpha1.Agent) (admission.Warnings, error) {
 	logf.FromContext(ctx).V(1).Info("validating Agent create", "name", agent.Name, "namespace", agent.Namespace)
 	return nil, v.validate(agent)
 }
@@ -71,7 +71,7 @@ func (v *AgentValidator) ValidateCreate(ctx context.Context, agent *foremanv1alp
 // re-checked when the spec actually changes. (None of the checks are
 // transition-scoped, so when the spec changes we run the full create-time
 // validation against the new spec.)
-func (v *AgentValidator) ValidateUpdate(ctx context.Context, oldAgent, agent *foremanv1alpha1.Agent) (admission.Warnings, error) {
+func (v *AgentValidator) ValidateUpdate(ctx context.Context, oldAgent, agent *meithealv1alpha1.Agent) (admission.Warnings, error) {
 	log := logf.FromContext(ctx).V(1)
 	if oldAgent != nil && reflect.DeepEqual(oldAgent.Spec, agent.Spec) {
 		log.Info("skipping Agent update validation; spec unchanged", "name", agent.Name, "namespace", agent.Namespace)
@@ -83,14 +83,14 @@ func (v *AgentValidator) ValidateUpdate(ctx context.Context, oldAgent, agent *fo
 
 // ValidateDelete is a no-op: deleting an Agent is always allowed (any
 // dangling AgenticTask reference is handled at execution time, not here).
-func (v *AgentValidator) ValidateDelete(_ context.Context, _ *foremanv1alpha1.Agent) (admission.Warnings, error) {
+func (v *AgentValidator) ValidateDelete(_ context.Context, _ *meithealv1alpha1.Agent) (admission.Warnings, error) {
 	return nil, nil
 }
 
 // validate runs every Agent invariant and aggregates the failures into a
 // single apierrors.Invalid so `kubectl apply` reports all problems at once
 // rather than one-per-retry.
-func (v *AgentValidator) validate(agent *foremanv1alpha1.Agent) error {
+func (v *AgentValidator) validate(agent *meithealv1alpha1.Agent) error {
 	specPath := field.NewPath("spec")
 
 	errs := make(field.ErrorList, 0, len(agent.Spec.Tools)+2)
@@ -101,19 +101,19 @@ func (v *AgentValidator) validate(agent *foremanv1alpha1.Agent) error {
 		return nil
 	}
 	return apierrors.NewInvalid(
-		foremanv1alpha1.GroupVersion.WithKind("Agent").GroupKind(),
+		meithealv1alpha1.GroupVersion.WithKind("Agent").GroupKind(),
 		agent.Name, errs)
 }
 
 // validateAgentToolNames rejects any spec.tools entry that is not a
 // registered tool name. The valid set is sourced from the dependency-free
 // leaf catalog.CanonicalToolNames so it tracks the registry the
-// foreman-agent builds (makeRegistryFactory) WITHOUT pulling the
+// meitheal-agent builds (makeRegistryFactory) WITHOUT pulling the
 // executor's dependency tree into the operator binary; the
-// pkg/foreman/agent/tools drift test asserts the leaf list stays in sync
+// pkg/agent/tools drift test asserts the leaf list stays in sync
 // with the real constructors. This matches the runtime Filter() check
 // that fails an Agent whose whitelist names an unknown tool.
-func validateAgentToolNames(agent *foremanv1alpha1.Agent, toolsPath *field.Path) field.ErrorList {
+func validateAgentToolNames(agent *meithealv1alpha1.Agent, toolsPath *field.Path) field.ErrorList {
 	var errs field.ErrorList
 	canonical := catalog.CanonicalToolNames()
 	valid := make(map[string]bool, len(canonical))
@@ -133,7 +133,7 @@ func validateAgentToolNames(agent *foremanv1alpha1.Agent, toolsPath *field.Path)
 // executor relies on, split by whether the Agent is deterministic.
 //
 // The deterministic predicate is copied verbatim from
-// pkg/foreman/agent.isDeterministicAgent: an Agent runs the model-free
+// pkg/agent.isDeterministicAgent: an Agent runs the model-free
 // path when its provider is "" or "local" AND its InferenceServiceRef.Name
 // is empty. (A cloud-proxy Agent is never deterministic.)
 //
@@ -144,7 +144,7 @@ func validateAgentToolNames(agent *foremanv1alpha1.Agent, toolsPath *field.Path)
 //   - LLM-driven Agent: SystemPrompt must be non-empty (the loop sends it
 //     as the system message every turn; an empty prompt is almost always
 //     an authoring mistake).
-func validateAgentPromptShape(agent *foremanv1alpha1.Agent, specPath *field.Path) field.ErrorList {
+func validateAgentPromptShape(agent *meithealv1alpha1.Agent, specPath *field.Path) field.ErrorList {
 	var errs field.ErrorList
 	if isDeterministicAgent(agent) {
 		if strings.TrimSpace(agent.Spec.SystemPrompt) != "" {
@@ -172,7 +172,7 @@ func validateAgentPromptShape(agent *foremanv1alpha1.Agent, specPath *field.Path
 	// set.
 	if strings.TrimSpace(agent.Spec.SystemPrompt) == "" {
 		because := "inferenceServiceRef is set"
-		if p := agent.Spec.Provider; p != "" && p != foremanv1alpha1.AgentProviderLocal {
+		if p := agent.Spec.Provider; p != "" && p != meithealv1alpha1.AgentProviderLocal {
 			because = "provider is " + string(p)
 		}
 		errs = append(errs, field.Required(
@@ -182,20 +182,20 @@ func validateAgentPromptShape(agent *foremanv1alpha1.Agent, specPath *field.Path
 	return errs
 }
 
-// isDeterministicAgent mirrors pkg/foreman/agent.isDeterministicAgent.
+// isDeterministicAgent mirrors pkg/agent.isDeterministicAgent.
 // Kept as a private copy rather than importing the agent package because
-// the predicate is two field reads and importing pkg/foreman/agent into
+// the predicate is two field reads and importing pkg/agent into
 // the webhook would pull the executor's full dependency tree (git, OAI
 // client, repomap) into the operator binary for no benefit. The two
 // implementations are asserted equivalent by the validator unit tests.
-func isDeterministicAgent(agent *foremanv1alpha1.Agent) bool {
-	if agent.Spec.Provider != "" && agent.Spec.Provider != foremanv1alpha1.AgentProviderLocal {
+func isDeterministicAgent(agent *meithealv1alpha1.Agent) bool {
+	if agent.Spec.Provider != "" && agent.Spec.Provider != meithealv1alpha1.AgentProviderLocal {
 		return false
 	}
 	return agent.Spec.InferenceServiceRef.Name == ""
 }
 
-// hasUsableDeterministicTool mirrors pkg/foreman/agent.pickDeterministicTool:
+// hasUsableDeterministicTool mirrors pkg/agent.pickDeterministicTool:
 // it returns true when at least one tool is non-empty and not the terminal
 // submit_result tool, i.e. there is something the deterministic executor
 // can actually dispatch.

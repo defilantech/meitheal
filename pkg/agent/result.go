@@ -19,14 +19,14 @@ package agent
 import (
 	"time"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // ResultSchemaVersion is the on-the-wire identifier of the structured
-// result envelope every Foreman executor emits. v0.1 ships v1; later
+// result envelope every Meitheal executor emits. v0.1 ships v1; later
 // additive changes (new optional fields) keep the same version, breaking
 // changes bump to v2 and the parser gates on this string.
-const ResultSchemaVersion = "foreman.v1"
+const ResultSchemaVersion = "meitheal.v1"
 
 // Result is the structured envelope every Executor returns. The watcher
 // serializes it into AgenticTask.status.result as a JSON RawExtension; the
@@ -40,7 +40,7 @@ type Result struct {
 	SchemaVersion string `json:"schemaVersion"`
 
 	// Kind identifies which executor produced this result: "stub" in M2,
-	// "issue-fix" / "verify" / "freeform" once M3-M4 land. The Foreman
+	// "issue-fix" / "verify" / "freeform" once M3-M4 land. The Meitheal
 	// scheduler does not interpret Kind; downstream consumers (the next
 	// step in the pipeline, the planner's evaluator) may.
 	Kind string `json:"kind"`
@@ -48,7 +48,7 @@ type Result struct {
 	// Verdict is the outcome category. Reuses the AgenticTaskVerdict enum
 	// so the value in status.result.verdict matches status.verdict
 	// exactly when both are present.
-	Verdict foremanv1alpha1.AgenticTaskVerdict `json:"verdict"`
+	Verdict meithealv1alpha1.AgenticTaskVerdict `json:"verdict"`
 
 	// FailureReason categorizes WHY a non-success Verdict landed. The
 	// watcher copies this into AgenticTaskStatus.FailureReason. Empty
@@ -59,7 +59,7 @@ type Result struct {
 	// is kept in sync for one release for back-compat with any
 	// observer that mines the JSON; new code should read this typed
 	// field instead.
-	FailureReason foremanv1alpha1.AgenticTaskFailureReason `json:"failureReason,omitempty"`
+	FailureReason meithealv1alpha1.AgenticTaskFailureReason `json:"failureReason,omitempty"`
 
 	// Summary is a human-readable one-liner. The watcher copies this into
 	// the Completed condition's Message; keep it terse.
@@ -76,7 +76,9 @@ type Result struct {
 
 // NewResult builds a Result with the schema version pre-filled. Callers
 // fill Extra after construction if they have Kind-specific fields.
-func NewResult(kind string, verdict foremanv1alpha1.AgenticTaskVerdict, summary string, elapsed time.Duration) *Result {
+func NewResult(
+	kind string, verdict meithealv1alpha1.AgenticTaskVerdict, summary string, elapsed time.Duration,
+) *Result {
 	return &Result{
 		SchemaVersion: ResultSchemaVersion,
 		Kind:          kind,

@@ -1,7 +1,7 @@
 package agent
 
 import (
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // stampAgentConfigWarnings records in the terminal extra that the agent
@@ -12,7 +12,7 @@ import (
 // stamps nothing: a warning on every record is noise. Owns initializing a
 // nil Extra map, because this stamp exists precisely for mis-configured
 // setups and must not depend on the model having sent the optional field.
-func stampAgentConfigWarnings(terminal *ToolResult, spec *foremanv1alpha1.AgentSpec) {
+func stampAgentConfigWarnings(terminal *ToolResult, spec *meithealv1alpha1.AgentSpec) {
 	if terminal == nil || spec == nil {
 		return
 	}

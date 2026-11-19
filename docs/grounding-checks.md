@@ -1,8 +1,8 @@
 # Grounding checks: catching confabulated references
 
-Foreman's verify gate has two layers. The first is the language-configurable
+Meitheal's verify gate has two layers. The first is the language-configurable
 command tier (format, lint, build, test): see
-[Running Foreman on non-Go projects](./language-gates). The second is a set of
+[Running Meitheal on non-Go projects](./language-gates). The second is a set of
 deeper **semantic** checks that catch failure modes a command can never see.
 Reference grounding is one of them, and this page documents both what it does
 and the model to follow when you want the same protection for your own stack.
@@ -109,7 +109,7 @@ together.
 
 ## See also
 
-- [Running Foreman on non-Go projects](./language-gates): the command tier and
+- [Running Meitheal on non-Go projects](./language-gates): the command tier and
   the `gateProfile` field, with a verified Python example.
-- [Foreman overview](/docs/foreman): the CRDs and the coder / verifier /
+- [Meitheal overview](/docs/meitheal): the CRDs and the coder / verifier /
   reviewer pipeline.

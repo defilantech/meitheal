@@ -33,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 )
 
 // mustQuantity parses a resource quantity for tests, panicking on a bad
@@ -45,28 +45,28 @@ func mustQuantity(s string) resource.Quantity {
 // --- Template rendering ---------------------------------------------------
 
 func TestRenderCoderJob_RendersCommandImageAndWorkspace(t *testing.T) {
-	job, err := renderCoderJob(coderRendererInput{
-		Name:                  "foreman-coder-issue-510",
-		Namespace:             "foreman-system",
-		Image:                 "ghcr.io/defilantech/foreman-agent:dev",
+	job, err := renderCoderJob(coderRendererInput{ //nolint:gosec // G101: a Secret name, not a credential
+		Name:                  "meitheal-coder-issue-510",
+		Namespace:             "meitheal-system",
+		Image:                 "ghcr.io/defilantech/meitheal-agent:dev",
 		TaskName:              "issue-510",
 		TaskNamespace:         "default",
-		ServiceAccountName:    "foreman-coder",
+		ServiceAccountName:    "meitheal-coder",
 		ActiveDeadlineSeconds: 3600,
 		CPURequest:            "2",
 		CPULimit:              "4",
 		MemRequest:            "4Gi",
 		MemLimit:              "8Gi",
-		GitCredentialsSecret:  "foreman-git-credentials",
+		GitCredentialsSecret:  "meitheal-git-credentials",
 	})
 	if err != nil {
 		t.Fatalf("renderCoderJob: %v", err)
 	}
-	if job.Name != "foreman-coder-issue-510" {
+	if job.Name != "meitheal-coder-issue-510" {
 		t.Errorf("Name: %q", job.Name)
 	}
 	c := job.Spec.Template.Spec.Containers[0]
-	if c.Image != "ghcr.io/defilantech/foreman-agent:dev" {
+	if c.Image != "ghcr.io/defilantech/meitheal-agent:dev" {
 		t.Errorf("Image: %q", c.Image)
 	}
 	args := strings.Join(c.Args, " ")
@@ -79,7 +79,7 @@ func TestRenderCoderJob_RendersCommandImageAndWorkspace(t *testing.T) {
 	if !strings.Contains(args, "--workspace-dir /workspace") {
 		t.Errorf("Args missing workspace-dir:\n%s", args)
 	}
-	if job.Spec.Template.Spec.ServiceAccountName != "foreman-coder" {
+	if job.Spec.Template.Spec.ServiceAccountName != "meitheal-coder" {
 		t.Errorf("ServiceAccountName: %q", job.Spec.Template.Spec.ServiceAccountName)
 	}
 	// Workspace must be an emptyDir at /workspace (NOT a PVC like the gate).
@@ -107,7 +107,7 @@ func TestRenderCoderJob_RendersCommandImageAndWorkspace(t *testing.T) {
 	if !mounted {
 		t.Errorf("workspace volume not mounted at /workspace; mounts=%#v", c.VolumeMounts)
 	}
-	if job.Labels["app.kubernetes.io/name"] != "foreman-coder" {
+	if job.Labels["app.kubernetes.io/name"] != "meitheal-coder" {
 		t.Errorf("missing canonical label: %#v", job.Labels)
 	}
 }
@@ -115,9 +115,9 @@ func TestRenderCoderJob_RendersCommandImageAndWorkspace(t *testing.T) {
 // TestRenderCoderJob_OptionalModelAuthSecret asserts the model-auth Secret
 // mount is conditional: absent when unset, present when named.
 func TestRenderCoderJob_OptionalModelAuthSecret(t *testing.T) {
-	base := coderRendererInput{
-		Name:                  "foreman-coder-x",
-		Namespace:             "foreman-system",
+	base := coderRendererInput{ //nolint:gosec // G101: a Secret name, not a credential
+		Name:                  "meitheal-coder-x",
+		Namespace:             "meitheal-system",
 		Image:                 "img",
 		TaskName:              "x",
 		TaskNamespace:         "default",
@@ -126,7 +126,7 @@ func TestRenderCoderJob_OptionalModelAuthSecret(t *testing.T) {
 		CPULimit:              "4",
 		MemRequest:            "4Gi",
 		MemLimit:              "8Gi",
-		GitCredentialsSecret:  "foreman-git-credentials",
+		GitCredentialsSecret:  "meitheal-git-credentials",
 	}
 
 	// Without a model-auth secret, no model-auth volume should render.
@@ -142,7 +142,7 @@ func TestRenderCoderJob_OptionalModelAuthSecret(t *testing.T) {
 
 	// With one, the volume + mount should appear.
 	withAuth := base
-	withAuth.ModelAuthSecret = "foreman-model-auth"
+	withAuth.ModelAuthSecret = "meitheal-model-auth"
 	job, err = renderCoderJob(withAuth)
 	if err != nil {
 		t.Fatalf("renderCoderJob (with model-auth): %v", err)
@@ -165,9 +165,9 @@ func TestRenderCoderJob_OptionalModelAuthSecret(t *testing.T) {
 // /secrets/git alone is never read by the body; the env var is the wiring
 // that actually reaches the clone + push (#620 B2).
 func TestRenderCoderJob_GitTokenEnvFromSecret(t *testing.T) {
-	job, err := renderCoderJob(coderRendererInput{
-		Name:                    "foreman-coder-tok",
-		Namespace:               "foreman-system",
+	job, err := renderCoderJob(coderRendererInput{ //nolint:gosec // G101: a Secret name, not a credential
+		Name:                    "meitheal-coder-tok",
+		Namespace:               "meitheal-system",
 		Image:                   "img",
 		TaskName:                "tok",
 		TaskNamespace:           "default",
@@ -176,7 +176,7 @@ func TestRenderCoderJob_GitTokenEnvFromSecret(t *testing.T) {
 		CPULimit:                "4",
 		MemRequest:              "4Gi",
 		MemLimit:                "8Gi",
-		GitCredentialsSecret:    "foreman-git-credentials",
+		GitCredentialsSecret:    "meitheal-git-credentials",
 		GitCredentialsSecretKey: "token",
 	})
 	if err != nil {
@@ -196,8 +196,8 @@ func TestRenderCoderJob_GitTokenEnvFromSecret(t *testing.T) {
 		t.Fatalf("GITHUB_TOKEN must come from a secretKeyRef; got %#v", tokenEnv)
 	}
 	ref := tokenEnv.ValueFrom.SecretKeyRef
-	if ref.Name != "foreman-git-credentials" {
-		t.Errorf("secretKeyRef name: want foreman-git-credentials got %q", ref.Name)
+	if ref.Name != "meitheal-git-credentials" {
+		t.Errorf("secretKeyRef name: want meitheal-git-credentials got %q", ref.Name)
 	}
 	if ref.Key != "token" {
 		t.Errorf("secretKeyRef key: want token got %q", ref.Key)
@@ -212,15 +212,15 @@ func TestRenderCoderJob_GitTokenEnvFromSecret(t *testing.T) {
 // TestRenderCoderJob_GitTokenEnvCustomSecret asserts a non-default
 // GitCredentialsSecret/Key flows into the rendered Job's GITHUB_TOKEN
 // secretKeyRef (name + key). This is what lets an operator reuse an
-// existing git Secret (e.g. foreman-github with key GITHUB_TOKEN) instead
-// of being forced to create foreman-git-credentials (#620 reuse-secret).
+// existing git Secret (e.g. meitheal-github with key GITHUB_TOKEN) instead
+// of being forced to create meitheal-git-credentials (#620 reuse-secret).
 func TestRenderCoderJob_GitTokenEnvCustomSecret(t *testing.T) {
 	// customKey is a Secret KEY name, not a credential value; held in a
 	// variable so gosec's G101 literal-credential heuristic does not fire.
 	customKey := "GITHUB_TOKEN"
 	job, err := renderCoderJob(coderRendererInput{
-		Name:                    "foreman-coder-custom",
-		Namespace:               "foreman-system",
+		Name:                    "meitheal-coder-custom",
+		Namespace:               "meitheal-system",
 		Image:                   "img",
 		TaskName:                "custom",
 		TaskNamespace:           "default",
@@ -229,7 +229,7 @@ func TestRenderCoderJob_GitTokenEnvCustomSecret(t *testing.T) {
 		CPULimit:                "4",
 		MemRequest:              "4Gi",
 		MemLimit:                "8Gi",
-		GitCredentialsSecret:    "foreman-github",
+		GitCredentialsSecret:    "meitheal-github",
 		GitCredentialsSecretKey: customKey,
 	})
 	if err != nil {
@@ -249,8 +249,8 @@ func TestRenderCoderJob_GitTokenEnvCustomSecret(t *testing.T) {
 		t.Fatalf("GITHUB_TOKEN must come from a secretKeyRef; got %#v", tokenEnv)
 	}
 	ref := tokenEnv.ValueFrom.SecretKeyRef
-	if ref.Name != "foreman-github" {
-		t.Errorf("secretKeyRef name: want foreman-github got %q", ref.Name)
+	if ref.Name != "meitheal-github" {
+		t.Errorf("secretKeyRef name: want meitheal-github got %q", ref.Name)
 	}
 	if ref.Key != "GITHUB_TOKEN" {
 		t.Errorf("secretKeyRef key: want GITHUB_TOKEN got %q", ref.Key)
@@ -260,8 +260,8 @@ func TestRenderCoderJob_GitTokenEnvCustomSecret(t *testing.T) {
 	for _, v := range job.Spec.Template.Spec.Volumes {
 		if v.Name == "git-credentials" {
 			found = true
-			if v.Secret == nil || v.Secret.SecretName != "foreman-github" {
-				t.Errorf("git-credentials volume should reference foreman-github; got %#v", v.Secret)
+			if v.Secret == nil || v.Secret.SecretName != "meitheal-github" {
+				t.Errorf("git-credentials volume should reference meitheal-github; got %#v", v.Secret)
 			}
 		}
 	}
@@ -273,15 +273,15 @@ func TestRenderCoderJob_GitTokenEnvCustomSecret(t *testing.T) {
 // TestRunCoderJob_CustomGitSecretFlowsThroughRun asserts a non-default
 // GitCredentialsSecret/Key set on the static RunCoderJobConfig reaches the
 // rendered Job's GITHUB_TOKEN secretKeyRef via Run. This mirrors how the
-// foreman-agent watcher wires --coder-git-secret / --coder-git-secret-key
+// meitheal-agent watcher wires --coder-git-secret / --coder-git-secret-key
 // onto Cfg (#620 reuse-secret).
 func TestRunCoderJob_CustomGitSecretFlowsThroughRun(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-coder-gitsecret"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-coder-gitsecret"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 	go flipStatusOnce(ctx, c, key, 1, 0)
 
 	// customKey is a Secret KEY name, not a credential value; held in a
@@ -293,7 +293,7 @@ func TestRunCoderJob_CustomGitSecretFlowsThroughRun(t *testing.T) {
 			NameFn:                  pinName(jobName),
 			PollInterval:            5 * time.Millisecond,
 			PollTimeout:             2 * time.Second,
-			GitCredentialsSecret:    "foreman-github",
+			GitCredentialsSecret:    "meitheal-github",
 			GitCredentialsSecretKey: customKey,
 			LogTailFn:               func(context.Context, string, string) string { return "" },
 		},
@@ -316,8 +316,8 @@ func TestRunCoderJob_CustomGitSecretFlowsThroughRun(t *testing.T) {
 		t.Fatalf("GITHUB_TOKEN secretKeyRef missing; env=%#v", con.Env)
 	}
 	ref := tokenEnv.ValueFrom.SecretKeyRef
-	if ref.Name != "foreman-github" {
-		t.Errorf("secretKeyRef name: want foreman-github got %q", ref.Name)
+	if ref.Name != "meitheal-github" {
+		t.Errorf("secretKeyRef name: want meitheal-github got %q", ref.Name)
 	}
 	if ref.Key != "GITHUB_TOKEN" {
 		t.Errorf("secretKeyRef key: want GITHUB_TOKEN got %q", ref.Key)
@@ -331,9 +331,9 @@ func TestRunCoderJob_CustomGitSecretFlowsThroughRun(t *testing.T) {
 // DCO sign-off (#1281). Without these the run-task body fails with
 // GitRemoteNotConfigured.
 func TestRenderCoderJob_GitRemoteAndCommitAuthorArgs(t *testing.T) {
-	job, err := renderCoderJob(coderRendererInput{
-		Name:                  "foreman-coder-gitremote",
-		Namespace:             "foreman-system",
+	job, err := renderCoderJob(coderRendererInput{ //nolint:gosec // G101: a Secret name, not a credential
+		Name:                  "meitheal-coder-gitremote",
+		Namespace:             "meitheal-system",
 		Image:                 "img",
 		TaskName:              "gitremote",
 		TaskNamespace:         "default",
@@ -342,10 +342,10 @@ func TestRenderCoderJob_GitRemoteAndCommitAuthorArgs(t *testing.T) {
 		CPULimit:              "4",
 		MemRequest:            "4Gi",
 		MemLimit:              "8Gi",
-		GitCredentialsSecret:  "foreman-git-credentials",
+		GitCredentialsSecret:  "meitheal-git-credentials",
 		GitRemoteURL:          "https://github.com/Defilan/LLMKube.git",
-		CommitAuthorName:      "Foreman Bot",
-		CommitAuthorEmail:     "foreman@defilan.tech",
+		CommitAuthorName:      "Meitheal Bot",
+		CommitAuthorEmail:     "meitheal@defilan.tech",
 		CommitCommitterName:   "Jory Dogfood",
 		CommitCommitterEmail:  "jory@example.com",
 	})
@@ -356,10 +356,10 @@ func TestRenderCoderJob_GitRemoteAndCommitAuthorArgs(t *testing.T) {
 	if !strings.Contains(args, "--git-remote-url=https://github.com/Defilan/LLMKube.git") {
 		t.Errorf("Args missing --git-remote-url:\n%s", args)
 	}
-	if !strings.Contains(args, "--commit-author-email=foreman@defilan.tech") {
+	if !strings.Contains(args, "--commit-author-email=meitheal@defilan.tech") {
 		t.Errorf("Args missing --commit-author-email:\n%s", args)
 	}
-	if !strings.Contains(args, "--commit-author-name=Foreman Bot") {
+	if !strings.Contains(args, "--commit-author-name=Meitheal Bot") {
 		t.Errorf("Args missing --commit-author-name:\n%s", args)
 	}
 	if !strings.Contains(args, "--commit-committer-email=jory@example.com") {
@@ -375,9 +375,9 @@ func TestRenderCoderJob_GitRemoteAndCommitAuthorArgs(t *testing.T) {
 // `--git-remote-url=` that the run-task FlagSet would parse as an empty URL
 // (a deterministic gate-only install legitimately has no remote).
 func TestRenderCoderJob_GitRemoteArgsOmittedWhenEmpty(t *testing.T) {
-	job, err := renderCoderJob(coderRendererInput{
-		Name:                  "foreman-coder-noremote",
-		Namespace:             "foreman-system",
+	job, err := renderCoderJob(coderRendererInput{ //nolint:gosec // G101: a Secret name, not a credential
+		Name:                  "meitheal-coder-noremote",
+		Namespace:             "meitheal-system",
 		Image:                 "img",
 		TaskName:              "noremote",
 		TaskNamespace:         "default",
@@ -386,7 +386,7 @@ func TestRenderCoderJob_GitRemoteArgsOmittedWhenEmpty(t *testing.T) {
 		CPULimit:              "4",
 		MemRequest:            "4Gi",
 		MemLimit:              "8Gi",
-		GitCredentialsSecret:  "foreman-git-credentials",
+		GitCredentialsSecret:  "meitheal-git-credentials",
 	})
 	if err != nil {
 		t.Fatalf("renderCoderJob: %v", err)
@@ -418,8 +418,8 @@ func TestRunCoderJob_GitRemoteFlowsThroughRun(t *testing.T) {
 	defer cancel()
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-coder-gitflow"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-coder-gitflow"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 	go flipStatusOnce(ctx, c, key, 1, 0)
 
 	tool := &RunCoderJob{
@@ -429,8 +429,8 @@ func TestRunCoderJob_GitRemoteFlowsThroughRun(t *testing.T) {
 			PollInterval:         5 * time.Millisecond,
 			PollTimeout:          2 * time.Second,
 			GitRemoteURL:         "https://github.com/Defilan/LLMKube.git",
-			CommitAuthorName:     "Foreman Bot",
-			CommitAuthorEmail:    "foreman@defilan.tech",
+			CommitAuthorName:     "Meitheal Bot",
+			CommitAuthorEmail:    "meitheal@defilan.tech",
 			CommitCommitterName:  "Jory Dogfood",
 			CommitCommitterEmail: "jory@example.com",
 			LogTailFn:            func(context.Context, string, string) string { return "" },
@@ -447,10 +447,10 @@ func TestRunCoderJob_GitRemoteFlowsThroughRun(t *testing.T) {
 	if !strings.Contains(args, "--git-remote-url=https://github.com/Defilan/LLMKube.git") {
 		t.Errorf("Args missing --git-remote-url:\n%s", args)
 	}
-	if !strings.Contains(args, "--commit-author-email=foreman@defilan.tech") {
+	if !strings.Contains(args, "--commit-author-email=meitheal@defilan.tech") {
 		t.Errorf("Args missing --commit-author-email:\n%s", args)
 	}
-	if !strings.Contains(args, "--commit-author-name=Foreman Bot") {
+	if !strings.Contains(args, "--commit-author-name=Meitheal Bot") {
 		t.Errorf("Args missing --commit-author-name:\n%s", args)
 	}
 	if !strings.Contains(args, "--commit-committer-email=jory@example.com") {
@@ -471,12 +471,12 @@ func TestRunCoderJob_FiresOnJobCreatedAfterCreate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	jobName := "foreman-coder-callback"
+	jobName := "meitheal-coder-callback"
 	c := fake.NewClientBuilder().
 		WithScheme(gateScheme(t)).
 		WithStatusSubresource(&batchv1.Job{}).
 		Build()
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 	go flipStatusOnce(ctx, c, key, 1, 0)
 
 	var mu sync.Mutex
@@ -518,9 +518,9 @@ func TestRunCoderJob_FiresOnJobCreatedAfterCreate(t *testing.T) {
 // resources land on the container, and that the gate-matching defaults
 // apply when the renderer input carries the default strings (#620 N1).
 func TestRenderCoderJob_AppliesResources(t *testing.T) {
-	job, err := renderCoderJob(coderRendererInput{
-		Name:                  "foreman-coder-res",
-		Namespace:             "foreman-system",
+	job, err := renderCoderJob(coderRendererInput{ //nolint:gosec // G101: a Secret name, not a credential
+		Name:                  "meitheal-coder-res",
+		Namespace:             "meitheal-system",
 		Image:                 "img",
 		TaskName:              "res",
 		TaskNamespace:         "default",
@@ -529,7 +529,7 @@ func TestRenderCoderJob_AppliesResources(t *testing.T) {
 		CPULimit:              "6",
 		MemRequest:            "5Gi",
 		MemLimit:              "10Gi",
-		GitCredentialsSecret:  "foreman-git-credentials",
+		GitCredentialsSecret:  "meitheal-git-credentials",
 	})
 	if err != nil {
 		t.Fatalf("renderCoderJob: %v", err)
@@ -558,8 +558,8 @@ func TestRunCoderJob_RequestResourcesOverrideDefaults(t *testing.T) {
 
 	// With explicit overrides on the static Cfg.
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-coder-resoverride"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-coder-resoverride"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 	go flipStatusOnce(ctx, c, key, 1, 0)
 
 	tool := &RunCoderJob{
@@ -603,8 +603,8 @@ func TestSubmit_ForwardsResources(t *testing.T) {
 	defer cancel()
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-coder-submitres"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-coder-submitres"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 	go flipStatusOnce(ctx, c, key, 1, 0)
 
 	tool := &RunCoderJob{
@@ -616,7 +616,7 @@ func TestSubmit_ForwardsResources(t *testing.T) {
 			LogTailFn:    func(context.Context, string, string) string { return "" },
 		},
 	}
-	req := foremanagent.CoderJobRequest{
+	req := meithealagent.CoderJobRequest{
 		TaskName:      "submitres",
 		TaskNamespace: "default",
 		Resources: &corev1.ResourceRequirements{
@@ -653,15 +653,15 @@ func TestRunCoderJob_GOVerdictFromLog(t *testing.T) {
 	defer cancel()
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-coder-issue-510"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-coder-issue-510"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 
 	go flipStatusOnce(ctx, c, key, 1, 0)
 
-	rt := foremanagent.RunTaskResult{
+	rt := meithealagent.RunTaskResult{
 		Verdict:       "GO",
 		Summary:       "fixed it",
-		Branch:        "foreman/issue-510",
+		Branch:        "meitheal/issue-510",
 		CommitSHA:     "abc123",
 		CommitMessage: "fix: thing",
 	}
@@ -670,13 +670,13 @@ func TestRunCoderJob_GOVerdictFromLog(t *testing.T) {
 		t.Fatalf("marshal RunTaskResult: %v", err)
 	}
 	logTail := fmt.Sprintf("%s%s\n%s\n",
-		foremanagent.RunTaskResultPrefix, string(rtJSON), foremanagent.RunTaskSentinelGo)
+		meithealagent.RunTaskResultPrefix, string(rtJSON), meithealagent.RunTaskSentinelGo)
 
 	tool := &RunCoderJob{
 		Client: c,
 		Cfg: RunCoderJobConfig{
 			NameFn:       pinName(jobName),
-			Image:        "ghcr.io/defilantech/foreman-agent:dev",
+			Image:        "ghcr.io/defilantech/meitheal-agent:dev",
 			PollInterval: 5 * time.Millisecond,
 			PollTimeout:  2 * time.Second,
 			LogTailFn: func(context.Context, string, string) string {
@@ -685,7 +685,7 @@ func TestRunCoderJob_GOVerdictFromLog(t *testing.T) {
 		},
 	}
 
-	res, err := tool.Submit(ctx, foremanagent.CoderJobRequest{
+	res, err := tool.Submit(ctx, meithealagent.CoderJobRequest{
 		TaskName:      "issue-510",
 		AttemptKey:    "task-uid-attempt-2",
 		TaskNamespace: "default",
@@ -696,8 +696,8 @@ func TestRunCoderJob_GOVerdictFromLog(t *testing.T) {
 	if res.Verdict != "GO" {
 		t.Errorf("Verdict: want GO got %q", res.Verdict)
 	}
-	if res.Branch != "foreman/issue-510" {
-		t.Errorf("Branch: want foreman/issue-510 got %q", res.Branch)
+	if res.Branch != "meitheal/issue-510" {
+		t.Errorf("Branch: want meitheal/issue-510 got %q", res.Branch)
 	}
 	if res.CommitSHA != "abc123" {
 		t.Errorf("CommitSHA: want abc123 got %q", res.CommitSHA)
@@ -705,7 +705,7 @@ func TestRunCoderJob_GOVerdictFromLog(t *testing.T) {
 	if res.Summary != "fixed it" {
 		t.Errorf("Summary: %q", res.Summary)
 	}
-	if !strings.Contains(res.LogTail, foremanagent.RunTaskSentinelGo) {
+	if !strings.Contains(res.LogTail, meithealagent.RunTaskSentinelGo) {
 		t.Errorf("LogTail should carry the sentinel; got %q", res.LogTail)
 	}
 
@@ -714,7 +714,7 @@ func TestRunCoderJob_GOVerdictFromLog(t *testing.T) {
 	if err := c.Get(ctx, key, &job); err != nil {
 		t.Fatalf("Job should exist on apiserver: %v", err)
 	}
-	if got := job.Spec.Template.Spec.Containers[0].Image; got != "ghcr.io/defilantech/foreman-agent:dev" {
+	if got := job.Spec.Template.Spec.Containers[0].Image; got != "ghcr.io/defilantech/meitheal-agent:dev" {
 		t.Errorf("Image: %q", got)
 	}
 	args := strings.Join(job.Spec.Template.Spec.Containers[0].Args, " ")
@@ -744,14 +744,14 @@ func TestRunCoderJob_NoGoVerdictFromLog(t *testing.T) {
 	defer cancel()
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-coder-nogo"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-coder-nogo"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 
 	go flipStatusOnce(ctx, c, key, 1, 0)
 
 	logTail := fmt.Sprintf(
 		"%s{\"verdict\":\"NO-GO\",\"summary\":\"declined\"}\n%s\n",
-		foremanagent.RunTaskResultPrefix, foremanagent.RunTaskSentinelNoGo,
+		meithealagent.RunTaskResultPrefix, meithealagent.RunTaskSentinelNoGo,
 	)
 
 	tool := &RunCoderJob{
@@ -780,8 +780,8 @@ func TestRunCoderJob_JobFailedProducesERROR(t *testing.T) {
 	defer cancel()
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-coder-fail"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-coder-fail"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 
 	go flipStatusOnce(ctx, c, key, 0, 1)
 
@@ -792,7 +792,7 @@ func TestRunCoderJob_JobFailedProducesERROR(t *testing.T) {
 			PollInterval: 5 * time.Millisecond,
 			PollTimeout:  2 * time.Second,
 			LogTailFn: func(context.Context, string, string) string {
-				return "OOMKilled\n" + foremanagent.RunTaskSentinelError + "\n"
+				return "OOMKilled\n" + meithealagent.RunTaskSentinelError + "\n"
 			},
 		},
 	}
@@ -820,7 +820,7 @@ func TestRunCoderJob_PollTimeoutProducesERROR(t *testing.T) {
 	tool := &RunCoderJob{
 		Client: c,
 		Cfg: RunCoderJobConfig{
-			NameFn:       pinName("foreman-coder-stuck"),
+			NameFn:       pinName("meitheal-coder-stuck"),
 			PollInterval: 5 * time.Millisecond,
 			PollTimeout:  50 * time.Millisecond,
 			LogTailFn:    func(context.Context, string, string) string { return "(no logs)" },
@@ -876,7 +876,7 @@ func TestApplyCoderConfigDefaults_FillsEveryField(t *testing.T) {
 }
 
 // TestCoderJobNamePreservesUniquenessSuffixWhenTruncated covers #1405. A
-// long task name whose "foreman-coder-<task>" already exceeds the 63-char
+// long task name whose "meitheal-coder-<task>" already exceeds the 63-char
 // k8s object-name limit. The old code trimmed the whole name from the right,
 // cutting off the trailing unix-ms disambiguator, so a retry's Create
 // collided with the prior Job (AlreadyExists -> ERROR -> could-not-recover).
@@ -889,8 +889,8 @@ func TestCoderJobNamePreservesUniquenessSuffixWhenTruncated(t *testing.T) {
 	if len(n1) > 63 {
 		t.Fatalf("name exceeds the 63-char k8s limit: len=%d %q", len(n1), n1)
 	}
-	if !strings.HasPrefix(n1, "foreman-coder-") {
-		t.Fatalf("lost the foreman-coder- prefix: %q", n1)
+	if !strings.HasPrefix(n1, "meitheal-coder-") {
+		t.Fatalf("lost the meitheal-coder- prefix: %q", n1)
 	}
 	if !strings.HasSuffix(n1, "-1784157000000") {
 		t.Fatalf("uniqueness suffix was truncated away: %q", n1)
@@ -904,9 +904,9 @@ func TestCoderJobNamePreservesUniquenessSuffixWhenTruncated(t *testing.T) {
 // stamped onto the rendered Job's ownerReferences so Kubernetes GC reclaims
 // the Job (and its pods) when the owning AgenticTask is deleted (#1535).
 func TestRenderCoderJob_OwnerReference(t *testing.T) {
-	job, err := renderCoderJob(coderRendererInput{
-		Name:                  "foreman-coder-ownerref",
-		Namespace:             "foreman-system",
+	job, err := renderCoderJob(coderRendererInput{ //nolint:gosec // G101: a Secret name, not a credential
+		Name:                  "meitheal-coder-ownerref",
+		Namespace:             "meitheal-system",
 		Image:                 "img",
 		TaskName:              "ownerref",
 		TaskNamespace:         "default",
@@ -915,9 +915,9 @@ func TestRenderCoderJob_OwnerReference(t *testing.T) {
 		CPULimit:              "4",
 		MemRequest:            "4Gi",
 		MemLimit:              "8Gi",
-		GitCredentialsSecret:  "foreman-git-credentials",
+		GitCredentialsSecret:  "meitheal-git-credentials",
 		OwnerReference: &metav1.OwnerReference{
-			APIVersion: "foreman.llmkube.dev/v1alpha1",
+			APIVersion: "meitheal.dev/v1alpha1",
 			Kind:       "AgenticTask",
 			Name:       "ownerref",
 			UID:        "task-uid-123",
@@ -933,14 +933,14 @@ func TestRenderCoderJob_OwnerReference(t *testing.T) {
 	if ref.Kind != "AgenticTask" || ref.Name != "ownerref" || ref.UID != "task-uid-123" {
 		t.Errorf("ownerReference mismatch: %#v", ref)
 	}
-	if ref.APIVersion != "foreman.llmkube.dev/v1alpha1" {
+	if ref.APIVersion != "meitheal.dev/v1alpha1" {
 		t.Errorf("ownerReference apiVersion: %q", ref.APIVersion)
 	}
 }
 
 // TestRunCoderJob_ReDispatchReapsPreviousJob asserts that when a task is
 // re-dispatched, the previous Job for the same task (matched by the
-// foreman.llmkube.dev/task-name label) is deleted before the new one is
+// meitheal.dev/task-name label) is deleted before the new one is
 // created, so exactly one Job per AgenticTask is active at any time (#1535).
 func TestRunCoderJob_ReDispatchReapsPreviousJob(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -950,15 +950,15 @@ func TestRunCoderJob_ReDispatchReapsPreviousJob(t *testing.T) {
 
 	// Seed a previous Job for the same task, still active.
 	oldJob := &batchv1.Job{}
-	oldJob.Name = "foreman-coder-task-old"
-	oldJob.Namespace = "foreman-system"
+	oldJob.Name = "meitheal-coder-task-old"
+	oldJob.Namespace = "meitheal-system"
 	oldJob.Labels = map[string]string{taskNameLabel: "task"}
 	if err := c.Create(ctx, oldJob); err != nil {
 		t.Fatalf("seed previous Job: %v", err)
 	}
 
-	jobName := "foreman-coder-task-new"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-coder-task-new"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 	go flipStatusOnce(ctx, c, key, 1, 0)
 
 	tool := &RunCoderJob{
@@ -976,7 +976,7 @@ func TestRunCoderJob_ReDispatchReapsPreviousJob(t *testing.T) {
 
 	// The previous Job must be gone.
 	var old batchv1.Job
-	oldKey := types.NamespacedName{Namespace: "foreman-system", Name: "foreman-coder-task-old"}
+	oldKey := types.NamespacedName{Namespace: "meitheal-system", Name: "meitheal-coder-task-old"}
 	if err := c.Get(ctx, oldKey, &old); err == nil {
 		t.Errorf("previous Job should have been reaped; still present: %#v", old)
 	} else if !apierrors.IsNotFound(err) {
@@ -998,8 +998,8 @@ func TestRunCoderJob_OwnerReferenceFlowsThroughRun(t *testing.T) {
 	defer cancel()
 
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-coder-ownerflow"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-coder-ownerflow"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 	go flipStatusOnce(ctx, c, key, 1, 0)
 
 	tool := &RunCoderJob{
@@ -1011,11 +1011,11 @@ func TestRunCoderJob_OwnerReferenceFlowsThroughRun(t *testing.T) {
 			LogTailFn:    func(context.Context, string, string) string { return "" },
 		},
 	}
-	req := foremanagent.CoderJobRequest{
+	req := meithealagent.CoderJobRequest{
 		TaskName:      "ownerflow",
 		TaskNamespace: "default",
 		OwnerReference: &metav1.OwnerReference{
-			APIVersion: "foreman.llmkube.dev/v1alpha1",
+			APIVersion: "meitheal.dev/v1alpha1",
 			Kind:       "AgenticTask",
 			Name:       "ownerflow",
 			UID:        "task-uid-456",

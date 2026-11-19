@@ -19,15 +19,15 @@
 # escalation AgenticTask, and the base NO-GO still rolls the Workload
 # to Failed so a human reviews both verdicts side by side:
 #
-#   kubectl get agentictasks -l foreman.llmkube.dev/workload=batch-escalation
-apiVersion: foreman.llmkube.dev/v1alpha1
+#   kubectl get agentictasks -l meitheal.dev/workload=batch-escalation
+apiVersion: meitheal.dev/v1alpha1
 kind: Workload
 metadata:
   name: batch-escalation
   namespace: default
   labels:
-    app.kubernetes.io/part-of: foreman
-    foreman.llmkube.dev/milestone: v0.2
+    app.kubernetes.io/part-of: meitheal
+    meitheal.dev/milestone: v0.2
 spec:
   intent: "fix the listed issues; escalate review on NO-GO"
   repo: defilantech/LLMKube

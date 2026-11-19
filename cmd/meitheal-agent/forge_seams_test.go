@@ -33,9 +33,9 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/codehost"
-	foremantools "github.com/defilantech/meitheal/pkg/agent/tools"
+	meithealtools "github.com/defilantech/meitheal/pkg/agent/tools"
 	"github.com/defilantech/meitheal/pkg/agent/worktracker"
 )
 
@@ -52,9 +52,9 @@ func (r *recordingWorkItems) Get(_ context.Context, repoSlug, id string) (*workt
 // executor held (#1298).
 func TestRegistryFactoryThreadsForgeSeamsIntoTools(t *testing.T) {
 	items := &recordingWorkItems{}
-	factory := makeRegistryFactory(fake.NewClientBuilder().Build(), k8sfake.NewClientset(), "foreman", "",
+	factory := makeRegistryFactory(fake.NewClientBuilder().Build(), k8sfake.NewClientset(), "meitheal", "",
 		forgeSeams{workItems: items})
-	ag := &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{Tools: []string{"fetch_issue"}}}
+	ag := &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{Tools: []string{"fetch_issue"}}}
 	reg, err := factory(context.Background(), t.TempDir(), ag, false)
 	if err != nil {
 		t.Fatalf("registry: %v", err)
@@ -77,7 +77,7 @@ func TestRegistryFactoryThreadsForgeSeamsIntoTools(t *testing.T) {
 // empty file, so once the flags parse the child fails on cluster config and
 // can reach no cluster.
 func TestCoderJobArgsParseInRunTask(t *testing.T) {
-	if raw := os.Getenv("FOREMAN_TEST_RUN_TASK_ARGS"); raw != "" {
+	if raw := os.Getenv("MEITHEAL_TEST_RUN_TASK_ARGS"); raw != "" {
 		var args []string
 		if err := json.Unmarshal([]byte(raw), &args); err != nil {
 			os.Exit(3)
@@ -87,26 +87,26 @@ func TestCoderJobArgsParseInRunTask(t *testing.T) {
 	}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	tool := &foremantools.RunCoderJob{
+	tool := &meithealtools.RunCoderJob{
 		Client: c,
-		Cfg: foremantools.RunCoderJobConfig{
-			Namespace:            "foreman-system",
+		Cfg: meithealtools.RunCoderJobConfig{
+			Namespace:            "meitheal-system",
 			NameFn:               func(string) string { return "coder-flags" },
 			PollInterval:         5 * time.Millisecond,
 			PollTimeout:          20 * time.Millisecond,
 			GitRemoteURL:         "https://github.com/o/r.git",
 			Forge:                "github",
 			ForgeAPIBaseURL:      "https://ghe.example.com/api/v3",
-			CommitAuthorName:     "Foreman Bot",
+			CommitAuthorName:     "Meitheal Bot",
 			CommitAuthorEmail:    "bot@example.com",
 			CommitCommitterName:  "Human",
 			CommitCommitterEmail: "human@example.com",
 			LogTailFn:            func(context.Context, string, string) string { return "" },
 		},
 	}
-	_, _ = tool.Run(context.Background(), foremantools.RunCoderJobArgs{TaskName: "flags", TaskNamespace: "default"})
+	_, _ = tool.Run(context.Background(), meithealtools.RunCoderJobArgs{TaskName: "flags", TaskNamespace: "default"})
 	var job batchv1.Job
-	key := types.NamespacedName{Namespace: "foreman-system", Name: "coder-flags"}
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: "coder-flags"}
 	if err := c.Get(context.Background(), key, &job); err != nil {
 		t.Fatalf("coder Job not created: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestCoderJobArgsParseInRunTask(t *testing.T) {
 	}
 	//nolint:gosec // G702: re-executes this test binary with a fixed -test.run; the args are the Job's, read as data.
 	child := exec.Command(os.Args[0], "-test.run=^TestCoderJobArgsParseInRunTask$")
-	child.Env = append(os.Environ(), "FOREMAN_TEST_RUN_TASK_ARGS="+string(raw), "KUBECONFIG="+kubeconfig,
+	child.Env = append(os.Environ(), "MEITHEAL_TEST_RUN_TASK_ARGS="+string(raw), "KUBECONFIG="+kubeconfig,
 		"KUBERNETES_SERVICE_HOST=", "KUBERNETES_SERVICE_PORT=")
 	out, err := child.CombinedOutput()
 	var exit *exec.ExitError
@@ -153,9 +153,9 @@ func TestNewForgeSeamsSelection(t *testing.T) {
 // The selected forge's name and pull request reader reach fetch_pull_request:
 // a forge without a reader is reported, not served from GitHub.
 func TestRegistryFactoryThreadsForgePullRequests(t *testing.T) {
-	factory := makeRegistryFactory(fake.NewClientBuilder().Build(), k8sfake.NewClientset(), "foreman", "",
+	factory := makeRegistryFactory(fake.NewClientBuilder().Build(), k8sfake.NewClientset(), "meitheal", "",
 		forgeSeams{name: "gitea", workItems: &recordingWorkItems{}})
-	ag := &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{Tools: []string{"fetch_pull_request"}}}
+	ag := &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{Tools: []string{"fetch_pull_request"}}}
 	reg, err := factory(context.Background(), t.TempDir(), ag, false)
 	if err != nil {
 		t.Fatalf("registry: %v", err)

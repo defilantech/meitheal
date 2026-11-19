@@ -3,7 +3,7 @@ package agent
 import (
 	"fmt"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // defaultMaxEnvtestIterations is the retry bound used when
@@ -14,7 +14,7 @@ const defaultMaxEnvtestIterations = 1
 
 // effectiveMaxEnvtestIterations resolves the *int32 three-state: nil (or
 // a nil agent) defaults; explicit values (including 0) win.
-func effectiveMaxEnvtestIterations(agent *foremanv1alpha1.Agent) int {
+func effectiveMaxEnvtestIterations(agent *meithealv1alpha1.Agent) int {
 	if agent == nil || agent.Spec.MaxEnvtestIterations == nil {
 		return defaultMaxEnvtestIterations
 	}

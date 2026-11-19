@@ -29,8 +29,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
 
@@ -54,7 +54,7 @@ func TestRunTask_HappyPathPushesAndEmitsResult(t *testing.T) {
 		Build()
 
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true, Verdict: "GO", Summary: "fixed",
 				CommitMessage: "fix: trivial change\n",
@@ -62,13 +62,13 @@ func TestRunTask_HappyPathPushesAndEmitsResult(t *testing.T) {
 		},
 		touch: func(name string, ws string) {
 			if name == "submit_result" {
-				_ = os.WriteFile(filepath.Join(ws, "fix.txt"), []byte("foreman touched this\n"), 0o644)
+				_ = os.WriteFile(filepath.Join(ws, "fix.txt"), []byte("meitheal touched this\n"), 0o644)
 			}
 		},
 	}
 
 	var out bytes.Buffer
-	cfg := foremanagent.RunTaskConfig{
+	cfg := meithealagent.RunTaskConfig{
 		AttemptKey:   string(task.UID) + "-attempt-0",
 		Client:       c,
 		Task:         types.NamespacedName{Namespace: task.Namespace, Name: task.Name},
@@ -84,11 +84,11 @@ func TestRunTask_HappyPathPushesAndEmitsResult(t *testing.T) {
 		// real common ancestor to resolve to anything meaningful).
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -96,51 +96,51 @@ func TestRunTask_HappyPathPushesAndEmitsResult(t *testing.T) {
 		Stdout:      &out,
 	}
 
-	got, err := foremanagent.RunTask(context.Background(), cfg)
+	got, err := meithealagent.RunTask(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("RunTask: %v", err)
 	}
 
 	// Structured return.
-	if got.Verdict != string(foremanv1alpha1.AgenticTaskVerdictGo) {
+	if got.Verdict != string(meithealv1alpha1.AgenticTaskVerdictGo) {
 		t.Errorf("verdict: want GO got %q", got.Verdict)
 	}
-	if got.Branch != "foreman/issue-9999" {
-		t.Errorf("branch: want foreman/issue-9999 got %q", got.Branch)
+	if got.Branch != "meitheal/issue-9999" {
+		t.Errorf("branch: want meitheal/issue-9999 got %q", got.Branch)
 	}
 	if got.CommitSHA == "" {
 		t.Errorf("commitSHA: want non-empty, got empty")
 	}
-	if got.Result == nil || got.Result.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got.Result == nil || got.Result.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("Result envelope missing or wrong verdict: %+v", got.Result)
 	}
 
 	// Branch landed on the remote.
-	br, brErr := exec.Command("git", "-C", bare, "branch", "--list", "foreman/issue-9999").CombinedOutput()
+	br, brErr := exec.Command("git", "-C", bare, "branch", "--list", "meitheal/issue-9999").CombinedOutput()
 	if brErr != nil {
 		t.Fatalf("post-push branch list: %v: %s", brErr, br)
 	}
-	if !strings.Contains(string(br), "foreman/issue-9999") {
+	if !strings.Contains(string(br), "meitheal/issue-9999") {
 		t.Errorf("branch not on remote: %s", br)
 	}
 
 	// Emitted stream carries the JSON result + a final sentinel line the
 	// Job poller can match on (mirror of the gate Job's GATE PASS line).
 	emitted := out.String()
-	if !strings.Contains(emitted, foremanagent.RunTaskResultPrefix) {
-		t.Errorf("emitted stream missing result prefix %q:\n%s", foremanagent.RunTaskResultPrefix, emitted)
+	if !strings.Contains(emitted, meithealagent.RunTaskResultPrefix) {
+		t.Errorf("emitted stream missing result prefix %q:\n%s", meithealagent.RunTaskResultPrefix, emitted)
 	}
-	if !strings.Contains(emitted, foremanagent.RunTaskSentinelGo) {
-		t.Errorf("emitted stream missing GO sentinel %q:\n%s", foremanagent.RunTaskSentinelGo, emitted)
+	if !strings.Contains(emitted, meithealagent.RunTaskSentinelGo) {
+		t.Errorf("emitted stream missing GO sentinel %q:\n%s", meithealagent.RunTaskSentinelGo, emitted)
 	}
 
 	// The result prefix line must parse back into a RunTaskResult.
-	line := resultLine(t, emitted, foremanagent.RunTaskResultPrefix)
-	var parsed foremanagent.RunTaskResult
+	line := resultLine(t, emitted, meithealagent.RunTaskResultPrefix)
+	var parsed meithealagent.RunTaskResult
 	if err := json.Unmarshal([]byte(line), &parsed); err != nil {
 		t.Fatalf("emitted result line is not valid RunTaskResult JSON: %v\nline=%q", err, line)
 	}
-	if parsed.Verdict != string(foremanv1alpha1.AgenticTaskVerdictGo) {
+	if parsed.Verdict != string(meithealv1alpha1.AgenticTaskVerdictGo) {
 		t.Errorf("emitted JSON verdict: want GO got %q", parsed.Verdict)
 	}
 	if parsed.CommitSHA != got.CommitSHA {
@@ -152,16 +152,16 @@ func TestRunTask_HappyPathPushesAndEmitsResult(t *testing.T) {
 // when the named task does not exist in the namespace.
 func TestRunTask_TaskNotFound(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
-	cfg := foremanagent.RunTaskConfig{
+	cfg := meithealagent.RunTaskConfig{
 		Client: c,
 		Task:   types.NamespacedName{Namespace: "default", Name: "ghost"},
 		RegistryFactory: func(
-			_ context.Context, _ string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, _ string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			return &fakeRegistry{}, nil
 		},
 	}
-	if _, err := foremanagent.RunTask(context.Background(), cfg); err == nil {
+	if _, err := meithealagent.RunTask(context.Background(), cfg); err == nil {
 		t.Fatal("RunTask: want error for missing task, got nil")
 	}
 }

@@ -36,8 +36,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	llmkubemetrics "github.com/defilantech/meitheal/internal/metrics"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealmetrics "github.com/defilantech/meitheal/internal/metrics"
 	"github.com/defilantech/meitheal/pkg/archive"
 	"github.com/defilantech/meitheal/pkg/audit"
 )
@@ -56,7 +56,7 @@ func TestArchiveTerminalTask_DisabledWritesNothing(t *testing.T) {
 	root := t.TempDir()
 	// Safe only as a package-wide invariant: t.Chdir refuses to run in a test
 	// that has called t.Parallel, but it cannot see a t.Parallel anywhere ELSE
-	// in internal/foreman/controller. A parallel test added to this package
+	// in internal/controller. A parallel test added to this package
 	// would silently run against this directory, and envtest resolves its CRD
 	// paths relative to the working directory, so the failure would land far
 	// from its cause. Nothing in this package is parallel today; keep it so.
@@ -109,15 +109,15 @@ func TestArchiveTerminalTask_WritesABundle(t *testing.T) {
 //
 // The fixture sets Status.TranscriptRef by hand, which is safe ONLY because a
 // producer-side test now pins that the field is populated at all:
-// TestPatchTerminal_LiftsTranscriptRef in pkg/foreman/agent. Until #1654 it was
+// TestPatchTerminal_LiftsTranscriptRef in pkg/agent. Until #1654 it was
 // not, and this file's hand-set field was manufacturing an input production
 // never supplied -- green tests over a feature that archived zero transcripts.
 // The ConfigMap name here is transcriptName(task.Name), the same one
-// pkg/foreman/agent/transcript.go mints, so the two ends stay comparable.
+// pkg/agent/transcript.go mints, so the two ends stay comparable.
 func TestArchiveTerminalTask_WritesTranscriptFromConfigMap(t *testing.T) {
 	root := t.TempDir()
 	task := terminalTask()
-	task.Status.TranscriptRef = "foreman-transcript-archive-me"
+	task.Status.TranscriptRef = "meitheal-transcript-archive-me"
 	want := `{"turns":[{"role":"user","content":"fix it"}]}`
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: task.Status.TranscriptRef, Namespace: task.Namespace},
@@ -162,7 +162,7 @@ func TestArchiveTerminalTask_MissingTranscriptStillArchives(t *testing.T) {
 		t.Errorf("a task whose transcript is gone must still archive its record: %v", err)
 	}
 	if got := archiveFailureCount(t, "transcript_read"); got <= before {
-		t.Errorf("foreman_archive_failures_total{reason=\"transcript_read\"} = %v, want an increment after an unreadable transcript", got)
+		t.Errorf("meitheal_archive_failures_total{reason=\"transcript_read\"} = %v, want an increment after an unreadable transcript", got)
 	}
 }
 
@@ -175,7 +175,7 @@ func TestArchiveTerminalTask_FailureDoesNotPanicAndCounts(t *testing.T) {
 	// A regular file, not a chmod 0500 directory: root ignores permission
 	// bits, so a mode-based unwritable root is writable for uid 0 and the
 	// write this test needs to fail would succeed. See the note in
-	// pkg/foreman/archive/bundle_test.go.
+	// pkg/archive/bundle_test.go.
 	root := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(root, []byte("x"), 0o600); err != nil {
 		t.Fatalf("write file: %v", err)
@@ -186,7 +186,7 @@ func TestArchiveTerminalTask_FailureDoesNotPanicAndCounts(t *testing.T) {
 	r.archiveTerminalTask(context.Background(), task, logr.Discard())
 
 	if got := archiveFailureCount(t, "write"); got <= before {
-		t.Errorf("foreman_archive_failures_total = %v, want an increment after a failed write", got)
+		t.Errorf("meitheal_archive_failures_total = %v, want an increment after a failed write", got)
 	}
 }
 
@@ -303,7 +303,7 @@ func TestArchiveTerminalTask_RecordsResolvedAgent(t *testing.T) {
 func TestArchiveTerminalTask_TranscriptPresentButKeyMissingIsCounted(t *testing.T) {
 	root := t.TempDir()
 	task := terminalTask()
-	task.Status.TranscriptRef = "foreman-transcript-archive-me"
+	task.Status.TranscriptRef = "meitheal-transcript-archive-me"
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: task.Status.TranscriptRef, Namespace: task.Namespace},
 		Data:       map[string]string{"transcript": `{"turns":[]}`},
@@ -321,7 +321,7 @@ func TestArchiveTerminalTask_TranscriptPresentButKeyMissingIsCounted(t *testing.
 		t.Errorf("a transcript ConfigMap missing its key must still archive the record: %v", err)
 	}
 	if got := archiveFailureCount(t, "transcript_empty"); got <= before {
-		t.Errorf("foreman_archive_failures_total{reason=\"transcript_empty\"} = %v, want an increment: "+
+		t.Errorf("meitheal_archive_failures_total{reason=\"transcript_empty\"} = %v, want an increment: "+
 			"a resolved ConfigMap with no transcript under %q is silent data loss otherwise",
 			got, "transcript.json")
 	}
@@ -351,15 +351,15 @@ func TestReconcile_ReleasesTheNodeBeforeArchiving(t *testing.T) {
 	// ConfigMap read on this path is the archiver's transcript fetch.
 	task.Annotations = map[string]string{audit.AuditedAnnotation: "true"}
 	task.Status.AssignedNode = archiveNodeName
-	task.Status.TranscriptRef = "foreman-transcript-archive-me"
+	task.Status.TranscriptRef = "meitheal-transcript-archive-me"
 
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: task.Status.TranscriptRef, Namespace: task.Namespace},
 		Data:       map[string]string{transcriptDataKey: `{"turns":[]}`},
 	}
-	node := &foremanv1alpha1.FleetNode{
+	node := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: archiveNodeName},
-		Status:     foremanv1alpha1.FleetNodeStatus{CurrentTask: taskKey(task)},
+		Status:     meithealv1alpha1.FleetNodeStatus{CurrentTask: taskKey(task)},
 	}
 
 	var (
@@ -376,7 +376,7 @@ func TestReconcile_ReleasesTheNodeBeforeArchiving(t *testing.T) {
 		) error {
 			if _, isCM := obj.(*corev1.ConfigMap); isCM {
 				archiveRan = true
-				var n foremanv1alpha1.FleetNode
+				var n meithealv1alpha1.FleetNode
 				if err := inner.Get(ctx, client.ObjectKey{Name: archiveNodeName}, &n); err != nil {
 					t.Errorf("reading the node from inside the archive path: %v", err)
 				}
@@ -434,25 +434,25 @@ const (
 // block, so nothing would notice the resolution being dropped. See
 // TestArchiveTerminalTask_RecordsResolvedAgent. fakeClientWithTask seeds the
 // matching Agent.
-func terminalTask() *foremanv1alpha1.AgenticTask {
+func terminalTask() *meithealv1alpha1.AgenticTask {
 	finished := metav1.Date(2026, time.August, 23, 17, 4, 5, 0, time.UTC)
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "archive-me",
 			Namespace: "default",
 			UID:       types.UID("11111111-2222-3333-4444-555555555555"),
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 			AgentRef: &corev1.LocalObjectReference{Name: archiveAgentName},
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:  "defilantech/LLMKube",
 				Issue: int32(1602),
 			},
 		},
 	}
-	task.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-	task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+	task.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+	task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 	task.Status.FinishedAt = &finished
 	return task
 }
@@ -467,13 +467,13 @@ func terminalTask() *foremanv1alpha1.AgenticTask {
 // unresolvable path clears task.Spec.AgentRef before calling.
 func fakeClientWithTask(
 	t *testing.T,
-	task *foremanv1alpha1.AgenticTask,
+	task *meithealv1alpha1.AgenticTask,
 	extra ...client.Object,
 ) client.WithWatch {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := foremanv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("add foreman scheme: %v", err)
+	if err := meithealv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add meitheal scheme: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("add core scheme: %v", err)
@@ -485,7 +485,7 @@ func fakeClientWithTask(
 	return fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&foremanv1alpha1.FleetNode{}).
+		WithStatusSubresource(&meithealv1alpha1.FleetNode{}).
 		Build()
 }
 
@@ -493,14 +493,14 @@ func fakeClientWithTask(
 // so ProviderConfig.BaseURL is populated: record.go calls that endpoint "the
 // inference-provenance proof", and for archival it is much of the point of
 // keeping a bundle at all.
-func archiveAgent(name, namespace string) *foremanv1alpha1.Agent {
-	return &foremanv1alpha1.Agent{
+func archiveAgent(name, namespace string) *meithealv1alpha1.Agent {
+	return &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:     foremanv1alpha1.AgentRoleCoder,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:     meithealv1alpha1.AgentRoleCoder,
 			Model:    archiveAgentModel,
-			Provider: foremanv1alpha1.AgentProviderCloudProxy,
-			ProviderConfig: &foremanv1alpha1.ProviderConfig{
+			Provider: meithealv1alpha1.AgentProviderCloudProxy,
+			ProviderConfig: &meithealv1alpha1.ProviderConfig{
 				BaseURL: archiveAgentEndpoint,
 				Model:   archiveAgentModel,
 			},
@@ -512,5 +512,5 @@ func archiveAgent(name, namespace string) *foremanv1alpha1.Agent {
 // reason label.
 func archiveFailureCount(t *testing.T, reason string) float64 {
 	t.Helper()
-	return testutil.ToFloat64(llmkubemetrics.ForemanArchiveFailuresTotal.WithLabelValues(reason))
+	return testutil.ToFloat64(meithealmetrics.MeithealArchiveFailuresTotal.WithLabelValues(reason))
 }

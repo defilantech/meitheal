@@ -75,7 +75,7 @@ var (
 	fencedCodeRe = regexp.MustCompile("(?s)```.*?```")
 
 	// pathClaimRe matches a slash-separated or bare filename carrying an
-	// extension: `pkg/foreman/agent/loop.go`, `README.md`.
+	// extension: `pkg/agent/loop.go`, `README.md`.
 	pathClaimRe = regexp.MustCompile(`^[\w.@~-]+(?:/[\w.@~-]+)*\.[A-Za-z][A-Za-z0-9]{0,9}$`)
 
 	// routeClaimRe matches a route-ish string: a leading slash and no
@@ -209,7 +209,7 @@ func claimGrounded(claim string, kind claimKind, g diffGroundTruth) bool {
 // pathClaimGrounded grounds a file-path claim. Basename equality against
 // the changed-file list covers the normal case; existence in the workspace
 // covers a summary that legitimately points at a file it did not change
-// ("follows the pattern in `pkg/foreman/agent/loop.go`"), which must not
+// ("follows the pattern in `pkg/agent/loop.go`"), which must not
 // be reported as an invented path.
 //
 // Path claims deliberately skip the atom fallback: a claim's leading
@@ -294,7 +294,7 @@ func annotateUnverifiedClaims(summary string, unverified []string) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimRight(summary, "\n"))
 	b.WriteString("\n\n> [!WARNING]\n")
-	b.WriteString("> **Unverified claims.** The summary above is the reviewer's; foreman ")
+	b.WriteString("> **Unverified claims.** The summary above is the reviewer's; meitheal ")
 	b.WriteString("cross-checks the concrete things it names against the branch diff. ")
 	fmt.Fprintf(&b, "These do not appear in the diff: %s.\n", list)
 	b.WriteString("> Treat them as unsubstantiated when deciding whether this branch ")

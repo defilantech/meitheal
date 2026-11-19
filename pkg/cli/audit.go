@@ -24,13 +24,13 @@ import (
 	"github.com/defilantech/meitheal/pkg/audit"
 )
 
-// NewAuditCommand is the `llmkube audit` group: export the durable Foreman
+// NewAuditCommand is the `meitheal audit` group: export the durable Meitheal
 // audit records as a portable JSONL bundle for compliance review.
 func NewAuditCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "audit",
-		Short: "Inspect and export Foreman run audit records",
-		Long:  "Aggregate the durable per-run audit records Foreman writes for compliance review.",
+		Short: "Inspect and export Meitheal run audit records",
+		Long:  "Aggregate the durable per-run audit records Meitheal writes for compliance review.",
 	}
 	cmd.AddCommand(newAuditExportCommand())
 	return cmd

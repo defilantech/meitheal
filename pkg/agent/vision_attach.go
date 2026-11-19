@@ -26,7 +26,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
@@ -54,11 +54,11 @@ const (
 // harness cannot introspect an arbitrary endpoint to learn whether a
 // multimodal projector is loaded. Guessing wrong sends image parts to a
 // text-only model, which is an HTTP 400 rather than a graceful degrade.
-func visionEnabled(agent *foremanv1alpha1.Agent) bool {
+func visionEnabled(agent *meithealv1alpha1.Agent) bool {
 	return agent != nil && agent.Spec.Vision != nil && agent.Spec.Vision.Enabled
 }
 
-func visionLimits(agent *foremanv1alpha1.Agent) (maxBytes int64, maxImages int32) {
+func visionLimits(agent *meithealv1alpha1.Agent) (maxBytes int64, maxImages int32) {
 	maxBytes, maxImages = defaultMaxImageBytes, defaultMaxImages
 	if agent == nil || agent.Spec.Vision == nil {
 		return maxBytes, maxImages
@@ -84,7 +84,7 @@ func visionLimits(agent *foremanv1alpha1.Agent) (maxBytes int64, maxImages int32
 // the problem in words; running without the picture is strictly better than
 // not running.
 func buildUserContentParts(
-	prompt string, images []string, workspace string, agent *foremanv1alpha1.Agent,
+	prompt string, images []string, workspace string, agent *meithealv1alpha1.Agent,
 ) (parts []oai.ContentPart, warnings []string) {
 	if len(images) == 0 {
 		return nil, nil
@@ -191,7 +191,7 @@ func resolveInWorkspace(workspace, rel string) (string, error) {
 // what was skipped and what actually went out.
 func attachImages(
 	log logr.Logger, prompt string, images []string,
-	workspace string, agent *foremanv1alpha1.Agent,
+	workspace string, agent *meithealv1alpha1.Agent,
 ) []oai.ContentPart {
 	parts, warnings := buildUserContentParts(prompt, images, workspace, agent)
 	for _, w := range warnings {

@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func TestRunGateChecks_SplitsByTier(t *testing.T) {
@@ -54,9 +54,9 @@ func TestRunGateChecks_SplitsByTier(t *testing.T) {
 }
 
 func TestGateCheckEnabled_Toggle(t *testing.T) {
-	t.Setenv("FOREMAN_FOO_GATE", "0")
+	t.Setenv("MEITHEAL_FOO_GATE", "0")
 	if gateCheckEnabled("foo") {
-		t.Fatal("FOREMAN_FOO_GATE=0 should disable check 'foo'")
+		t.Fatal("MEITHEAL_FOO_GATE=0 should disable check 'foo'")
 	}
 	if !gateCheckEnabled("bar") {
 		t.Fatal("unset toggle should default enabled")
@@ -65,7 +65,7 @@ func TestGateCheckEnabled_Toggle(t *testing.T) {
 
 func TestGateCheckRegistry_TiersAndNames(t *testing.T) {
 	got := map[string]gateTier{}
-	langs := map[string]foremanv1alpha1.GateLanguage{}
+	langs := map[string]meithealv1alpha1.GateLanguage{}
 	for _, c := range gateCheckRegistry("issue text", "main", nil) {
 		if c.fn == nil {
 			t.Errorf("check %q has nil fn", c.name)

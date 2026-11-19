@@ -179,7 +179,7 @@ func TestRegistry_Dispatch_UnfilteredRegistryNoFalsePositives(t *testing.T) {
 	}
 }
 
-// TestRegistry_FilterThenAdd pins the v0.3 Foreman MCP fix: MCP tools
+// TestRegistry_FilterThenAdd pins the v0.3 Meitheal MCP fix: MCP tools
 // must be appended AFTER the Agent.spec.tools whitelist Filter, not
 // before it. Filter is an allow-list intersection, and MCP tools are
 // named dynamically (mcp__<server>__<tool>), so no real Agent's
@@ -904,7 +904,7 @@ func TestBash_GrandchildPipeDoesNotDeadlock(t *testing.T) {
 }
 
 func TestBash_EnvScrubbed(t *testing.T) {
-	t.Setenv("FOREMAN_TEST_SHOULD_NOT_LEAK", "secret-value")
+	t.Setenv("MEITHEAL_TEST_SHOULD_NOT_LEAK", "secret-value")
 	t.Setenv("PATH", os.Getenv("PATH")) // ensure PATH visible to subshell
 	b := &BashTool{Workspace: makeWorkspace(t)}
 	res, err := b.Execute(context.Background(),
@@ -913,7 +913,7 @@ func TestBash_EnvScrubbed(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 	envDump := res.Output.(map[string]any)["stdout"].(string)
-	if strings.Contains(envDump, "FOREMAN_TEST_SHOULD_NOT_LEAK") {
+	if strings.Contains(envDump, "MEITHEAL_TEST_SHOULD_NOT_LEAK") {
 		t.Errorf("env leaked into sandbox: %s", envDump)
 	}
 	if !strings.Contains(envDump, "PATH=") {

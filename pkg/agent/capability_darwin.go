@@ -22,7 +22,7 @@ import (
 	"math"
 
 	llmkubeagent "github.com/defilantech/llmkube/pkg/agent"
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // darwinCapability advertises the host as a Metal worker. Total / available
@@ -34,7 +34,7 @@ type darwinCapability struct {
 	models           []string
 	maxContext       int32
 	tokensPerSec     int32
-	acceleratorLabel foremanv1alpha1.FleetNodeAccelerator
+	acceleratorLabel meithealv1alpha1.FleetNodeAccelerator
 }
 
 // NewCapability is the cross-platform constructor. On darwin it returns a
@@ -54,10 +54,10 @@ func NewCapability(opts CapabilityOptions) CapabilityProvider {
 	}
 }
 
-func (d *darwinCapability) Capability() foremanv1alpha1.FleetNodeCapability {
+func (d *darwinCapability) Capability() meithealv1alpha1.FleetNodeCapability {
 	totalB, _ := d.mem.TotalMemory()
 	availB, _ := d.mem.AvailableMemory()
-	return foremanv1alpha1.FleetNodeCapability{
+	return meithealv1alpha1.FleetNodeCapability{
 		Accelerator:      d.acceleratorLabel,
 		TotalRAMGB:       bytesToGB(totalB),
 		AvailableRAMGB:   bytesToGB(availB),

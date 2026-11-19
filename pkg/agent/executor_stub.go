@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // DefaultStubSleep is the synthetic duration the stub executor blocks
@@ -54,8 +54,8 @@ func (s *StubExecutor) Kind() string { return "stub" }
 // loop, so nothing about the task's Agent changes what it does.
 func (s *StubExecutor) Execute(
 	ctx context.Context,
-	task *foremanv1alpha1.AgenticTask,
-	_ *foremanv1alpha1.Agent,
+	task *meithealv1alpha1.AgenticTask,
+	_ *meithealv1alpha1.Agent,
 ) (*Result, error) {
 	dur := s.SleepDuration
 	if dur <= 0 {
@@ -70,7 +70,7 @@ func (s *StubExecutor) Execute(
 	elapsed := time.Since(start)
 	res := NewResult(
 		s.Kind(),
-		foremanv1alpha1.AgenticTaskVerdictGo,
+		meithealv1alpha1.AgenticTaskVerdictGo,
 		fmt.Sprintf("stub executor slept %s on task %s/%s", elapsed.Round(time.Millisecond), task.Namespace, task.Name),
 		elapsed,
 	)

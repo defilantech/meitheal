@@ -24,7 +24,7 @@ import (
 )
 
 func TestConfigMapNamePreservesAttemptSuffix(t *testing.T) {
-	for _, prefix := range []string{"foreman-audit-", "foreman-transcript-"} {
+	for _, prefix := range []string{"meitheal-audit-", "meitheal-transcript-"} {
 		name := ConfigMapName(prefix, strings.Repeat("x", 253), "12345678-1234-1234-1234-123456789abc", 2)
 		if errors := validation.IsDNS1123Subdomain(name); len(errors) != 0 {
 			t.Fatalf("invalid name %q: %v", name, errors)

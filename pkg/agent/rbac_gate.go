@@ -27,9 +27,8 @@ limitations under the License.
 //   - Unknown types are SKIPPED, never flagged. This guarantees no false positives
 //     for dependencies we have not enumerated.
 //   - The check is fail-open: any parse error causes it to return (false, "").
-//   - Only files under internal/controller/ or internal/foreman/controller/ are
-//     inspected. Other directories are not expected to hold +kubebuilder:rbac
-//     markers and are not judged.
+//   - Only files under internal/controller/ are inspected. Other directories
+//     are not expected to hold +kubebuilder:rbac markers and are not judged.
 package agent
 
 import (
@@ -73,7 +72,6 @@ var rbacClientVerbs = map[string]string{
 // controllerDirs are the workspace-relative prefixes where controller code lives.
 var controllerDirs = []string{
 	"internal/controller/",
-	"internal/foreman/controller/",
 }
 
 // checkRBACUse is the gate check function registered in gateCheckRegistry.

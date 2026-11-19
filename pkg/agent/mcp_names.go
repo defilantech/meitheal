@@ -10,7 +10,7 @@ const MCPNameSeparator = "__"
 // MCPToolNamePrefix is the prefix every MCP-provided tool name carries, so a
 // transcript consumer can tell an MCP result from a native tool's.
 //
-// It lives here rather than in pkg/foreman/agent/mcp because that package
+// It lives here rather than in pkg/agent/mcp because that package
 // already imports this one, and the two must not drift apart again: #1527
 // changed the separator in the mcp package but left this package's own "mcp/"
 // literal behind in the coder grounding rail, which then matched nothing and

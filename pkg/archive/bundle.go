@@ -31,7 +31,7 @@ import (
 
 // BundleSchemaVersion identifies the on-disk bundle layout. Bump it only for
 // a change a reader cannot handle transparently.
-const BundleSchemaVersion = "foreman.archive.v1"
+const BundleSchemaVersion = "meitheal.archive.v1"
 
 // metaFile is written last by writeAll, which makes its presence the sentinel
 // for a completed bundle. A directory without it is crash debris, not an

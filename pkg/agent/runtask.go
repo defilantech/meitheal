@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/changepolicy"
 	"github.com/defilantech/meitheal/pkg/agent/codehost"
 	"github.com/defilantech/meitheal/pkg/agent/githubissue"
@@ -39,7 +39,7 @@ import (
 
 // RunTask is the standalone single-task runner: it executes ONE
 // AgenticTask to completion against a remote model and returns a
-// structured result. It is the body that runs inside the Foreman coder
+// structured result. It is the body that runs inside the Meitheal coder
 // Job (#620); the same logic runs in-process from the AgenticTaskWatcher
 // via NativeAgentLoopExecutor.Execute.
 //
@@ -56,14 +56,14 @@ import (
 //     sentinel line (RunTaskSentinelGo / NoGo / Incomplete / Error) so a
 //     Job poller can read the outcome from the Pod log, mirroring the
 //     gate Job's "GATE PASS" / "GATE FAIL" contract
-//     (pkg/foreman/agent/tools/gate_job_template.yaml).
+//     (pkg/agent/tools/gate_job_template.yaml).
 //
 // A genuine system failure (apiserver unreachable, task not found, the
 // loop's transport erroring out) is returned as a non-nil error so the
 // Job exits non-zero. A data-shaped failure (model said NO-GO, max turns
 // exhausted, push rejected) is NOT an error: it is a real, structured
 // outcome carried in the returned RunTaskResult and emitted on the
-// stream. The caller (cmd/foreman-agent run-task) exits non-zero only on
+// stream. The caller (cmd/meitheal-agent run-task) exits non-zero only on
 // a returned error or an ERROR sentinel, not on a NO-GO verdict.
 
 // Sentinel + prefix strings the coder Job poller matches on. The
@@ -73,28 +73,28 @@ import (
 const (
 	// RunTaskResultPrefix prefixes the single line carrying the
 	// marshaled RunTaskResult JSON.
-	RunTaskResultPrefix = "FOREMAN-RESULT: "
+	RunTaskResultPrefix = "MEITHEAL-RESULT: "
 
 	// RunTaskSentinelGo is printed when the task produced a committed,
 	// pushed branch (verdict GO).
-	RunTaskSentinelGo = "FOREMAN GO"
+	RunTaskSentinelGo = "MEITHEAL GO"
 
 	// RunTaskSentinelNoGo is printed when the model legitimately
 	// declined / produced no usable diff (verdict NO-GO).
-	RunTaskSentinelNoGo = "FOREMAN NO-GO"
+	RunTaskSentinelNoGo = "MEITHEAL NO-GO"
 
 	// RunTaskSentinelIncomplete is printed when the loop did not reach a
 	// terminal verdict (max turns, model misunderstood, timeout).
-	RunTaskSentinelIncomplete = "FOREMAN INCOMPLETE"
+	RunTaskSentinelIncomplete = "MEITHEAL INCOMPLETE"
 
 	// RunTaskSentinelError is printed when the runner itself failed
 	// before or during execution (returned as a Go error). The poller
 	// treats this as a non-retryable run failure distinct from a NO-GO.
-	RunTaskSentinelError = "FOREMAN ERROR"
+	RunTaskSentinelError = "MEITHEAL ERROR"
 )
 
 // RunTaskConfig is everything RunTask needs to execute one task. The
-// fields mirror NativeAgentLoopExecutor's so cmd/foreman-agent can wire
+// fields mirror NativeAgentLoopExecutor's so cmd/meitheal-agent can wire
 // the same flags into both the watcher (in-process) and the Job
 // (run-task) modes.
 type RunTaskConfig struct {
@@ -135,7 +135,7 @@ type RunTaskConfig struct {
 	// NativeAgentLoopExecutor.RegistryFactory for the ctx +
 	// workloadMCPEnabled params this mirrors.
 	RegistryFactory func(
-		ctx context.Context, workspace string, agent *foremanv1alpha1.Agent, workloadMCPEnabled bool,
+		ctx context.Context, workspace string, agent *meithealv1alpha1.Agent, workloadMCPEnabled bool,
 	) (ToolRegistry, error)
 
 	// AuthFactory builds GitHub auth. nil falls back to the executor's
@@ -152,7 +152,7 @@ type RunTaskConfig struct {
 
 	// CodeHost, WorkItems, and ChangePolicy are the provider-neutral seams
 	// (#1158). When set they take precedence over the PREnsurer /
-	// IssueFetcher fallbacks in NativeAgentLoopExecutor; cmd/foreman-agent
+	// IssueFetcher fallbacks in NativeAgentLoopExecutor; cmd/meitheal-agent
 	// wires the GitHub-backed implementations.
 	CodeHost     codehost.CodeHost
 	WorkItems    worktracker.WorkItems
@@ -179,7 +179,7 @@ type RunTaskConfig struct {
 // Result.Extra.
 type RunTaskResult struct {
 	// Verdict is the final outcome category (GO / NO-GO / INCOMPLETE /
-	// GATE-*). String form of foremanv1alpha1.AgenticTaskVerdict.
+	// GATE-*). String form of meithealv1alpha1.AgenticTaskVerdict.
 	Verdict string `json:"verdict"`
 
 	// Summary is the one-line "what happened".
@@ -219,7 +219,7 @@ func RunTask(ctx context.Context, cfg RunTaskConfig) (RunTaskResult, error) {
 		out = os.Stdout
 	}
 
-	var task foremanv1alpha1.AgenticTask
+	var task meithealv1alpha1.AgenticTask
 	if err := cfg.Client.Get(ctx, cfg.Task, &task); err != nil {
 		emitSentinel(out, RunTaskSentinelError, "")
 		return RunTaskResult{}, fmt.Errorf("get AgenticTask %s: %w", cfg.Task, err)
@@ -352,13 +352,13 @@ func emitResult(w io.Writer, rt RunTaskResult, log interface{ Error(error, strin
 // (including empty) -> INCOMPLETE, the conservative "did not clearly
 // succeed" bucket.
 func sentinelForVerdict(verdict string) string {
-	switch foremanv1alpha1.AgenticTaskVerdict(verdict) {
-	case foremanv1alpha1.AgenticTaskVerdictGo, foremanv1alpha1.AgenticTaskVerdictGatePass:
+	switch meithealv1alpha1.AgenticTaskVerdict(verdict) {
+	case meithealv1alpha1.AgenticTaskVerdictGo, meithealv1alpha1.AgenticTaskVerdictGatePass:
 		return RunTaskSentinelGo
-	case foremanv1alpha1.AgenticTaskVerdictNoGo,
-		foremanv1alpha1.AgenticTaskVerdictGateFail:
+	case meithealv1alpha1.AgenticTaskVerdictNoGo,
+		meithealv1alpha1.AgenticTaskVerdictGateFail:
 		return RunTaskSentinelNoGo
-	case foremanv1alpha1.AgenticTaskVerdictGateError:
+	case meithealv1alpha1.AgenticTaskVerdictGateError:
 		return RunTaskSentinelError
 	default:
 		// INCOMPLETE and any unknown value.

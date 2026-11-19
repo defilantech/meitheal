@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
@@ -196,9 +196,9 @@ func applyCoderGroundingRail(ctx context.Context, log logr.Logger, base, workspa
 // of #1005). No resolved SHA degrades to the payload base branch name, the
 // pre-#1769 posture.
 func applyCoderGroundingRailForTask(
-	ctx context.Context, log logr.Logger, task *foremanv1alpha1.AgenticTask, workspace, base string, loopRes *LoopResult,
+	ctx context.Context, log logr.Logger, task *meithealv1alpha1.AgenticTask, workspace, base string, loopRes *LoopResult,
 ) {
-	if task.Spec.Kind != foremanv1alpha1.AgenticTaskKindIssueFix {
+	if task.Spec.Kind != meithealv1alpha1.AgenticTaskKindIssueFix {
 		return
 	}
 	if base == "" {

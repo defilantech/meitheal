@@ -44,7 +44,7 @@ type PushOptions struct {
 	// pinned to the remote SHA observed via ls-remote — a compare-and-
 	// swap that replaces exactly the ref we saw, and still fails if a
 	// concurrent writer moves it in between. Callers set this ONLY for
-	// branches the agent owns outright (the foreman/<workload>/...
+	// branches the agent owns outright (the meitheal/<workload>/...
 	// namespace), where the stale ref is a previous run of the same
 	// Workload: without it, every re-run after a delete-and-recreate
 	// retry dies NO-GO / PUSH-FAILED on non-fast-forward (#934).

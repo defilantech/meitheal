@@ -36,7 +36,7 @@ import (
 )
 
 // testBlob is a deterministic fake binary payload.
-const testBlob = "fake-foreman-agent-binary-v0.9.0"
+const testBlob = "fake-meitheal-agent-binary-v0.9.0"
 
 func blobSHA256(content string) string {
 	h := sha256.Sum256([]byte(content))
@@ -69,7 +69,7 @@ func TestMaybeApply_NoopWhenVersionMatches(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := newUpdater(t, srv, filepath.Join(dir, "foreman-agent"), "foreman-agent", "v0.9.0")
+	u := newUpdater(t, srv, filepath.Join(dir, "meitheal-agent"), "meitheal-agent", "v0.9.0")
 
 	result, err := u.MaybeApply(selfupdate.Target{
 		Version: "v0.9.0",
@@ -96,7 +96,7 @@ func TestMaybeApply_NoopWhenVersionEmpty(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := newUpdater(t, srv, filepath.Join(dir, "foreman-agent"), "foreman-agent", "v0.9.0")
+	u := newUpdater(t, srv, filepath.Join(dir, "meitheal-agent"), "meitheal-agent", "v0.9.0")
 
 	result, err := u.MaybeApply(selfupdate.Target{})
 	if err != nil {
@@ -111,14 +111,14 @@ func TestMaybeApply_NoopWhenVersionEmpty(t *testing.T) {
 // download -> verify sha256 -> stage at versions/<v>/<bin> -> flip current symlink.
 func TestMaybeApply_HappyPath(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprint(w, testBlob)
 	}))
 	defer srv.Close()
 
-	u := newUpdater(t, srv, installRoot, "foreman-agent", "v0.8.4")
+	u := newUpdater(t, srv, installRoot, "meitheal-agent", "v0.8.4")
 
 	result, err := u.MaybeApply(selfupdate.Target{
 		Version: "v0.9.0",
@@ -133,7 +133,7 @@ func TestMaybeApply_HappyPath(t *testing.T) {
 	}
 
 	// The staged binary must exist at the versioned path.
-	stagedPath := filepath.Join(installRoot, "versions", "v0.9.0", "foreman-agent")
+	stagedPath := filepath.Join(installRoot, "versions", "v0.9.0", "meitheal-agent")
 	info, err := os.Stat(stagedPath)
 	if err != nil {
 		t.Fatalf("staged binary not found at %s: %v", stagedPath, err)
@@ -154,7 +154,7 @@ func TestMaybeApply_HappyPath(t *testing.T) {
 	}
 
 	// Binary accessible via current symlink path.
-	viaCurrentPath := filepath.Join(currentLink, "foreman-agent")
+	viaCurrentPath := filepath.Join(currentLink, "meitheal-agent")
 	data, err := os.ReadFile(viaCurrentPath)
 	if err != nil {
 		t.Fatalf("read via current: %v", err)
@@ -170,7 +170,7 @@ func TestMaybeApply_HappyPath(t *testing.T) {
 //  3. leaves the current symlink UNCHANGED (or absent if no prior version).
 func TestMaybeApply_BadSHA256_Rejected(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	// Pre-seed a prior good version so we can assert the symlink doesn't change.
 	priorVersion := "v0.8.4"
@@ -178,7 +178,7 @@ func TestMaybeApply_BadSHA256_Rejected(t *testing.T) {
 	if err := os.MkdirAll(priorDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	priorBin := filepath.Join(priorDir, "foreman-agent")
+	priorBin := filepath.Join(priorDir, "meitheal-agent")
 	if err := os.WriteFile(priorBin, []byte("prior-binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestMaybeApply_BadSHA256_Rejected(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := newUpdater(t, srv, installRoot, "foreman-agent", "v0.8.4")
+	u := newUpdater(t, srv, installRoot, "meitheal-agent", "v0.8.4")
 
 	_, err := u.MaybeApply(selfupdate.Target{
 		Version: "v0.9.0",
@@ -229,7 +229,7 @@ func TestMaybeApply_BadSHA256_Rejected(t *testing.T) {
 // update the "previous" symlink captures the old version directory.
 func TestMaybeApply_SecondUpdateSetsPrevious(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	const blob1 = "binary-v0.9.0"
 	const blob2 = "binary-v0.9.1"
@@ -243,7 +243,7 @@ func TestMaybeApply_SecondUpdateSetsPrevious(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := newUpdater(t, srv, installRoot, "foreman-agent", "v0.8.4")
+	u := newUpdater(t, srv, installRoot, "meitheal-agent", "v0.8.4")
 
 	// First update: v0.8.4 -> v0.9.0
 	_, err := u.MaybeApply(selfupdate.Target{
@@ -297,14 +297,14 @@ func TestMaybeApply_SecondUpdateSetsPrevious(t *testing.T) {
 // exists after — no moment of absence.
 func TestMaybeApply_AtomicFlip(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	// Pre-seed prior version.
 	priorDir := filepath.Join(installRoot, "versions", "v0.8.4")
 	if err := os.MkdirAll(priorDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(priorDir, "foreman-agent"), []byte("prior"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(priorDir, "meitheal-agent"), []byte("prior"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	currentLink := filepath.Join(installRoot, "current")
@@ -317,7 +317,7 @@ func TestMaybeApply_AtomicFlip(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := newUpdater(t, srv, installRoot, "foreman-agent", "v0.8.4")
+	u := newUpdater(t, srv, installRoot, "meitheal-agent", "v0.8.4")
 
 	result, err := u.MaybeApply(selfupdate.Target{
 		Version: "v0.9.0",
@@ -390,7 +390,7 @@ func TestSHA256Verifier_Reject(t *testing.T) {
 // path (e.g. the test binary) is NOT under the managed root.
 func TestRunningUnderManagedRoot_False(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 	if got := selfupdate.RunningUnderManagedRoot(installRoot); got {
 		t.Error("RunningUnderManagedRoot = true for unrelated binary, want false")
 	}
@@ -400,7 +400,7 @@ func TestRunningUnderManagedRoot_False(t *testing.T) {
 // executable IS under installRoot/current/.
 func TestRunningUnderManagedRoot_True(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	// Build the layout the managed root expects.
 	versionDir := filepath.Join(installRoot, "versions", "v0.9.0")
@@ -408,7 +408,7 @@ func TestRunningUnderManagedRoot_True(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Write a placeholder binary.
-	binPath := filepath.Join(versionDir, "foreman-agent")
+	binPath := filepath.Join(versionDir, "meitheal-agent")
 	if err := os.WriteFile(binPath, []byte("bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -423,12 +423,12 @@ func TestRunningUnderManagedRoot_True(t *testing.T) {
 	// exported ExecUnderInstallRoot test-seam instead.
 	// If the seam doesn't exist, skip — the integration is tested at the
 	// agent-wiring level.
-	underRoot := selfupdate.ExecUnderInstallRootForTest(filepath.Join(currentLink, "foreman-agent"), installRoot)
+	underRoot := selfupdate.ExecUnderInstallRootForTest(filepath.Join(currentLink, "meitheal-agent"), installRoot)
 	if !underRoot {
 		t.Error("ExecUnderInstallRootForTest = false for a path under current/")
 	}
 
-	notUnderRoot := selfupdate.ExecUnderInstallRootForTest("/usr/local/bin/foreman-agent", installRoot)
+	notUnderRoot := selfupdate.ExecUnderInstallRootForTest("/usr/local/bin/meitheal-agent", installRoot)
 	if notUnderRoot {
 		t.Error("ExecUnderInstallRootForTest = true for /usr/local/bin path")
 	}
@@ -443,13 +443,13 @@ func TestRunningUnderManagedRoot_True(t *testing.T) {
 // self-update is silently disabled on every real managed install.
 func TestExecUnderInstallRoot_ResolvedCurrentSymlink(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	versionDir := filepath.Join(installRoot, "versions", "v0.9.0")
 	if err := os.MkdirAll(versionDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(versionDir, "foreman-agent"), []byte("bin"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(versionDir, "meitheal-agent"), []byte("bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(versionDir, filepath.Join(installRoot, "current")); err != nil {
@@ -458,7 +458,7 @@ func TestExecUnderInstallRoot_ResolvedCurrentSymlink(t *testing.T) {
 
 	// Mimic RunningUnderManagedRoot: resolve the exe's symlinks (current ->
 	// versions/v0.9.0) exactly as os.Executable()+EvalSymlinks would in prod.
-	resolvedExe, err := filepath.EvalSymlinks(filepath.Join(installRoot, "current", "foreman-agent"))
+	resolvedExe, err := filepath.EvalSymlinks(filepath.Join(installRoot, "current", "meitheal-agent"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +477,7 @@ func TestExecUnderInstallRoot_ResolvedCurrentSymlink(t *testing.T) {
 // the overflow can only be detected mid-stream.
 func TestMaybeApply_DownloadExceedsMaxBytes_Streamed(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	// Pre-seed a prior good version + current symlink to assert it survives.
 	priorVersion := "v0.8.4"
@@ -485,7 +485,7 @@ func TestMaybeApply_DownloadExceedsMaxBytes_Streamed(t *testing.T) {
 	if err := os.MkdirAll(priorDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(priorDir, "foreman-agent"), []byte("prior"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(priorDir, "meitheal-agent"), []byte("prior"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	currentLink := filepath.Join(installRoot, "current")
@@ -506,7 +506,7 @@ func TestMaybeApply_DownloadExceedsMaxBytes_Streamed(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := newUpdater(t, srv, installRoot, "foreman-agent", "v0.8.4")
+	u := newUpdater(t, srv, installRoot, "meitheal-agent", "v0.8.4")
 	u.MaxDownloadBytes = 1024 // tiny ceiling
 
 	_, err := u.MaybeApply(selfupdate.Target{
@@ -565,13 +565,13 @@ func (c *contentLengthLiar) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 // streaming the body.
 func TestMaybeApply_ContentLengthOverLimit_RejectedWithoutReading(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	handler := &contentLengthLiar{}
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
-	u := newUpdater(t, srv, installRoot, "foreman-agent", "v0.8.4")
+	u := newUpdater(t, srv, installRoot, "meitheal-agent", "v0.8.4")
 	u.MaxDownloadBytes = 1024
 
 	_, err := u.MaybeApply(selfupdate.Target{
@@ -597,14 +597,14 @@ func TestMaybeApply_ContentLengthOverLimit_RejectedWithoutReading(t *testing.T) 
 // is set explicitly.
 func TestMaybeApply_WithinMaxBytes_Succeeds(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprint(w, testBlob)
 	}))
 	defer srv.Close()
 
-	u := newUpdater(t, srv, installRoot, "foreman-agent", "v0.8.4")
+	u := newUpdater(t, srv, installRoot, "meitheal-agent", "v0.8.4")
 	u.MaxDownloadBytes = 1 << 20 // 1 MiB, comfortably above testBlob
 
 	result, err := u.MaybeApply(selfupdate.Target{
@@ -619,13 +619,13 @@ func TestMaybeApply_WithinMaxBytes_Succeeds(t *testing.T) {
 		t.Fatal("Restarting = false, want true within-limit success")
 	}
 
-	stagedPath := filepath.Join(installRoot, "versions", "v0.9.0", "foreman-agent")
+	stagedPath := filepath.Join(installRoot, "versions", "v0.9.0", "meitheal-agent")
 	if _, statErr := os.Stat(stagedPath); statErr != nil {
 		t.Fatalf("staged binary not found at %s: %v", stagedPath, statErr)
 	}
 }
 
-// seedVersion creates installRoot/versions/<v>/foreman-agent with the given
+// seedVersion creates installRoot/versions/<v>/meitheal-agent with the given
 // mtime and returns the version directory path.
 func seedVersion(t *testing.T, installRoot, version string, mtime time.Time) string {
 	t.Helper()
@@ -633,7 +633,7 @@ func seedVersion(t *testing.T, installRoot, version string, mtime time.Time) str
 	if err := os.MkdirAll(vdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(vdir, "foreman-agent"), []byte("bin-"+version), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(vdir, "meitheal-agent"), []byte("bin-"+version), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chtimes(vdir, mtime, mtime); err != nil {
@@ -667,7 +667,7 @@ func remainingVersions(t *testing.T, installRoot string) []string {
 // newest RetainVersions of the rest survive, and older ones are deleted.
 func TestPruneOldVersions_ProtectsCurrentAndPrevious(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	now := time.Now()
 	// Old "current" target: oldest mtime, but must survive because current
@@ -696,7 +696,7 @@ func TestPruneOldVersions_ProtectsCurrentAndPrevious(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := newUpdater(t, srv, installRoot, "foreman-agent", "v0.1.0")
+	u := newUpdater(t, srv, installRoot, "meitheal-agent", "v0.1.0")
 	u.RetainVersions = 3
 
 	// Apply v0.9.0. After the flip: current -> v0.9.0, previous -> v0.1.0
@@ -746,7 +746,7 @@ func TestPruneOldVersions_ProtectsCurrentAndPrevious(t *testing.T) {
 // current/previous targets survive on a separate key regardless.
 func TestPruneOldVersions_DeterministicOnMtimeTie(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	now := time.Now()
 	// Initial current target; becomes previous after the flip, so it is
@@ -768,7 +768,7 @@ func TestPruneOldVersions_DeterministicOnMtimeTie(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := newUpdater(t, srv, installRoot, "foreman-agent", "v0.1.0")
+	u := newUpdater(t, srv, installRoot, "meitheal-agent", "v0.1.0")
 	u.RetainVersions = 2
 
 	if _, err := u.MaybeApply(selfupdate.Target{
@@ -806,7 +806,7 @@ func TestPruneOldVersions_DeterministicOnMtimeTie(t *testing.T) {
 // confirming a missing previous symlink does not abort.
 func TestPruneOldVersions_NonFatalOnError(t *testing.T) {
 	dir := t.TempDir()
-	installRoot := filepath.Join(dir, "foreman-agent")
+	installRoot := filepath.Join(dir, "meitheal-agent")
 
 	// No prior current/previous: first-ever update. Prune must be a harmless
 	// no-op (nothing to protect beyond the freshly flipped current).
@@ -815,7 +815,7 @@ func TestPruneOldVersions_NonFatalOnError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u := newUpdater(t, srv, installRoot, "foreman-agent", "v0.8.4")
+	u := newUpdater(t, srv, installRoot, "meitheal-agent", "v0.8.4")
 	u.RetainVersions = 3
 
 	result, err := u.MaybeApply(selfupdate.Target{
@@ -839,16 +839,16 @@ func TestPruneOldVersions_NonFatalOnError(t *testing.T) {
 }
 
 func TestResolveInstallRoot(t *testing.T) {
-	const darwinRoot = "/home/u/Library/Application Support/llmkube/foreman-agent"
+	const darwinRoot = "/home/u/Library/Application Support/meitheal/meitheal-agent"
 	for _, tc := range []struct {
 		home, xdg string
 		offDarwin string // "" means an error
 		darwin    string
 	}{
-		{"/home/u", "", "/home/u/.local/share/llmkube/foreman-agent", darwinRoot},
-		{"/home/u", "/xdg", "/xdg/llmkube/foreman-agent", darwinRoot},
-		{"/home/u", "relative", "/home/u/.local/share/llmkube/foreman-agent", darwinRoot},
-		{"", "/xdg", "/xdg/llmkube/foreman-agent", ""},
+		{"/home/u", "", "/home/u/.local/share/meitheal/meitheal-agent", darwinRoot},
+		{"/home/u", "/xdg", "/xdg/meitheal/meitheal-agent", darwinRoot},
+		{"/home/u", "relative", "/home/u/.local/share/meitheal/meitheal-agent", darwinRoot},
+		{"", "/xdg", "/xdg/meitheal/meitheal-agent", ""},
 	} {
 		t.Setenv("HOME", tc.home)
 		t.Setenv("XDG_DATA_HOME", tc.xdg)
@@ -856,7 +856,7 @@ func TestResolveInstallRoot(t *testing.T) {
 		if runtime.GOOS == "darwin" {
 			want = tc.darwin
 		}
-		got, err := selfupdate.ResolveInstallRoot("foreman-agent")
+		got, err := selfupdate.ResolveInstallRoot("meitheal-agent")
 		if want == "" {
 			if err == nil {
 				t.Errorf("HOME=%q XDG_DATA_HOME=%q: ResolveInstallRoot = %q, want an error", tc.home, tc.xdg, got)

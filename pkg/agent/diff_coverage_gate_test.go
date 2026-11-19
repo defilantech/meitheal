@@ -187,7 +187,7 @@ func addedLineDiff(start int, n int) string {
 // makes "could not look" render exactly like "looked and found nothing", which
 // is the failure class this gate exists to catch.
 func TestCheckDiffCoverage_ReportsEnvtestPackagesAsNotEvaluated(t *testing.T) {
-	file := "internal/foreman/controller/agentictask_controller.go"
+	file := "internal/controller/agentictask_controller.go"
 	var ran []string
 	run := coverageFakeRunner(
 		file,
@@ -199,13 +199,13 @@ func TestCheckDiffCoverage_ReportsEnvtestPackagesAsNotEvaluated(t *testing.T) {
 	if !found {
 		t.Fatalf("envtest package went unreported; got found=false msg=%q", msg)
 	}
-	if !strings.Contains(msg, "internal/foreman/controller") {
+	if !strings.Contains(msg, "internal/controller") {
 		t.Errorf("advisory does not name the unevaluated package: %q", msg)
 	}
 	// It must not even attempt the run: the fast tier skips these because
 	// running them in the coder workspace hangs or fails in BeforeSuite.
 	for _, p := range ran {
-		if strings.Contains(p, "internal/foreman/controller") {
+		if strings.Contains(p, "internal/controller") {
 			t.Errorf("ran go test on an envtest package (%q); it should be "+
 				"classified via isEnvtestPackage, not discovered by failing", p)
 		}
@@ -215,19 +215,19 @@ func TestCheckDiffCoverage_ReportsEnvtestPackagesAsNotEvaluated(t *testing.T) {
 // TestCheckDiffCoverage_ReportsAFailedTestRunAsNotEvaluated covers the other
 // way the check can be blind: a non-envtest package whose tests do not run.
 func TestCheckDiffCoverage_ReportsAFailedTestRunAsNotEvaluated(t *testing.T) {
-	file := "pkg/foreman/agent/thing.go"
+	file := "pkg/agent/thing.go"
 	var ran []string
 	run := coverageFakeRunner(
 		file,
 		map[string]string{file: addedLineDiff(10, 2)},
-		map[string]bool{"./pkg/foreman/agent/": true}, &ran,
+		map[string]bool{"./pkg/agent/": true}, &ran,
 	)
 
 	found, msg := checkDiffCoverage(context.Background(), t.TempDir(), run)
 	if !found {
 		t.Fatalf("a package whose tests did not run went unreported: msg=%q", msg)
 	}
-	if !strings.Contains(msg, "pkg/foreman/agent") {
+	if !strings.Contains(msg, "pkg/agent") {
 		t.Errorf("advisory does not name the unevaluated package: %q", msg)
 	}
 }
@@ -236,7 +236,7 @@ func TestCheckDiffCoverage_ReportsAFailedTestRunAsNotEvaluated(t *testing.T) {
 // added lines are computed BEFORE the coverage run, so a package whose diff
 // cannot produce a finding costs no `go test`.
 func TestCheckDiffCoverage_NoAddedLinesRunsNoTests(t *testing.T) {
-	file := "pkg/foreman/agent/thing.go"
+	file := "pkg/agent/thing.go"
 	var ran []string
 	run := coverageFakeRunner(file, map[string]string{file: ""}, nil, &ran)
 

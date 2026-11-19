@@ -1,4 +1,4 @@
-# Foreman v0.1 gate Agent (the verifier role of the three-step
+# Meitheal v0.1 gate Agent (the verifier role of the three-step
 # pipeline). This is the canonical M4 deterministic Agent:
 # no inferenceServiceRef (no LLM in the loop), tools whitelist names
 # the deterministic worker tool, and the executor's
@@ -9,21 +9,21 @@
 # verification will live:
 #
 #   kubectl apply -f \
-#     config/foreman/agents/gate.yaml
+#     config/agents/gate.yaml
 #
-# This Agent ships with the v0.8.0 foreman chart but is NOT a chart
+# This Agent ships with the v0.8.0 meitheal chart but is NOT a chart
 # template; the chart installs the controller infrastructure, the
 # Agent CR is workload-data. Apply it once per cluster + namespace
 # where you want gate steps to run.
-apiVersion: foreman.llmkube.dev/v1alpha1
+apiVersion: meitheal.dev/v1alpha1
 kind: Agent
 metadata:
   name: gate
   namespace: default
   labels:
-    app.kubernetes.io/part-of: foreman
-    foreman.llmkube.dev/role: verifier
-    foreman.llmkube.dev/milestone: m4
+    app.kubernetes.io/part-of: meitheal
+    meitheal.dev/role: verifier
+    meitheal.dev/milestone: m4
 spec:
   role: verifier
   # Deterministic Agent: no LLM dispatch. Per the M4 contract,
@@ -36,7 +36,7 @@ spec:
   requiredCapability:
     # Roles predicate (M4 Phase A): only schedule onto FleetNodes
     # whose .spec.roles include 'verifier'. The verifier-tagged
-    # foreman-agent is installed with --roles=worker,verifier and so
+    # meitheal-agent is installed with --roles=worker,verifier and so
     # matches; an M5 Max coder node installed with --roles=worker
     # does not (the scheduler skips it for gate tasks).
     roles:

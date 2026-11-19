@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func taskScheme(t *testing.T) *runtime.Scheme {
@@ -36,17 +36,17 @@ func taskScheme(t *testing.T) *runtime.Scheme {
 	if err := corev1.AddToScheme(s); err != nil {
 		t.Fatalf("add corev1 to scheme: %v", err)
 	}
-	if err := foremanv1alpha1.AddToScheme(s); err != nil {
-		t.Fatalf("add foreman to scheme: %v", err)
+	if err := meithealv1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("add meitheal to scheme: %v", err)
 	}
 	return s
 }
 
-func newAgent(name, ns string) *foremanv1alpha1.Agent {
-	return &foremanv1alpha1.Agent{
+func newAgent(name, ns string) *meithealv1alpha1.Agent {
+	return &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:                foremanv1alpha1.AgentRoleCoder,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:                meithealv1alpha1.AgentRoleCoder,
 			InferenceServiceRef: corev1.LocalObjectReference{Name: "qwen"},
 			SystemPrompt:        "You are a coder.",
 			Tools:               []string{"read_file", "submit_result"},
@@ -60,16 +60,16 @@ func TestAgenticTaskValidator_Create(t *testing.T) {
 	tests := []struct {
 		name      string
 		objs      []client.Object
-		task      *foremanv1alpha1.AgenticTask
+		task      *meithealv1alpha1.AgenticTask
 		wantError bool
 	}{
 		{
 			name: "task with no agentRef accepted (capability-only)",
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "stub", Namespace: "default"},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-					RequiredCapability: foremanv1alpha1.RequiredCapability{
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+					RequiredCapability: meithealv1alpha1.RequiredCapability{
 						Roles: []string{"worker"},
 					},
 				},
@@ -78,10 +78,10 @@ func TestAgenticTaskValidator_Create(t *testing.T) {
 		},
 		{
 			name: "task with empty agentRef name accepted (capability-only)",
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "stub2", Namespace: "default"},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 					AgentRef: &corev1.LocalObjectReference{Name: ""},
 				},
 			},
@@ -90,10 +90,10 @@ func TestAgenticTaskValidator_Create(t *testing.T) {
 		{
 			name: "task with resolvable agentRef accepted",
 			objs: []client.Object{newAgent("coder", "default")},
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "fix", Namespace: "default"},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 					AgentRef: &corev1.LocalObjectReference{Name: "coder"},
 				},
 			},
@@ -101,10 +101,10 @@ func TestAgenticTaskValidator_Create(t *testing.T) {
 		},
 		{
 			name: "task with unresolvable agentRef rejected",
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "fix", Namespace: "default"},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 					AgentRef: &corev1.LocalObjectReference{Name: "missing"},
 				},
 			},
@@ -113,10 +113,10 @@ func TestAgenticTaskValidator_Create(t *testing.T) {
 		{
 			name: "agentRef resolves only in the same namespace (cross-ns rejected)",
 			objs: []client.Object{newAgent("coder", "other")},
-			task: &foremanv1alpha1.AgenticTask{
+			task: &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "fix", Namespace: "default"},
-				Spec: foremanv1alpha1.AgenticTaskSpec{
-					Kind:     foremanv1alpha1.AgenticTaskKindIssueFix,
+				Spec: meithealv1alpha1.AgenticTaskSpec{
+					Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 					AgentRef: &corev1.LocalObjectReference{Name: "coder"},
 				},
 			},
@@ -148,9 +148,9 @@ func TestAgenticTaskValidator_Create(t *testing.T) {
 func TestAgenticTaskValidator_NoopUpdateDelete(t *testing.T) {
 	v := &AgenticTaskValidator{Client: fake.NewClientBuilder().WithScheme(taskScheme(t)).Build()}
 	ctx := context.Background()
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "fix", Namespace: "default"},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
 			AgentRef: &corev1.LocalObjectReference{Name: "missing"},
 		},
 	}

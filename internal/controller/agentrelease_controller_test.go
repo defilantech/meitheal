@@ -28,7 +28,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // The AgentReleaseReconciler drives a staged, health-gated, human-approved
@@ -66,7 +66,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		setAgentNodeReady(node2, "amd64", "v0.8.0")
 
 		rel := makeAgentRelease("apr-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{
+			[]meithealv1alpha1.AgentReleaseArtifact{
 				linuxAMD64Artifact("a"),
 			}, false /* approved */)
 		Expect(k8sClient.Create(ctx, rel)).To(Succeed())
@@ -80,9 +80,9 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		_, err = reconciler.Reconcile(ctx, reqForRelease(rel))
 		Expect(err).NotTo(HaveOccurred())
 
-		var freshRel foremanv1alpha1.AgentRelease
+		var freshRel meithealv1alpha1.AgentRelease
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
-		Expect(freshRel.Status.Phase).To(Equal(foremanv1alpha1.AgentReleasePhaseAwaitingApproval))
+		Expect(freshRel.Status.Phase).To(Equal(meithealv1alpha1.AgentReleasePhaseAwaitingApproval))
 
 		cond := findCondition(freshRel.Status.Conditions, "Approved")
 		Expect(cond).NotTo(BeNil())
@@ -90,11 +90,11 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		Expect(cond.Reason).To(Equal("NotApproved"))
 
 		// Neither node should have received an updateRequest.
-		var fn1 foremanv1alpha1.FleetNode
+		var fn1 meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node1.Name}, &fn1)).To(Succeed())
 		Expect(fn1.Status.UpdateRequest).To(BeNil())
 
-		var fn2 foremanv1alpha1.FleetNode
+		var fn2 meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node2.Name}, &fn2)).To(Succeed())
 		Expect(fn2.Status.UpdateRequest).To(BeNil())
 	})
@@ -106,7 +106,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		setAgentNodeReady(node, "amd64", "v0.8.0")
 
 		rel := makeAgentRelease("adv-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("b")},
+			[]meithealv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("b")},
 			true /* approved */)
 		Expect(k8sClient.Create(ctx, rel)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, rel) })
@@ -118,11 +118,11 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		_, err = reconciler.Reconcile(ctx, reqForRelease(rel))
 		Expect(err).NotTo(HaveOccurred())
 
-		var freshRel foremanv1alpha1.AgentRelease
+		var freshRel meithealv1alpha1.AgentRelease
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
-		Expect(freshRel.Status.Phase).To(Equal(foremanv1alpha1.AgentReleasePhaseInProgress))
+		Expect(freshRel.Status.Phase).To(Equal(meithealv1alpha1.AgentReleasePhaseInProgress))
 
-		var fn foremanv1alpha1.FleetNode
+		var fn meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, &fn)).To(Succeed())
 		Expect(fn.Status.UpdateRequest).NotTo(BeNil())
 		Expect(fn.Status.UpdateRequest.TargetVersion).To(Equal("v0.9.0"))
@@ -136,16 +136,16 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		node1 := makeFleetNode("con-node1")
 		node2 := makeFleetNode("con-node2")
 		node3 := makeFleetNode("con-node3")
-		for _, n := range []*foremanv1alpha1.FleetNode{node1, node2, node3} {
+		for _, n := range []*meithealv1alpha1.FleetNode{node1, node2, node3} {
 			Expect(k8sClient.Create(ctx, n)).To(Succeed())
-			DeferCleanup(func(fn *foremanv1alpha1.FleetNode) func() {
+			DeferCleanup(func(fn *meithealv1alpha1.FleetNode) func() {
 				return func() { _ = k8sClient.Delete(ctx, fn) }
 			}(n))
 			setAgentNodeReady(n, "amd64", "v0.8.0")
 		}
 
 		rel := makeAgentRelease("con-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("c")},
+			[]meithealv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("c")},
 			true)
 		rel.Spec.Concurrency = 1
 		Expect(k8sClient.Create(ctx, rel)).To(Succeed())
@@ -159,8 +159,8 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		dispatchedCount := 0
-		for _, n := range []*foremanv1alpha1.FleetNode{node1, node2, node3} {
-			var fresh foremanv1alpha1.FleetNode
+		for _, n := range []*meithealv1alpha1.FleetNode{node1, node2, node3} {
+			var fresh meithealv1alpha1.FleetNode
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: n.Name}, &fresh)).To(Succeed())
 			if fresh.Status.UpdateRequest != nil {
 				dispatchedCount++
@@ -168,25 +168,25 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		}
 		Expect(dispatchedCount).To(Equal(1), "concurrency=1: exactly 1 node should be dispatched")
 
-		var freshRel foremanv1alpha1.AgentRelease
+		var freshRel meithealv1alpha1.AgentRelease
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
 		Expect(freshRel.Status.InFlightNodes).To(HaveLen(1))
 	})
 
 	It("dispatches exactly concurrency=2 nodes", func() {
-		nodes := make([]*foremanv1alpha1.FleetNode, 3)
+		nodes := make([]*meithealv1alpha1.FleetNode, 3)
 		for i, name := range []string{"con2-node1", "con2-node2", "con2-node3"} {
 			n := makeFleetNode(name)
 			Expect(k8sClient.Create(ctx, n)).To(Succeed())
 			setAgentNodeReady(n, "amd64", "v0.8.0")
 			nodes[i] = n
-			DeferCleanup(func(fn *foremanv1alpha1.FleetNode) func() {
+			DeferCleanup(func(fn *meithealv1alpha1.FleetNode) func() {
 				return func() { _ = k8sClient.Delete(ctx, fn) }
 			}(n))
 		}
 
 		rel := makeAgentRelease("con2-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("d")},
+			[]meithealv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("d")},
 			true)
 		rel.Spec.Concurrency = 2
 		Expect(k8sClient.Create(ctx, rel)).To(Succeed())
@@ -199,7 +199,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 
 		dispatched := 0
 		for _, n := range nodes {
-			var fresh foremanv1alpha1.FleetNode
+			var fresh meithealv1alpha1.FleetNode
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: n.Name}, &fresh)).To(Succeed())
 			if fresh.Status.UpdateRequest != nil {
 				dispatched++
@@ -220,9 +220,9 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		setAgentNodeReady(node, "amd64", "v0.9.0")
 
 		rel := makeAgentRelease("soak-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("e")},
+			[]meithealv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("e")},
 			true)
-		rel.Spec.HealthGate = foremanv1alpha1.AgentReleaseHealthGate{
+		rel.Spec.HealthGate = meithealv1alpha1.AgentReleaseHealthGate{
 			MinHealthySeconds: 60,
 			TimeoutSeconds:    600,
 		}
@@ -235,13 +235,13 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		_, err = reconciler.Reconcile(ctx, reqForRelease(rel))
 		Expect(err).NotTo(HaveOccurred())
 
-		var freshRel foremanv1alpha1.AgentRelease
+		var freshRel meithealv1alpha1.AgentRelease
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
 
 		ns := findNodeStatus(freshRel.Status.NodeStatuses, node.Name)
 		Expect(ns).NotTo(BeNil())
 		Expect(ns.Phase).To(Equal(nodePhaseUpdating), "soak window just started: should be Updating")
-		Expect(freshRel.Status.Phase).NotTo(Equal(foremanv1alpha1.AgentReleasePhaseSucceeded))
+		Expect(freshRel.Status.Phase).NotTo(Equal(meithealv1alpha1.AgentReleasePhaseSucceeded))
 
 		// Backdate the soak-start timestamp to simulate elapsed soak.
 		soakStart := metav1.NewTime(time.Now().Add(-2 * time.Minute))
@@ -281,10 +281,10 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		setAgentNodeReady(node, "amd64", "v0.9.0")
 
 		rel := makeAgentRelease("succ-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("f")},
+			[]meithealv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("f")},
 			true)
 		// Use explicit 60s gate (same as the CRD default; just being explicit).
-		rel.Spec.HealthGate = foremanv1alpha1.AgentReleaseHealthGate{
+		rel.Spec.HealthGate = meithealv1alpha1.AgentReleaseHealthGate{
 			MinHealthySeconds: 60,
 			TimeoutSeconds:    600,
 		}
@@ -299,7 +299,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// Verify soak started.
-		var freshRel foremanv1alpha1.AgentRelease
+		var freshRel meithealv1alpha1.AgentRelease
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
 		ns := findNodeStatus(freshRel.Status.NodeStatuses, node.Name)
 		Expect(ns).NotTo(BeNil())
@@ -324,7 +324,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		ns = findNodeStatus(freshRel.Status.NodeStatuses, node.Name)
 		Expect(ns).NotTo(BeNil())
 		Expect(ns.Phase).To(Equal(nodePhaseUpdated))
-		Expect(freshRel.Status.Phase).To(Equal(foremanv1alpha1.AgentReleasePhaseSucceeded))
+		Expect(freshRel.Status.Phase).To(Equal(meithealv1alpha1.AgentReleasePhaseSucceeded))
 
 		cond := findCondition(freshRel.Status.Conditions, "Complete")
 		Expect(cond).NotTo(BeNil())
@@ -343,9 +343,9 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		setAgentNodeReady(node, "amd64", "v0.8.0")
 
 		rel := makeAgentRelease("tout-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("0")},
+			[]meithealv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("0")},
 			true)
-		rel.Spec.HealthGate = foremanv1alpha1.AgentReleaseHealthGate{
+		rel.Spec.HealthGate = meithealv1alpha1.AgentReleaseHealthGate{
 			MinHealthySeconds: 60,
 			TimeoutSeconds:    120,
 		}
@@ -358,7 +358,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		_, err = reconciler.Reconcile(ctx, reqForRelease(rel))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fn foremanv1alpha1.FleetNode
+		var fn meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, &fn)).To(Succeed())
 		Expect(fn.Status.UpdateRequest).NotTo(BeNil(), "updateRequest should be dispatched")
 
@@ -366,7 +366,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		// LastTransitionTime (the soak clock) is left nil because the node
 		// never reached the target version — it timed out first.
 		timeout := metav1.NewTime(time.Now().Add(-5 * time.Minute))
-		var freshRel foremanv1alpha1.AgentRelease
+		var freshRel meithealv1alpha1.AgentRelease
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
 		patchRel := freshRel.DeepCopy()
 		for i := range patchRel.Status.NodeStatuses {
@@ -381,7 +381,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
-		Expect(freshRel.Status.Phase).To(Equal(foremanv1alpha1.AgentReleasePhaseFailed))
+		Expect(freshRel.Status.Phase).To(Equal(meithealv1alpha1.AgentReleasePhaseFailed))
 
 		cond := findCondition(freshRel.Status.Conditions, "Halted")
 		Expect(cond).NotTo(BeNil())
@@ -407,10 +407,10 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		setAgentNodeReady(node2, "amd64", "v0.8.0")
 
 		rel := makeAgentRelease("halt-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("1")},
+			[]meithealv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("1")},
 			true)
 		rel.Spec.Concurrency = 1
-		rel.Spec.HealthGate = foremanv1alpha1.AgentReleaseHealthGate{
+		rel.Spec.HealthGate = meithealv1alpha1.AgentReleaseHealthGate{
 			MinHealthySeconds: 60,
 			TimeoutSeconds:    60,
 		}
@@ -425,7 +425,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 
 		// Backdate node1's DispatchedAt (the timeout clock) to trigger timeout.
 		timeout := metav1.NewTime(time.Now().Add(-5 * time.Minute))
-		var freshRel foremanv1alpha1.AgentRelease
+		var freshRel meithealv1alpha1.AgentRelease
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
 		patchRel := freshRel.DeepCopy()
 		for i := range patchRel.Status.NodeStatuses {
@@ -440,10 +440,10 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
-		Expect(freshRel.Status.Phase).To(Equal(foremanv1alpha1.AgentReleasePhaseFailed))
+		Expect(freshRel.Status.Phase).To(Equal(meithealv1alpha1.AgentReleasePhaseFailed))
 
 		// node2 must not have been touched.
-		var fn2 foremanv1alpha1.FleetNode
+		var fn2 meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node2.Name}, &fn2)).To(Succeed())
 		Expect(fn2.Status.UpdateRequest).To(BeNil(), "halted rollout must not dispatch to node2")
 	})
@@ -459,7 +459,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		setAgentNodeReady(node, "amd64", "v0.8.0")
 
 		rel := makeAgentRelease("pause-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("2")},
+			[]meithealv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("2")},
 			true)
 		rel.Spec.Paused = true
 		Expect(k8sClient.Create(ctx, rel)).To(Succeed())
@@ -468,11 +468,11 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		_, err := reconciler.Reconcile(ctx, reqForRelease(rel))
 		Expect(err).NotTo(HaveOccurred())
 
-		var freshRel foremanv1alpha1.AgentRelease
+		var freshRel meithealv1alpha1.AgentRelease
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
-		Expect(freshRel.Status.Phase).To(Equal(foremanv1alpha1.AgentReleasePhasePaused))
+		Expect(freshRel.Status.Phase).To(Equal(meithealv1alpha1.AgentReleasePhasePaused))
 
-		var fn foremanv1alpha1.FleetNode
+		var fn meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, &fn)).To(Succeed())
 		Expect(fn.Status.UpdateRequest).To(BeNil())
 	})
@@ -489,7 +489,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		setAgentNodeReady(node, "arm64", "v0.8.0")
 
 		rel := makeAgentRelease("art-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("3")},
+			[]meithealv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("3")},
 			true)
 		Expect(k8sClient.Create(ctx, rel)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, rel) })
@@ -500,12 +500,12 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// No updateRequest dispatched.
-		var fn foremanv1alpha1.FleetNode
+		var fn meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, &fn)).To(Succeed())
 		Expect(fn.Status.UpdateRequest).To(BeNil())
 
 		// Node status in release should be Failed with no-artifact message.
-		var freshRel foremanv1alpha1.AgentRelease
+		var freshRel meithealv1alpha1.AgentRelease
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
 		ns := findNodeStatus(freshRel.Status.NodeStatuses, node.Name)
 		Expect(ns).NotTo(BeNil())
@@ -526,7 +526,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		setAgentNodeReady(nodeARM, "arm64", "v0.8.0")
 
 		rel := makeAgentRelease("sel-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{
+			[]meithealv1alpha1.AgentReleaseArtifact{
 				{OS: "linux", Arch: "amd64", URL: "http://example.com/agent-amd64", SHA256: "4" + strings.Repeat("0", 63)},
 				{OS: "linux", Arch: "arm64", URL: "http://example.com/agent-arm64", SHA256: "5" + strings.Repeat("0", 63)},
 			}, true)
@@ -539,12 +539,12 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		_, err = reconciler.Reconcile(ctx, reqForRelease(rel))
 		Expect(err).NotTo(HaveOccurred())
 
-		var freshAMD foremanv1alpha1.FleetNode
+		var freshAMD meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: nodeAMD.Name}, &freshAMD)).To(Succeed())
 		Expect(freshAMD.Status.UpdateRequest).NotTo(BeNil())
 		Expect(freshAMD.Status.UpdateRequest.URL).To(Equal("http://example.com/agent-amd64"))
 
-		var freshARM foremanv1alpha1.FleetNode
+		var freshARM meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: nodeARM.Name}, &freshARM)).To(Succeed())
 		Expect(freshARM.Status.UpdateRequest).NotTo(BeNil())
 		Expect(freshARM.Status.UpdateRequest.URL).To(Equal("http://example.com/agent-arm64"))
@@ -580,9 +580,9 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		setAgentNodeReady(node, "amd64", "v0.8.0")
 
 		rel := makeAgentRelease("soakarr-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("9")},
+			[]meithealv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("9")},
 			true)
-		rel.Spec.HealthGate = foremanv1alpha1.AgentReleaseHealthGate{
+		rel.Spec.HealthGate = meithealv1alpha1.AgentReleaseHealthGate{
 			MinHealthySeconds: 60,
 			TimeoutSeconds:    600,
 		}
@@ -597,7 +597,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		_, err = reconciler.Reconcile(ctx, reqForRelease(rel))
 		Expect(err).NotTo(HaveOccurred())
 
-		var fn foremanv1alpha1.FleetNode
+		var fn meithealv1alpha1.FleetNode
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node.Name}, &fn)).To(Succeed())
 		Expect(fn.Status.UpdateRequest).NotTo(BeNil(), "updateRequest should be dispatched")
 
@@ -605,7 +605,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		// download/install. If the soak clock were tied to DispatchedAt,
 		// the 60s soak would appear already elapsed at version-arrival.
 		longAgo := metav1.NewTime(time.Now().Add(-5 * time.Minute))
-		var freshRel foremanv1alpha1.AgentRelease
+		var freshRel meithealv1alpha1.AgentRelease
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
 		patchRel := freshRel.DeepCopy()
 		for i := range patchRel.Status.NodeStatuses {
@@ -668,7 +668,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		Expect(ns).NotTo(BeNil())
 		Expect(ns.Phase).To(Equal(nodePhaseUpdated),
 			"soak elapsed from version-arrival: node must be Updated")
-		Expect(freshRel.Status.Phase).To(Equal(foremanv1alpha1.AgentReleasePhaseSucceeded))
+		Expect(freshRel.Status.Phase).To(Equal(meithealv1alpha1.AgentReleasePhaseSucceeded))
 	})
 
 	// -----------------------------------------------------------------------
@@ -683,7 +683,7 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		setAgentNodeReady(node, "arm64", "v0.8.0")
 
 		rel := makeAgentRelease("reason-release",
-			[]foremanv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("7")},
+			[]meithealv1alpha1.AgentReleaseArtifact{linuxAMD64Artifact("7")},
 			true)
 		Expect(k8sClient.Create(ctx, rel)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, rel) })
@@ -693,16 +693,16 @@ var _ = Describe("AgentReleaseReconciler", func() {
 		_, err = reconciler.Reconcile(ctx, reqForRelease(rel))
 		Expect(err).NotTo(HaveOccurred())
 
-		var freshRel foremanv1alpha1.AgentRelease
+		var freshRel meithealv1alpha1.AgentRelease
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: rel.Name}, &freshRel)).To(Succeed())
 
 		ns := findNodeStatus(freshRel.Status.NodeStatuses, node.Name)
 		Expect(ns).NotTo(BeNil())
 		Expect(ns.Phase).To(Equal(nodePhaseFailed))
-		Expect(ns.Reason).To(Equal(foremanv1alpha1.AgentReleaseNodeReasonNoArtifact),
+		Expect(ns.Reason).To(Equal(meithealv1alpha1.AgentReleaseNodeReasonNoArtifact),
 			"typed Reason must be NoMatchingArtifact, not derived from message string")
 
-		Expect(freshRel.Status.Phase).To(Equal(foremanv1alpha1.AgentReleasePhaseFailed))
+		Expect(freshRel.Status.Phase).To(Equal(meithealv1alpha1.AgentReleasePhaseFailed))
 		cond := findCondition(freshRel.Status.Conditions, "Halted")
 		Expect(cond).NotTo(BeNil())
 		Expect(cond.Reason).To(Equal("NoMatchingArtifact"))
@@ -726,10 +726,10 @@ var _ = Describe("AgentReleaseReconciler", func() {
 
 // makeFleetNode returns a FleetNode with spec only. The caller must Create it
 // and then call setAgentNodeReady to populate the status subresource.
-func makeFleetNode(name string) *foremanv1alpha1.FleetNode {
-	return &foremanv1alpha1.FleetNode{
+func makeFleetNode(name string) *meithealv1alpha1.FleetNode {
+	return &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: foremanv1alpha1.FleetNodeSpec{
+		Spec: meithealv1alpha1.FleetNodeSpec{
 			NodeName: name,
 			Roles:    []string{"worker"},
 		},
@@ -738,14 +738,14 @@ func makeFleetNode(name string) *foremanv1alpha1.FleetNode {
 
 // setAgentNodeReady patches the FleetNode's status with a fresh heartbeat,
 // Ready phase, and the rollout-relevant fields: arch and agentVersion.
-// agentKind is always "foreman-agent" and OS is always "linux" in these tests.
-func setAgentNodeReady(node *foremanv1alpha1.FleetNode, nodeArch, version string) {
+// agentKind is always "meitheal-agent" and OS is always "linux" in these tests.
+func setAgentNodeReady(node *meithealv1alpha1.FleetNode, nodeArch, version string) {
 	GinkgoHelper()
 	patch := client.MergeFrom(node.DeepCopy())
 	now := metav1.Now()
-	node.Status.Phase = foremanv1alpha1.FleetNodePhaseReady
+	node.Status.Phase = meithealv1alpha1.FleetNodePhaseReady
 	node.Status.LastHeartbeatTime = &now
-	node.Status.AgentKind = "foreman-agent"
+	node.Status.AgentKind = "meitheal-agent"
 	node.Status.OS = "linux"
 	node.Status.Arch = nodeArch
 	node.Status.AgentVersion = version
@@ -754,17 +754,17 @@ func setAgentNodeReady(node *foremanv1alpha1.FleetNode, nodeArch, version string
 
 // makeAgentRelease returns an AgentRelease (version always "v0.9.0") for the
 // given artifacts and approval state.
-// agentKind is always "foreman-agent" in these tests.
-func makeAgentRelease(name string, artifacts []foremanv1alpha1.AgentReleaseArtifact, approved bool) *foremanv1alpha1.AgentRelease {
-	return &foremanv1alpha1.AgentRelease{
+// agentKind is always "meitheal-agent" in these tests.
+func makeAgentRelease(name string, artifacts []meithealv1alpha1.AgentReleaseArtifact, approved bool) *meithealv1alpha1.AgentRelease {
+	return &meithealv1alpha1.AgentRelease{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: foremanv1alpha1.AgentReleaseSpec{
-			AgentKind:   "foreman-agent",
+		Spec: meithealv1alpha1.AgentReleaseSpec{
+			AgentKind:   "meitheal-agent",
 			Version:     "v0.9.0",
 			Artifacts:   artifacts,
 			Concurrency: 1,
 			Approved:    approved,
-			HealthGate: foremanv1alpha1.AgentReleaseHealthGate{
+			HealthGate: meithealv1alpha1.AgentReleaseHealthGate{
 				MinHealthySeconds: 60,
 				TimeoutSeconds:    600,
 			},
@@ -775,8 +775,8 @@ func makeAgentRelease(name string, artifacts []foremanv1alpha1.AgentReleaseArtif
 // linuxAMD64Artifact returns a linux/amd64 artifact for version "v0.9.0" with
 // a deterministic SHA256 derived from a single leading hex character padded to
 // 64 chars.
-func linuxAMD64Artifact(leadChar string) foremanv1alpha1.AgentReleaseArtifact {
-	return foremanv1alpha1.AgentReleaseArtifact{
+func linuxAMD64Artifact(leadChar string) meithealv1alpha1.AgentReleaseArtifact {
+	return meithealv1alpha1.AgentReleaseArtifact{
 		OS:     "linux",
 		Arch:   "amd64",
 		URL:    "http://example.com/agent-v0.9.0",
@@ -785,12 +785,12 @@ func linuxAMD64Artifact(leadChar string) foremanv1alpha1.AgentReleaseArtifact {
 }
 
 // reqForRelease returns a ctrl.Request for a cluster-scoped AgentRelease.
-func reqForRelease(rel *foremanv1alpha1.AgentRelease) ctrl.Request {
+func reqForRelease(rel *meithealv1alpha1.AgentRelease) ctrl.Request {
 	return ctrl.Request{NamespacedName: types.NamespacedName{Name: rel.Name}}
 }
 
 // findNodeStatus finds a per-node status entry by node name, or returns nil.
-func findNodeStatus(statuses []foremanv1alpha1.AgentReleaseNodeStatus, nodeName string) *foremanv1alpha1.AgentReleaseNodeStatus {
+func findNodeStatus(statuses []meithealv1alpha1.AgentReleaseNodeStatus, nodeName string) *meithealv1alpha1.AgentReleaseNodeStatus {
 	for i := range statuses {
 		if statuses[i].Name == nodeName {
 			return &statuses[i]

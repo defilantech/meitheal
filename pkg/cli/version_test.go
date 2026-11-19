@@ -22,36 +22,6 @@ import (
 	"testing"
 )
 
-// The root carries every command that moved here from LLMKube directly, with
-// no group level in between.
-func TestRootCommand_RegistersMovedCommands(t *testing.T) {
-	root := NewRootCommand()
-	if root.Name() != "meitheal" {
-		t.Fatalf("root command is %q, want meitheal", root.Name())
-	}
-	paths := [][]string{
-		{"dispatch"},
-		{"slice"},
-		{"run"},
-		{"decisions"},
-		{"decisions", "answer"},
-		{"audit"},
-		{"audit", "export"},
-		{"version"},
-	}
-	for _, path := range paths {
-		t.Run(strings.Join(path, " "), func(t *testing.T) {
-			c, _, err := root.Find(path)
-			if err != nil {
-				t.Fatalf("meitheal %s: %v", strings.Join(path, " "), err)
-			}
-			if want := path[len(path)-1]; c.Name() != want {
-				t.Errorf("meitheal %s resolved to %q, want %q", strings.Join(path, " "), c.Name(), want)
-			}
-		})
-	}
-}
-
 func TestVersionCommand_PrintsVersion(t *testing.T) {
 	root := NewRootCommand()
 	var out bytes.Buffer

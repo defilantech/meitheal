@@ -22,7 +22,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // diffHasCodeLine reports whether a unified diff body contains an added or
@@ -112,9 +112,9 @@ func applyNoFunctionalChange(ctx context.Context, log logr.Logger, base, workspa
 // to the payload base branch name, the pre-#1769 posture. Must run after
 // repo.Commit so the diff reflects the committed work.
 func applyNoFunctionalChangeForTask(
-	ctx context.Context, log logr.Logger, task *foremanv1alpha1.AgenticTask, workspace, base string, loopRes *LoopResult,
+	ctx context.Context, log logr.Logger, task *meithealv1alpha1.AgenticTask, workspace, base string, loopRes *LoopResult,
 ) {
-	if task.Spec.Kind != foremanv1alpha1.AgenticTaskKindIssueFix {
+	if task.Spec.Kind != meithealv1alpha1.AgenticTaskKindIssueFix {
 		return
 	}
 	if base == "" {

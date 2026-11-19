@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package forge selects the code-hosting provider (GitHub, Gitea, GitLab,
-// ...) the Foreman agent works against and builds its seams (#1300).
+// ...) the Meitheal agent works against and builds its seams (#1300).
 // Providers register a constructor under a name; Resolve picks one from
 // explicit configuration, else the git remote's host, else GitHub.
 package forge

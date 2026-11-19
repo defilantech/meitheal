@@ -69,7 +69,7 @@ const (
 // containerized run).
 //
 // Relative cd still works for normal navigation within the workspace
-// (cd pkg/foreman, cd .., cd ./internal). The guard catches the
+// (cd pkg/agent, cd .., cd ./internal). The guard catches the
 // specific failure mode where the model loses orientation, runs
 // `find / -name AGENTS.md`, sees stale paths from previous batches in
 // /private/tmp/review-tool-*, and cd's into one of them. See #567 for
@@ -82,7 +82,7 @@ const (
 // any user command appended after a semicolon. Works under bash
 // (macOS), dash (Alpine, Debian), zsh, and busybox sh.
 const cdGuardPrefix = `cd() { case "$1" in /*) ` +
-	`echo "bash: cd: $1: outside workspace (foreman sandbox)" >&2; return 1;; ` +
+	`echo "bash: cd: $1: outside workspace (meitheal sandbox)" >&2; return 1;; ` +
 	`*) CDPATH= command cd "$@";; esac; }; `
 
 // BashTool runs a shell command in the workspace under "sh -c" with a

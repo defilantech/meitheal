@@ -1,8 +1,8 @@
-# Foreman v0.4 production default: code -> gate -> heterogeneous reviewer
+# Meitheal v0.4 production default: code -> gate -> heterogeneous reviewer
 # ensemble.
 #
 # This is the recommended starting point for any v0.4+ deployment of
-# Foreman against LLMKube. It applies the full v0.3 harness stack
+# Meitheal against LLMKube. It applies the full v0.3 harness stack
 # (repo-map prefix, workspace sandbox, stuck-loop detector,
 # issue-body fetch, per-workload branch namespacing) plus a two-
 # reviewer ensemble that catches the design-quality bugs the gate
@@ -44,12 +44,12 @@
 # What you need on the cluster before applying
 # --------------------------------------------
 #
-#   1. Foreman v0.8.0+ installed (operator + agent Deployments).
+#   1. Meitheal v0.8.0+ installed (operator + agent Deployments).
 #   2. Coder Agent CR `qwen36-35b-carnice-mtp-coder` applied.
 #   3. Gate Agent CR `gate` applied.
 #   4. Reviewer Agent CRs `qwen36-35b-a3b-reviewer` AND
 #      `devstral-24b-reviewer` applied. Both ship in
-#      config/foreman/agents/.
+#      config/agents/.
 #   5. A coder FleetNode (M5 Max or similar Apple Silicon, 128GB+).
 #   6. A verifier FleetNode (shadowstack or any Linux k8s node).
 #   7. A reviewer FleetNode (Mac Studio M4 Max or similar, 32GB+).
@@ -60,10 +60,10 @@
 #   1. WorkloadReconciler expands `spec.issues` into one code +
 #      one verify + N review tasks per issue (N = len(reviewerAgentRefs)).
 #   2. Each code-N runs the coder Agent on the metal FleetNode.
-#      It commits to `foreman/<workload-name>/issue-N` on the fork.
+#      It commits to `meitheal/<workload-name>/issue-N` on the fork.
 #   3. Each verify-N runs the gate Job. It clones the coder's branch
-#      and runs `make fmt vet lint test manifests chart-crds
-#      foreman-chart-crds`. Verdict GATE-PASS or GATE-FAIL.
+#      and runs `make fmt vet lint test manifests chart-crds`.
+#      Verdict GATE-PASS or GATE-FAIL.
 #   4. Each review-N-i runs in parallel after the gate passes.
 #      Read-only: the reviewer can read the diff, grep call sites,
 #      and check the diff against `main`, but cannot edit anything.
@@ -79,16 +79,16 @@
 #
 #   kubectl get workloads,agentictasks
 #   kubectl get workload v04-default-batch -o yaml | yq '.status'
-#   gh api /repos/Defilan/LLMKube/branches | jq '.[] | select(.name | startswith("foreman/v04-"))'
+#   gh api /repos/Defilan/LLMKube/branches | jq '.[] | select(.name | startswith("meitheal/v04-"))'
 
-apiVersion: foreman.llmkube.dev/v1alpha1
+apiVersion: meitheal.dev/v1alpha1
 kind: Workload
 metadata:
   name: v04-default-batch
   namespace: default
   labels:
-    app.kubernetes.io/part-of: foreman
-    foreman.llmkube.dev/milestone: v0.4
+    app.kubernetes.io/part-of: meitheal
+    meitheal.dev/milestone: v0.4
 spec:
   intent: "v0.4 production-default batch: code + gate + two-reviewer ensemble"
   repo: defilantech/LLMKube
@@ -121,5 +121,5 @@ spec:
   # Sovereignty: local-only by default. Set `allowCloudReviewers: true`
   # AND add `claude-sonnet-cloud-reviewer` (or similar) to the slice
   # above to escalate hard cases to a cloud reviewer. Subject to the
-  # operator-side allow list in the foreman Helm chart values.
+  # operator-side allow list in the meitheal Helm chart values.
   allowCloudReviewers: false

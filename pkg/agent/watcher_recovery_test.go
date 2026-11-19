@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func newRecoveryClient(t *testing.T, objs ...client.Object) client.Client {
@@ -38,16 +38,16 @@ func newRecoveryClient(t *testing.T, objs ...client.Object) client.Client {
 	return fake.NewClientBuilder().
 		WithScheme(newTestScheme(t)).
 		WithObjects(objs...).
-		WithStatusSubresource(&foremanv1alpha1.AgenticTask{}).
+		WithStatusSubresource(&meithealv1alpha1.AgenticTask{}).
 		Build()
 }
 
-func runningTask(name, node string) *foremanv1alpha1.AgenticTask {
+func runningTask(name, node string) *meithealv1alpha1.AgenticTask {
 	now := metav1.Now()
-	return &foremanv1alpha1.AgenticTask{
+	return &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Status: foremanv1alpha1.AgenticTaskStatus{
-			Phase:        foremanv1alpha1.AgenticTaskPhaseRunning,
+		Status: meithealv1alpha1.AgenticTaskStatus{
+			Phase:        meithealv1alpha1.AgenticTaskPhaseRunning,
 			AssignedNode: node,
 			ClaimedAt:    &now,
 			StartedAt:    &now,
@@ -55,9 +55,9 @@ func runningTask(name, node string) *foremanv1alpha1.AgenticTask {
 	}
 }
 
-func getTask(t *testing.T, c client.Client, name string) foremanv1alpha1.AgenticTask {
+func getTask(t *testing.T, c client.Client, name string) meithealv1alpha1.AgenticTask {
 	t.Helper()
-	var got foremanv1alpha1.AgenticTask
+	var got meithealv1alpha1.AgenticTask
 	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "default", Name: name}, &got); err != nil {
 		t.Fatalf("get %s: %v", name, err)
 	}
@@ -76,7 +76,7 @@ func TestRecoverOrphanedTasks_ResetsRunningTaskOnThisNode(t *testing.T) {
 	}
 
 	got := getTask(t, c, "code-531")
-	if got.Status.Phase != foremanv1alpha1.AgenticTaskPhasePending {
+	if got.Status.Phase != meithealv1alpha1.AgenticTaskPhasePending {
 		t.Fatalf("phase = %q, want Pending", got.Status.Phase)
 	}
 	if got.Status.AssignedNode != "" {
@@ -107,7 +107,7 @@ func TestRecoverOrphanedTasks_IgnoresOtherNode(t *testing.T) {
 	}
 
 	got := getTask(t, c, "other-node-task")
-	if got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseRunning {
+	if got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseRunning {
 		t.Fatalf("phase = %q, want Running (untouched)", got.Status.Phase)
 	}
 }
@@ -116,7 +116,7 @@ func TestRecoverOrphanedTasks_IgnoresOtherNode(t *testing.T) {
 // disturbed: only orphaned in-flight work is recovered.
 func TestRecoverOrphanedTasks_IgnoresNonRunningPhase(t *testing.T) {
 	scheduled := runningTask("scheduled-task", "m5max-coder")
-	scheduled.Status.Phase = foremanv1alpha1.AgenticTaskPhaseScheduled
+	scheduled.Status.Phase = meithealv1alpha1.AgenticTaskPhaseScheduled
 	c := newRecoveryClient(t, scheduled)
 	w := &AgenticTaskWatcher{Client: c, NodeName: "m5max-coder", Namespace: "default"}
 
@@ -125,7 +125,7 @@ func TestRecoverOrphanedTasks_IgnoresNonRunningPhase(t *testing.T) {
 	}
 
 	got := getTask(t, c, "scheduled-task")
-	if got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseScheduled {
+	if got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseScheduled {
 		t.Fatalf("phase = %q, want Scheduled (untouched)", got.Status.Phase)
 	}
 }
@@ -148,7 +148,7 @@ func TestPatchTerminal_FallsBackOnRejectedVerdict(t *testing.T) {
 	base := fake.NewClientBuilder().
 		WithScheme(newTestScheme(t)).
 		WithObjects(task).
-		WithStatusSubresource(&foremanv1alpha1.AgenticTask{}).
+		WithStatusSubresource(&meithealv1alpha1.AgenticTask{}).
 		Build()
 
 	var patchCalls atomic.Int32
@@ -162,7 +162,7 @@ func TestPatchTerminal_FallsBackOnRejectedVerdict(t *testing.T) {
 				// Simulate apiserver rejecting the patch because "BOGUS" is not in
 				// the verdict enum.
 				return apierrors.NewInvalid(
-					schema.GroupKind{Group: "foreman.llmkube.dev", Kind: "AgenticTask"},
+					schema.GroupKind{Group: "meitheal.dev", Kind: "AgenticTask"},
 					obj.GetName(),
 					nil,
 				)
@@ -177,7 +177,7 @@ func TestPatchTerminal_FallsBackOnRejectedVerdict(t *testing.T) {
 	bogusResult := &Result{
 		SchemaVersion: ResultSchemaVersion,
 		Kind:          "issue-fix",
-		Verdict:       foremanv1alpha1.AgenticTaskVerdict("BOGUS"),
+		Verdict:       meithealv1alpha1.AgenticTaskVerdict("BOGUS"),
 		Summary:       "contract drift test",
 	}
 
@@ -189,13 +189,13 @@ func TestPatchTerminal_FallsBackOnRejectedVerdict(t *testing.T) {
 	// The underlying fake client holds the real state; read from it directly.
 	got := getTask(t, base, "code-649")
 
-	if got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseFailed {
+	if got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseFailed {
 		t.Fatalf("phase = %q, want Failed", got.Status.Phase)
 	}
-	if got.Status.Verdict != foremanv1alpha1.AgenticTaskVerdictIncomplete {
+	if got.Status.Verdict != meithealv1alpha1.AgenticTaskVerdictIncomplete {
 		t.Fatalf("verdict = %q, want INCOMPLETE", got.Status.Verdict)
 	}
-	if got.Status.FailureReason != foremanv1alpha1.FailureInfrastructureError {
+	if got.Status.FailureReason != meithealv1alpha1.FailureInfrastructureError {
 		t.Fatalf("failureReason = %q, want InfrastructureError", got.Status.FailureReason)
 	}
 	if got.Status.FinishedAt == nil {

@@ -1,0 +1,69 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - meitheal.dev
+  resources:
+  - agentictasks
+  - agents
+  - fleetnodes
+  - workloads
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - meitheal.dev
+  resources:
+  - agentictasks/finalizers
+  - agentreleases/finalizers
+  - agents/finalizers
+  - fleetnodes/finalizers
+  - workloads/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - meitheal.dev
+  resources:
+  - agentictasks/status
+  - agentreleases/status
+  - agents/status
+  - fleetnodes/status
+  - workloads/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - meitheal.dev
+  resources:
+  - agentreleases
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - meitheal.dev
+  resources:
+  - modelprofiles
+  verbs:
+  - get
+  - list
+  - watch

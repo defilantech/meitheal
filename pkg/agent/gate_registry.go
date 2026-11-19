@@ -21,7 +21,7 @@ import (
 	"os"
 	"strings"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // gateTier classifies a gate check by how its failure is handled.
@@ -48,14 +48,14 @@ type advisory struct {
 type gateCheck struct {
 	name string
 	tier gateTier
-	lang foremanv1alpha1.GateLanguage
+	lang meithealv1alpha1.GateLanguage
 	fn   func(ctx context.Context, workspace string, run commandRunner) (failed bool, output string)
 }
 
 // gateCheckEnabled reports whether a check is on. Default is on; set
-// FOREMAN_<UPPERSNAKE(name)>_GATE=0 to disable a single check in the field.
+// MEITHEAL_<UPPERSNAKE(name)>_GATE=0 to disable a single check in the field.
 func gateCheckEnabled(name string) bool {
-	key := "FOREMAN_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_GATE"
+	key := "MEITHEAL_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_GATE"
 	return os.Getenv(key) != "0"
 }
 

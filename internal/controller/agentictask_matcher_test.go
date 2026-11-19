@@ -22,12 +22,12 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
-func nodeWithCapability(cap foremanv1alpha1.FleetNodeCapability) *foremanv1alpha1.FleetNode {
-	n := &foremanv1alpha1.FleetNode{}
-	n.Status.Phase = foremanv1alpha1.FleetNodePhaseReady
+func nodeWithCapability(cap meithealv1alpha1.FleetNodeCapability) *meithealv1alpha1.FleetNode {
+	n := &meithealv1alpha1.FleetNode{}
+	n.Status.Phase = meithealv1alpha1.FleetNodePhaseReady
 	// Default to a fresh heartbeat so capability tests are not accidentally
 	// gated out by the staleness check.
 	now := metav1.Now()
@@ -42,8 +42,8 @@ func nodeWithCapability(cap foremanv1alpha1.FleetNodeCapability) *foremanv1alpha
 // Defense-in-depth for defilantech/LLMKube#627.
 func TestNodeSchedulable_StaleHeartbeatExcludedDespiteReady(t *testing.T) {
 	now := time.Now()
-	stale := metav1.NewTime(now.Add(-2 * foremanv1alpha1.FleetNodeHeartbeatTimeout))
-	node := nodeWithCapability(foremanv1alpha1.FleetNodeCapability{Accelerator: "metal"})
+	stale := metav1.NewTime(now.Add(-2 * meithealv1alpha1.FleetNodeHeartbeatTimeout))
+	node := nodeWithCapability(meithealv1alpha1.FleetNodeCapability{Accelerator: "metal"})
 	node.Status.LastHeartbeatTime = &stale
 
 	if nodeSchedulable(node, now) {
@@ -55,7 +55,7 @@ func TestNodeSchedulable_StaleHeartbeatExcludedDespiteReady(t *testing.T) {
 func TestNodeSchedulable_FreshReadyNode(t *testing.T) {
 	now := time.Now()
 	fresh := metav1.NewTime(now.Add(-1 * time.Second))
-	node := nodeWithCapability(foremanv1alpha1.FleetNodeCapability{Accelerator: "metal"})
+	node := nodeWithCapability(meithealv1alpha1.FleetNodeCapability{Accelerator: "metal"})
 	node.Status.LastHeartbeatTime = &fresh
 
 	if !nodeSchedulable(node, now) {
@@ -66,7 +66,7 @@ func TestNodeSchedulable_FreshReadyNode(t *testing.T) {
 // A node that has never heart-beat (nil LastHeartbeatTime) is not
 // schedulable: we have no evidence the agent is alive.
 func TestNodeSchedulable_NeverHeartbeat(t *testing.T) {
-	node := nodeWithCapability(foremanv1alpha1.FleetNodeCapability{Accelerator: "metal"})
+	node := nodeWithCapability(meithealv1alpha1.FleetNodeCapability{Accelerator: "metal"})
 	node.Status.LastHeartbeatTime = nil
 
 	if nodeSchedulable(node, time.Now()) {
@@ -80,12 +80,12 @@ func TestNodeSchedulable_NeverHeartbeat(t *testing.T) {
 // minRAMGB gate (which is sized for the cold-load path).
 // Regression for defilantech/LLMKube#579.
 func TestCapabilitySatisfies_RequiresModelInstalledBypassesRAMGate(t *testing.T) {
-	req := foremanv1alpha1.RequiredCapability{
+	req := meithealv1alpha1.RequiredCapability{
 		Accelerator:            "metal",
 		MinRAMGB:               8, // higher than the node's available RAM
 		RequiresModelInstalled: true,
 	}
-	node := nodeWithCapability(foremanv1alpha1.FleetNodeCapability{
+	node := nodeWithCapability(meithealv1alpha1.FleetNodeCapability{
 		Accelerator:     "metal",
 		AvailableRAMGB:  7, // below MinRAMGB on purpose
 		InstalledModels: []string{"devstral-24b"},
@@ -99,11 +99,11 @@ func TestCapabilitySatisfies_RequiresModelInstalledBypassesRAMGate(t *testing.T)
 // RequiresModelInstalled with the required model absent from the node
 // must NOT match: the whole point is to pin the task to the model's home.
 func TestCapabilitySatisfies_RequiresModelInstalledButModelAbsent(t *testing.T) {
-	req := foremanv1alpha1.RequiredCapability{
+	req := meithealv1alpha1.RequiredCapability{
 		Accelerator:            "metal",
 		RequiresModelInstalled: true,
 	}
-	node := nodeWithCapability(foremanv1alpha1.FleetNodeCapability{
+	node := nodeWithCapability(meithealv1alpha1.FleetNodeCapability{
 		Accelerator:     "metal",
 		AvailableRAMGB:  64,
 		InstalledModels: []string{"qwen3-coder-30b"},
@@ -118,11 +118,11 @@ func TestCapabilitySatisfies_RequiresModelInstalledButModelAbsent(t *testing.T) 
 // misconfiguration; the matcher cannot confirm residency, so it must
 // not match rather than silently bypassing the gate.
 func TestCapabilitySatisfies_RequiresModelInstalledWithEmptyModel(t *testing.T) {
-	req := foremanv1alpha1.RequiredCapability{
+	req := meithealv1alpha1.RequiredCapability{
 		Accelerator:            "metal",
 		RequiresModelInstalled: true,
 	}
-	node := nodeWithCapability(foremanv1alpha1.FleetNodeCapability{
+	node := nodeWithCapability(meithealv1alpha1.FleetNodeCapability{
 		Accelerator:     "metal",
 		AvailableRAMGB:  64,
 		InstalledModels: []string{"devstral-24b"},
@@ -135,11 +135,11 @@ func TestCapabilitySatisfies_RequiresModelInstalledWithEmptyModel(t *testing.T) 
 
 // Default path (RequiresModelInstalled unset) keeps enforcing minRAMGB.
 func TestCapabilitySatisfies_DefaultStillEnforcesRAMGate(t *testing.T) {
-	req := foremanv1alpha1.RequiredCapability{
+	req := meithealv1alpha1.RequiredCapability{
 		Accelerator: "metal",
 		MinRAMGB:    32,
 	}
-	node := nodeWithCapability(foremanv1alpha1.FleetNodeCapability{
+	node := nodeWithCapability(meithealv1alpha1.FleetNodeCapability{
 		Accelerator:    "metal",
 		AvailableRAMGB: 16, // below MinRAMGB
 	})

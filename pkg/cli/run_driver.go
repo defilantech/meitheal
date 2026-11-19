@@ -54,9 +54,9 @@ type Effects interface {
 	Verify(ctx context.Context, workload, branch string) (clean bool, evidence string, err error)
 }
 
-// taskBranch is the branch Foreman's coder pushes for a Workload. It mirrors
+// taskBranch is the branch Meitheal's coder pushes for a Workload. It mirrors
 // the controller's own convention, which builds the name from the Workload and
-// the issue: workload_controller.go:379 is "foreman/<workload>/issue-<n>".
+// the issue: workload_controller.go:379 is "meitheal/<workload>/issue-<n>".
 //
 // The workload name is a parameter and not derived from the issue on purpose.
 // Effects.Dispatch RETURNS the name it created precisely so the caller does not
@@ -66,7 +66,7 @@ type Effects interface {
 // issue would then watch and verify a branch nobody pushed and call the verify
 // clean, which is a silent wrong answer in the direction that matters.
 func taskBranch(workload string, issue int32) string {
-	return fmt.Sprintf("foreman/%s/issue-%d", workload, issue)
+	return fmt.Sprintf("meitheal/%s/issue-%d", workload, issue)
 }
 
 // plannedWorkloadName is the Workload name the driver reserves for an item.
@@ -82,7 +82,7 @@ func plannedWorkloadName(issue int32) string {
 
 // optionsFor is the answer set a parked decision offers. Every park sets one:
 // AnswerDecision accepts arbitrary text when a decision offers no options and
-// `foreman decisions` renders that as "any", so an option-less park hands the
+// `meitheal decisions` renders that as "any", so an option-less park hands the
 // human a free-text prompt instead of the answers the loop understands.
 func optionsFor(kind string) []string {
 	if kind == ParkEscalate {
@@ -112,7 +112,7 @@ const maxStageTransitions = 64
 // proceeds to the next item rather than blocking on a human.
 //
 // StageFinalize runs no effect. The Effects interface has no Finalize, because
-// opening the PR is scripts/foreman-finalize.sh and belongs with the rest of
+// opening the PR is scripts/finalize.sh and belongs with the rest of
 // the cluster-backed implementation; until that lands a clean verify falls
 // straight through finalize to done.
 //
@@ -186,7 +186,7 @@ func driveLoop(
 			}
 			// An empty name is the one answer the "trust what Dispatch
 			// returns" contract cannot absorb: it makes the branch
-			// "foreman//issue-<n>", points watch, kill and verify at nothing,
+			// "meitheal//issue-<n>", points watch, kill and verify at nothing,
 			// and parks a decision whose Workload field is blank, which is
 			// the only thing telling a human which run to go and look at.
 			// A Workload that cannot be named was not created.

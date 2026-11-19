@@ -28,7 +28,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const defaultDecisionsDir = ".foreman/decisions"
+const defaultDecisionsDir = ".meitheal/decisions"
 
 type runOptions struct {
 	queueFile    string
@@ -39,28 +39,28 @@ type runOptions struct {
 	dryRun       bool
 }
 
-// newRunCommand drives a prepared queue through the Foreman pipeline,
+// newRunCommand drives a prepared queue through the Meitheal pipeline,
 // parking judgment calls instead of blocking on them.
 func newRunCommand() *cobra.Command {
 	opts := &runOptions{}
 	cmd := &cobra.Command{
 		Use:   "run",
-		Short: "Drive a queue of issues through Foreman unattended",
+		Short: "Drive a queue of issues through Meitheal unattended",
 		// The default directory is interpolated rather than spelled out, so
 		// the help cannot drift from the flag.
-		Long: fmt.Sprintf(`Drive a prepared queue of issues through the Foreman pipeline.
+		Long: fmt.Sprintf(`Drive a prepared queue of issues through the Meitheal pipeline.
 
 The loop does the mechanical work (preflight skips, dispatch, watching for
 stalls, independent verification, finalizing a PR) and parks judgment calls
 as files under %s for you to review with
-'llmkube foreman decisions'. It never blocks: a parked decision releases the
+'meitheal decisions'. It never blocks: a parked decision releases the
 slot and the loop moves to the next item.
 
 Intents are yours to write; the queue points at them.
 
 Example:
 
-  llmkube foreman run --queue queue.yaml --coder-agent qwen38-coder`, defaultDecisionsDir),
+  meitheal run --queue queue.yaml --coder-agent qwen38-coder`, defaultDecisionsDir),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return printRunPlan(cmd.OutOrStdout(), opts)
 		},

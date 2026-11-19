@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
@@ -96,14 +96,14 @@ func enforceReviewerExecution(
 	extra map[string]any,
 	diffFiles []string,
 	diffErr error,
-	verdict foremanv1alpha1.AgenticTaskVerdict,
+	verdict meithealv1alpha1.AgenticTaskVerdict,
 	transcript []oai.Message,
-) foremanv1alpha1.AgenticTaskVerdict {
+) meithealv1alpha1.AgenticTaskVerdict {
 	if extra == nil {
 		log.Info("reviewer execution: extra is nil; cannot record the rail as skipped")
 		return verdict
 	}
-	if verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		return verdict
 	}
 	if diffErr != nil {

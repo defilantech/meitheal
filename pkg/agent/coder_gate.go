@@ -25,7 +25,7 @@ import (
 	"sort"
 	"strings"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/grounding"
 	"github.com/defilantech/meitheal/pkg/agent/repomap"
 )
@@ -36,7 +36,6 @@ import (
 // (running them hangs); CI runs them separately.
 var envtestPackagePrefixes = []string{
 	"internal/controller/",
-	"internal/foreman/controller/",
 	"test/",
 }
 
@@ -238,7 +237,7 @@ func RunCoderGate(
 	// 9. Test-presence: a change that adds new functions must come with a test
 	// in their package. Pure diff inspection, so it covers controller/envtest
 	// packages the unit-test tier above cannot run (catches the #856 class:
-	// new logic, zero tests). Disabled by FOREMAN_MUTATION_GATE=0.
+	// new logic, zero tests). Disabled by MEITHEAL_MUTATION_GATE=0.
 	if !mutationGateDisabled() {
 		if failed, out := checkTestPresence(ctx, workspace, run); failed {
 			failures = append(failures, checkFailure{name: "test presence", output: out})
@@ -286,13 +285,13 @@ func gateCheckRegistry(issueText, evidenceBaseSHA string, evidence []grounding.E
 		{
 			name: "rbac-use",
 			tier: tierBlock,
-			lang: foremanv1alpha1.GateLanguageGo,
+			lang: meithealv1alpha1.GateLanguageGo,
 			fn:   checkRBACUse,
 		},
 		{
 			name: "import-graph",
 			tier: tierBlock,
-			lang: foremanv1alpha1.GateLanguageGo,
+			lang: meithealv1alpha1.GateLanguageGo,
 			fn:   checkImportGraph,
 		},
 		{
@@ -317,19 +316,19 @@ func gateCheckRegistry(issueText, evidenceBaseSHA string, evidence []grounding.E
 			// positive.
 			name: "diff-coverage",
 			tier: tierAdvisory,
-			lang: foremanv1alpha1.GateLanguageGo,
+			lang: meithealv1alpha1.GateLanguageGo,
 			fn:   checkDiffCoverage,
 		},
 		{
 			name: "grounding-breadth",
 			tier: tierAdvisory,
-			lang: foremanv1alpha1.GateLanguageGo,
+			lang: meithealv1alpha1.GateLanguageGo,
 			fn:   checkGroundingBreadth,
 		},
 		{
 			name: "caller-impact",
 			tier: tierAdvisory,
-			lang: foremanv1alpha1.GateLanguageGo,
+			lang: meithealv1alpha1.GateLanguageGo,
 			fn:   checkCallerImpact,
 		},
 		{
@@ -487,18 +486,17 @@ func resolveCodegenDrift(ctx context.Context, workspace string, run commandRunne
 
 	before := dirtyPathSet(ctx, workspace, run)
 
-	// Regenerate manifests, deepcopy, and sync CRDs to both Helm charts. The
-	// foreman CRDs need the separate foreman-chart-crds target; `generate`
-	// (deepcopy) is included so an API change that only alters zz_generated
-	// does not slip through to CI.
+	// Regenerate manifests, deepcopy, and sync CRDs to the Helm chart.
+	// `generate` (deepcopy) is included so an API change that only alters
+	// zz_generated does not slip through to CI.
 	// GOTOOLCHAIN=auto for the same reason the static checks set it: these
 	// make targets shell out to the Go toolchain (controller-gen), and the
 	// agent image's baked GOTOOLCHAIN=local refuses to run once go.mod's
 	// floor passes the image's Go patch release (#1388).
 	out, err := run(ctx, workspace, []string{"GOTOOLCHAIN=auto"},
-		"make", "manifests", "generate", "chart-crds", "foreman-chart-crds")
+		"make", "manifests", "generate", "chart-crds")
 	if err != nil {
-		return true, "make manifests generate chart-crds foreman-chart-crds failed:\n" + out
+		return true, "make manifests generate chart-crds failed:\n" + out
 	}
 
 	after := dirtyPathSet(ctx, workspace, run)
@@ -557,10 +555,10 @@ func dirtyPathSet(ctx context.Context, workspace string, run commandRunner) map[
 }
 
 // isGeneratedArtifact reports whether a workspace-relative path is a
-// code-generation output produced by `make manifests generate chart-crds
-// foreman-chart-crds` (controller-gen CRDs/RBAC, deepcopy, and the synced Helm
-// chart CRDs). The allowlist is deliberately tight so that regeneration
-// touching anything outside it is surfaced rather than silently absorbed.
+// code-generation output produced by `make manifests generate chart-crds`
+// (controller-gen CRDs/RBAC, deepcopy, and the synced Helm chart CRDs). The
+// allowlist is deliberately tight so that regeneration touching anything
+// outside it is surfaced rather than silently absorbed.
 func isGeneratedArtifact(path string) bool {
 	switch {
 	case strings.HasPrefix(path, "config/crd/"):
@@ -571,7 +569,7 @@ func isGeneratedArtifact(path string) bool {
 		return true
 	case strings.HasPrefix(path, "charts/llmkube/templates/crds/"):
 		return true
-	case strings.HasPrefix(path, "charts/foreman/templates/crds/"):
+	case strings.HasPrefix(path, "charts/meitheal/templates/crds/"):
 		return true
 	case strings.Contains(path, "zz_generated."):
 		return true

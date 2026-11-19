@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 	"github.com/defilantech/meitheal/pkg/audit"
 )
@@ -48,7 +48,7 @@ func TestAttemptRecordsSurviveRetry(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			task := &foremanv1alpha1.AgenticTask{
+			task := &meithealv1alpha1.AgenticTask{
 				ObjectMeta: metav1.ObjectMeta{Name: "retry", Namespace: "default", UID: "first"},
 			}
 			c := newRecoveryClient(t, task)
@@ -59,14 +59,14 @@ func TestAttemptRecordsSurviveRetry(t *testing.T) {
 					if err := c.Delete(ctx, &current); err != nil {
 						t.Fatal(err)
 					}
-					current = foremanv1alpha1.AgenticTask{
+					current = meithealv1alpha1.AgenticTask{
 						ObjectMeta: metav1.ObjectMeta{Name: task.Name, Namespace: task.Namespace, UID: "second"},
 					}
 					if err := c.Create(ctx, &current); err != nil {
 						t.Fatal(err)
 					}
 				}
-				current.Status.Phase = foremanv1alpha1.AgenticTaskPhaseScheduled
+				current.Status.Phase = meithealv1alpha1.AgenticTaskPhaseScheduled
 				current.Status.AssignedNode = "coder"
 				if err := c.Status().Update(ctx, &current); err != nil {
 					t.Fatal(err)
@@ -74,9 +74,9 @@ func TestAttemptRecordsSurviveRetry(t *testing.T) {
 				if err := w.claim(ctx, &current); err != nil {
 					t.Fatal(err)
 				}
-				verdict, message := foremanv1alpha1.AgenticTaskVerdictIncomplete, "first failure"
+				verdict, message := meithealv1alpha1.AgenticTaskVerdictIncomplete, "first failure"
 				if i == 2 {
-					verdict, message = foremanv1alpha1.AgenticTaskVerdictGo, "retry success"
+					verdict, message = meithealv1alpha1.AgenticTaskVerdictGo, "retry success"
 				}
 				ref, err := WriteTranscript(ctx, c, &current, &LoopResult{
 					Turns: i, Transcript: []oai.Message{{Role: oai.RoleAssistant, Content: message}},
@@ -87,7 +87,7 @@ func TestAttemptRecordsSurviveRetry(t *testing.T) {
 				res := NewResult("issue-fix", verdict, message, time.Second)
 				res.Extra = map[string]any{"transcriptRef": objRefAsMap(ref), "turnCount": i}
 				if i == 1 {
-					res.FailureReason = foremanv1alpha1.FailureMaxTurnsExhausted
+					res.FailureReason = meithealv1alpha1.FailureMaxTurnsExhausted
 				}
 				// Exercise the real run-task producer's JSON hop on the Job path.
 				raw, err := json.Marshal(runTaskResultFromResult(res))
@@ -135,7 +135,7 @@ func TestClaimAttemptClearsPreviousResultAndRejectsStaleClaim(t *testing.T) {
 	task.Status.Result = &runtime.RawExtension{Raw: []byte(`{"verdict":"GO"}`)}
 	task.Status.TranscriptRef = "previous"
 	task.Status.FinishedAt = task.Status.ClaimedAt
-	task.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+	task.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 	c := newRecoveryClient(t, task)
 	w := &AgenticTaskWatcher{Client: c, NodeName: "coder"}
 	current := getTask(t, c, task.Name)
@@ -154,7 +154,7 @@ func TestClaimAttemptClearsPreviousResultAndRejectsStaleClaim(t *testing.T) {
 	// Identical timestamp and node must not let an old execution finish a new one.
 	old := got.DeepCopy()
 	old.Status.Attempt = 1
-	result := NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictGo, "late", time.Second)
+	result := NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictGo, "late", time.Second)
 	if err := w.patchTerminal(ctx, old, result, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestClaimAttemptClearsPreviousResultAndRejectsStaleClaim(t *testing.T) {
 	if got.Status.JobName != "" {
 		t.Fatalf("stale Job callback overwrote new attempt: %+v", got.Status)
 	}
-	if got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseRunning || got.Status.Result != nil {
+	if got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseRunning || got.Status.Result != nil {
 		t.Fatalf("stale completion overwrote new attempt: %+v", got.Status)
 	}
 }
@@ -262,12 +262,12 @@ func TestPatchTerminalRetriesConflict(t *testing.T) {
 		},
 	})
 	w := &AgenticTaskWatcher{Client: c, NodeName: "coder"}
-	result := NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictGo, "finished", time.Second)
+	result := NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictGo, "finished", time.Second)
 	if err := w.patchTerminal(ctx, task, result, nil); err != nil {
 		t.Errorf("terminal result lost after conflict: %v", err)
 	}
 	got := getTask(t, base, task.Name)
-	if got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseSucceeded || got.Status.Result == nil {
+	if got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseSucceeded || got.Status.Result == nil {
 		t.Fatalf("completed execution remains %s without a persisted result", got.Status.Phase)
 	}
 }
@@ -303,7 +303,7 @@ func TestPatchTerminalRejectedResultPreservesAttempt(t *testing.T) {
 								return err
 							}
 						}
-						return apierrors.NewInvalid(schema.GroupKind{Group: "foreman.llmkube.dev", Kind: "AgenticTask"},
+						return apierrors.NewInvalid(schema.GroupKind{Group: "meitheal.dev", Kind: "AgenticTask"},
 							task.Name, field.ErrorList{field.NotSupported(field.NewPath("status", "verdict"), "FUTURE", []string{"GO"})})
 					}
 					return c.SubResource(sub).Patch(ctx, obj, patch, opts...)
@@ -317,7 +317,7 @@ func TestPatchTerminalRejectedResultPreservesAttempt(t *testing.T) {
 			}
 			got := getTask(t, base, task.Name)
 			if superseded {
-				if got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseRunning || got.Status.Result != nil {
+				if got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseRunning || got.Status.Result != nil {
 					t.Fatalf("rejected old result overwrote attempt %d: phase=%s", got.Status.Attempt, got.Status.Phase)
 				}
 			} else if got.Status.TranscriptRef != ref.Name {

@@ -15,20 +15,20 @@ import (
 	"strings"
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func TestUsesGenericGate(t *testing.T) {
 	cases := []struct {
 		name    string
-		profile *foremanv1alpha1.GateProfile
+		profile *meithealv1alpha1.GateProfile
 		want    bool
 	}{
 		{"nil profile -> go path", nil, false},
-		{"empty language -> go path", &foremanv1alpha1.GateProfile{}, false},
-		{"explicit go -> go path", &foremanv1alpha1.GateProfile{Language: foremanv1alpha1.GateLanguageGo}, false},
-		{"python -> generic", &foremanv1alpha1.GateProfile{Language: foremanv1alpha1.GateLanguagePython}, true},
-		{"rust -> generic", &foremanv1alpha1.GateProfile{Language: foremanv1alpha1.GateLanguageRust}, true},
+		{"empty language -> go path", &meithealv1alpha1.GateProfile{}, false},
+		{"explicit go -> go path", &meithealv1alpha1.GateProfile{Language: meithealv1alpha1.GateLanguageGo}, false},
+		{"python -> generic", &meithealv1alpha1.GateProfile{Language: meithealv1alpha1.GateLanguagePython}, true},
+		{"rust -> generic", &meithealv1alpha1.GateProfile{Language: meithealv1alpha1.GateLanguageRust}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -50,7 +50,7 @@ func TestRunGenericGateAllPassRunsEachViaShC(t *testing.T) {
 		calls = append(calls, gateCall{name, args})
 		return "", nil
 	}
-	gate := foremanv1alpha1.ResolvedGate{
+	gate := meithealv1alpha1.ResolvedGate{
 		Format: "ruff format --check .",
 		Lint:   "ruff check .",
 		Build:  "python -m compileall .",
@@ -81,7 +81,7 @@ func TestRunGenericGateSkipsEmptyAndCollectsFailures(t *testing.T) {
 		}
 		return "", nil
 	}
-	gate := foremanv1alpha1.ResolvedGate{
+	gate := meithealv1alpha1.ResolvedGate{
 		// Format, Build, Codegen empty -> skipped.
 		Lint: "ruff check .",
 		Test: "pytest -q",
@@ -141,7 +141,7 @@ func TestRunGenericGateMissingRuntimeDefersNotFails(t *testing.T) {
 		}
 		return "", nil
 	}
-	gate := foremanv1alpha1.ResolvedGate{
+	gate := meithealv1alpha1.ResolvedGate{
 		Lint: "eslint .",
 		Test: "npm ci && npm test",
 	}
@@ -172,7 +172,7 @@ func TestRunGenericGateMixedDeferralAndRealFailure(t *testing.T) {
 		}
 		return "", nil
 	}
-	gate := foremanv1alpha1.ResolvedGate{
+	gate := meithealv1alpha1.ResolvedGate{
 		Format: "ruff format --check .",
 		Test:   "npm test",
 	}
@@ -198,7 +198,7 @@ func TestRunGenericGateRealExec(t *testing.T) {
 	ws := t.TempDir()
 
 	t.Run("missing binary defers", func(t *testing.T) {
-		gate := foremanv1alpha1.ResolvedGate{Test: "llmkube-no-such-binary-929 --version"}
+		gate := meithealv1alpha1.ResolvedGate{Test: "llmkube-no-such-binary-929 --version"}
 		pass, fb, advisories := RunGenericGate(context.Background(), ws, gate, execCommandRunner)
 		if !pass || fb != "" {
 			t.Fatalf("want deferral (pass, no feedback); got pass=%v feedback=%q", pass, fb)
@@ -209,7 +209,7 @@ func TestRunGenericGateRealExec(t *testing.T) {
 	})
 
 	t.Run("real failure still fails", func(t *testing.T) {
-		gate := foremanv1alpha1.ResolvedGate{Test: "echo tests failed; exit 1"}
+		gate := meithealv1alpha1.ResolvedGate{Test: "echo tests failed; exit 1"}
 		pass, fb, advisories := RunGenericGate(context.Background(), ws, gate, execCommandRunner)
 		if pass {
 			t.Fatal("a command that runs and exits non-zero must fail the gate")
@@ -223,7 +223,7 @@ func TestRunGenericGateRealExec(t *testing.T) {
 	})
 
 	t.Run("passing command passes", func(t *testing.T) {
-		gate := foremanv1alpha1.ResolvedGate{Test: "true"}
+		gate := meithealv1alpha1.ResolvedGate{Test: "true"}
 		pass, fb, advisories := RunGenericGate(context.Background(), ws, gate, execCommandRunner)
 		if !pass || fb != "" || len(advisories) != 0 {
 			t.Fatalf("want clean pass; got pass=%v feedback=%q advisories=%+v", pass, fb, advisories)

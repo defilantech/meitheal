@@ -3,11 +3,11 @@ package agent
 import (
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
-func coderAgent() *foremanv1alpha1.Agent {
-	return &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{Role: foremanv1alpha1.AgentRoleCoder}}
+func coderAgent() *meithealv1alpha1.Agent {
+	return &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{Role: meithealv1alpha1.AgentRoleCoder}}
 }
 
 func TestApplyModelProfile(t *testing.T) {
@@ -20,7 +20,7 @@ func TestApplyModelProfile(t *testing.T) {
 	})
 	t.Run("addendum appends after the agent prompt", func(t *testing.T) {
 		cfg := &LoopConfig{SystemPrompt: "ROLE", Progress: DefaultProgressConfig}
-		p := &foremanv1alpha1.ModelProfile{Spec: foremanv1alpha1.ModelProfileSpec{SystemPromptAddendum: "ADD"}}
+		p := &meithealv1alpha1.ModelProfile{Spec: meithealv1alpha1.ModelProfileSpec{SystemPromptAddendum: "ADD"}}
 		applyModelProfile(cfg, coderAgent(), p)
 		if cfg.SystemPrompt != "ROLE\n\nADD" {
 			t.Fatalf("got %q", cfg.SystemPrompt)
@@ -28,8 +28,8 @@ func TestApplyModelProfile(t *testing.T) {
 	})
 	t.Run("stuckLoop overlay applies when the agent has none", func(t *testing.T) {
 		cfg := &LoopConfig{SystemPrompt: "ROLE", Progress: DefaultProgressConfig}
-		p := &foremanv1alpha1.ModelProfile{Spec: foremanv1alpha1.ModelProfileSpec{
-			StuckLoopDetection: &foremanv1alpha1.StuckLoopDetectionSpec{EditFreeTurnsLimit: 4},
+		p := &meithealv1alpha1.ModelProfile{Spec: meithealv1alpha1.ModelProfileSpec{
+			StuckLoopDetection: &meithealv1alpha1.StuckLoopDetectionSpec{EditFreeTurnsLimit: 4},
 		}}
 		applyModelProfile(cfg, coderAgent(), p)
 		if cfg.Progress.EditFreeTurnsLimit != 4 {
@@ -41,12 +41,12 @@ func TestApplyModelProfile(t *testing.T) {
 	})
 	t.Run("agent stuckLoop block wins over profile", func(t *testing.T) {
 		cfg := &LoopConfig{SystemPrompt: "ROLE", Progress: ProgressConfig{EditFreeTurnsLimit: 9}}
-		agent := &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{
-			Role:               foremanv1alpha1.AgentRoleCoder,
-			StuckLoopDetection: &foremanv1alpha1.StuckLoopDetectionSpec{EditFreeTurnsLimit: 9},
+		agent := &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{
+			Role:               meithealv1alpha1.AgentRoleCoder,
+			StuckLoopDetection: &meithealv1alpha1.StuckLoopDetectionSpec{EditFreeTurnsLimit: 9},
 		}}
-		p := &foremanv1alpha1.ModelProfile{Spec: foremanv1alpha1.ModelProfileSpec{
-			StuckLoopDetection: &foremanv1alpha1.StuckLoopDetectionSpec{EditFreeTurnsLimit: 4},
+		p := &meithealv1alpha1.ModelProfile{Spec: meithealv1alpha1.ModelProfileSpec{
+			StuckLoopDetection: &meithealv1alpha1.StuckLoopDetectionSpec{EditFreeTurnsLimit: 4},
 		}}
 		applyModelProfile(cfg, agent, p)
 		if cfg.Progress.EditFreeTurnsLimit != 9 {
@@ -55,7 +55,7 @@ func TestApplyModelProfile(t *testing.T) {
 	})
 	t.Run("restrictReads flows", func(t *testing.T) {
 		cfg := &LoopConfig{SystemPrompt: "ROLE", Progress: DefaultProgressConfig}
-		p := &foremanv1alpha1.ModelProfile{Spec: foremanv1alpha1.ModelProfileSpec{RestrictReadsInForcingPhase: true}}
+		p := &meithealv1alpha1.ModelProfile{Spec: meithealv1alpha1.ModelProfileSpec{RestrictReadsInForcingPhase: true}}
 		applyModelProfile(cfg, coderAgent(), p)
 		if !cfg.RestrictReadsInForcingPhase {
 			t.Fatal("restrictReads not set")
@@ -63,9 +63,9 @@ func TestApplyModelProfile(t *testing.T) {
 	})
 	t.Run("reviewer keeps edit-free disabled even if the profile sets it", func(t *testing.T) {
 		cfg := &LoopConfig{SystemPrompt: "ROLE", Progress: ProgressConfig{EditFreeTurnsLimit: 0}}
-		reviewer := &foremanv1alpha1.Agent{Spec: foremanv1alpha1.AgentSpec{Role: foremanv1alpha1.AgentRoleReviewer}}
-		p := &foremanv1alpha1.ModelProfile{Spec: foremanv1alpha1.ModelProfileSpec{
-			StuckLoopDetection: &foremanv1alpha1.StuckLoopDetectionSpec{EditFreeTurnsLimit: 4},
+		reviewer := &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{Role: meithealv1alpha1.AgentRoleReviewer}}
+		p := &meithealv1alpha1.ModelProfile{Spec: meithealv1alpha1.ModelProfileSpec{
+			StuckLoopDetection: &meithealv1alpha1.StuckLoopDetectionSpec{EditFreeTurnsLimit: 4},
 		}}
 		applyModelProfile(cfg, reviewer, p)
 		if cfg.Progress.EditFreeTurnsLimit != 0 {

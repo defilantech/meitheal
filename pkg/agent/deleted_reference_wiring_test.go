@@ -38,8 +38,8 @@ import (
 
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
@@ -58,14 +58,14 @@ func (r *drRefRegistry) Schemas() []oai.Tool { return nil }
 
 func (r *drRefRegistry) Dispatch(
 	_ context.Context, name string, _ json.RawMessage,
-) (*foremanagent.ToolResult, error) {
+) (*meithealagent.ToolResult, error) {
 	if name != "submit_result" {
 		return nil, fmt.Errorf("drRefRegistry: unexpected tool %q", name)
 	}
 	if r.workspace != "" {
 		_ = os.WriteFile(filepath.Join(r.workspace, r.file), []byte(r.postBody), 0o644)
 	}
-	return &foremanagent.ToolResult{
+	return &meithealagent.ToolResult{
 		Terminal:      true,
 		Verdict:       "GO",
 		Summary:       "removed a tracked line",
@@ -121,7 +121,7 @@ func drRefSeed(t *testing.T, root, rel, body string) string {
 // seeded file and submit GO, then commit + push + settle. The removed line is
 // seedRel's body minus the line the test drops, so the base...HEAD diff the
 // rail scans contains exactly that removed line.
-func drRefExecute(t *testing.T, seedRel, seedBody, postBody string) *foremanagent.Result {
+func drRefExecute(t *testing.T, seedRel, seedBody, postBody string) *meithealagent.Result {
 	t.Helper()
 	gitOrSkip(t)
 	root := t.TempDir()
@@ -130,7 +130,7 @@ func drRefExecute(t *testing.T, seedRel, seedBody, postBody string) *foremanagen
 	agent, task := taskAndAgent("dr-ref")
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 	reg := &drRefRegistry{file: seedRel, postBody: postBody}
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
@@ -139,8 +139,8 @@ func drRefExecute(t *testing.T, seedRel, seedBody, postBody string) *foremanagen
 		CommitAuthor:             repo.Identity{Name: "Bot", Email: "b@x"},
 		CommitCommitter:          repo.Identity{Name: "Bot", Email: "b@x"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -156,9 +156,9 @@ func drRefExecute(t *testing.T, seedRel, seedBody, postBody string) *foremanagen
 // drRefModelExtra pulls the coder's terminal extra off the result; it is the
 // map the deleted-reference rail records onto (goResult serializes it under
 // Extra["modelExtra"]).
-func drRefModelExtra(t *testing.T, res *foremanagent.Result) map[string]any {
+func drRefModelExtra(t *testing.T, res *meithealagent.Result) map[string]any {
 	t.Helper()
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict: want GO (the rail runs on the GO-settle path) got %s; result=%+v",
 			res.Verdict, res)
 	}

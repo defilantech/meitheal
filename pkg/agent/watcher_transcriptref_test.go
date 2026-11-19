@@ -25,7 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
@@ -42,7 +42,7 @@ import (
 // that chain changes shape -- a renamed key, a flattened reference, a
 // namespaced name -- these tests fail rather than continuing to pass against
 // a fixture that has drifted away from the code.
-func transcriptRefExtra(t *testing.T, c client.Client, task *foremanv1alpha1.AgenticTask) (map[string]any, string) {
+func transcriptRefExtra(t *testing.T, c client.Client, task *meithealv1alpha1.AgenticTask) (map[string]any, string) {
 	t.Helper()
 	tref, err := WriteTranscript(context.Background(), c, task, &LoopResult{
 		Turns: 2,
@@ -59,7 +59,7 @@ func transcriptRefExtra(t *testing.T, c client.Client, task *foremanv1alpha1.Age
 	}
 	return map[string]any{
 		"outcome":       "",
-		"branch":        "foreman/issue-1654",
+		"branch":        "meitheal/issue-1654",
 		"commitSHA":     "abc1234def5678",
 		"transcriptRef": objRefAsMap(tref),
 	}, tref.Name
@@ -84,7 +84,7 @@ func TestPatchTerminal_LiftsTranscriptRef(t *testing.T) {
 	w := &AgenticTaskWatcher{Client: c, NodeName: "coder", Namespace: "default"}
 
 	extra, wantName := transcriptRefExtra(t, c, pendingTask("code-1654"))
-	res := NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictGo,
+	res := NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictGo,
 		"fixed the bug", time.Second)
 	res.Extra = extra
 
@@ -135,7 +135,7 @@ func TestPatchTerminal_LiftsTranscriptRefAfterJSONRoundTrip(t *testing.T) {
 		t.Fatalf("unmarshal extra: %v", err)
 	}
 
-	res := NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictGo,
+	res := NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictGo,
 		"fixed in a Job", time.Second)
 	res.Extra = decoded
 
@@ -170,7 +170,7 @@ func TestPatchTerminal_TranscriptRefEmptyWhenAbsentOrMalformed(t *testing.T) {
 	}{
 		{"det-absent", "deterministic run: no key at all", map[string]any{"outcome": ""}},
 		{"det-nil", "explicit nil, as objRefAsMap returns for an unnamed ref", map[string]any{"transcriptRef": nil}},
-		{"det-scalar", "flattened to a scalar", map[string]any{"transcriptRef": "foreman-transcript-code-x"}},
+		{"det-scalar", "flattened to a scalar", map[string]any{"transcriptRef": "meitheal-transcript-code-x"}},
 		{"det-nokey", "map with no name field", map[string]any{"transcriptRef": map[string]any{"kind": "ConfigMap"}}},
 		{"det-nonstring", "name is not a string", map[string]any{"transcriptRef": map[string]any{"name": 42}}},
 		{"det-noextra", "nil Extra entirely", nil},
@@ -181,7 +181,7 @@ func TestPatchTerminal_TranscriptRefEmptyWhenAbsentOrMalformed(t *testing.T) {
 			c := newRecoveryClient(t, pendingTask(name))
 			w := &AgenticTaskWatcher{Client: c, NodeName: "coder", Namespace: "default"}
 
-			res := NewResult("gate", foremanv1alpha1.AgenticTaskVerdictGo,
+			res := NewResult("gate", meithealv1alpha1.AgenticTaskVerdictGo,
 				"deterministic", time.Second)
 			res.Extra = tc.extra
 

@@ -88,7 +88,7 @@ const MaxLogTailBytes = 32 * 1024
 // was exercised.
 var DefaultGateChecks = []string{
 	"fmt", "vet", "lint", "lint-deadcode", "test",
-	"generate", "manifests", "chart-crds", "foreman-chart-crds", "federation-chart-crds",
+	"generate", "manifests", "chart-crds", "federation-chart-crds",
 	"check-reviewer-prompts", "check-agents-md", "check-docs-reference", "check-go-version", "test-scripts", ChartCheck,
 	MetalAgentRBACCheck, B200HarnessCheck,
 }
@@ -160,13 +160,13 @@ func needsJQ(checks []string) bool {
 	return false
 }
 
-// RunGateJobToolConfig is the static configuration the foreman-agent
+// RunGateJobToolConfig is the static configuration the meitheal-agent
 // hands to the tool at construction time. Per-call args (repo, branch,
 // checks) come through Execute's args JSON.
 type RunGateJobToolConfig struct {
 	// Namespace is where the gate Job is submitted. The ServiceAccount
-	// the foreman-agent runs under must have create/get/watch/delete on
-	// Jobs in this namespace. Defaults to "foreman-system" if empty.
+	// the meitheal-agent runs under must have create/get/watch/delete on
+	// Jobs in this namespace. Defaults to "meitheal-system" if empty.
 	Namespace string
 
 	// PVCName is the persistent volume claim mounted at /cache for
@@ -175,8 +175,8 @@ type RunGateJobToolConfig struct {
 	// volume and no /cache volumeMount, so the gate runs cold rather
 	// than mounting a claim nobody created. There is deliberately NO
 	// default -- a hardcoded name is what #1538 was about.
-	// The foreman-agent threads the submitting agent's per-agent claim
-	// (foreman.gateCache.pvcName) here via --gate-cache-pvc so named
+	// The meitheal-agent threads the submitting agent's per-agent claim
+	// (meitheal.gateCache.pvcName) here via --gate-cache-pvc so named
 	// agent pools mount the PVC the chart actually creates (#1538).
 	PVCName string
 
@@ -232,7 +232,7 @@ type RunGateJobToolConfig struct {
 
 	// NameFn lets tests pin Job names so polling can resolve them
 	// without listing. Production wires a uuid-suffixed naming helper.
-	// Default produces "foreman-gate-<task-name>-<unix-ms>".
+	// Default produces "meitheal-gate-<task-name>-<unix-ms>".
 	NameFn func(taskName string) string
 }
 
@@ -258,7 +258,7 @@ type RunGateJobTool struct {
 //
 // `cloneURL` is optional. When non-empty, the gate Job clones it
 // verbatim instead of constructing a URL from CloneURLBase + Repo. It
-// exists because v0.1 coders push to a fork (the foreman-agent's
+// exists because v0.1 coders push to a fork (the meitheal-agent's
 // --git-remote-url) while payload.repo names the upstream the fix is
 // for; the gate must verify the branch on the fork where it actually
 // lives. Empty preserves the historical CloneURLBase + Repo behavior.
@@ -318,12 +318,12 @@ func (RunGateJobTool) Schema() oai.ToolSchemaDef {
 "type": "object",
 "properties": {
   "repo":      {"type": "string", "description": "owner/name slug of the repo (e.g. defilantech/LLMKube)"},
-  "branch":    {"type": "string", "description": "branch on the fork to verify, e.g. foreman/issue-503"},
+  "branch":    {"type": "string", "description": "branch on the fork to verify, e.g. meitheal/issue-503"},
   "baseBranch": {"type": "string", "description": "base branch the bite check diffs against (default main)"},
   "upstreamURL": {"type": "string",
     "description": "canonical repo URL the bite check fetches baseBranch from (falls back to origin when empty)"},
   "checks":    {"type": "array", "items": {"type": "string"},
-    "description": "ordered list of make targets to run; defaults to the foreman gate suite"},
+    "description": "ordered list of make targets to run; defaults to the meitheal gate suite"},
   "biteCheck": {"type": "boolean",
     "description": "when true, run the bite check after standard checks"},
   "hunkCheck": {"type": "boolean",
@@ -691,7 +691,7 @@ func resolveGateCloneURL(cfg RunGateJobToolConfig, repoSlug, explicit string) st
 // only override the fields they care about.
 func applyConfigDefaults(c RunGateJobToolConfig) RunGateJobToolConfig {
 	if c.Namespace == "" {
-		c.Namespace = "foreman-system"
+		c.Namespace = "meitheal-system"
 	}
 	if c.Image == "" {
 		c.Image = "golang:1.26"
@@ -721,7 +721,7 @@ func applyConfigDefaults(c RunGateJobToolConfig) RunGateJobToolConfig {
 	return c
 }
 
-// gateJobName builds the gate Job name "foreman-gate-<task>-<unix-ms>",
+// gateJobName builds the gate Job name "meitheal-gate-<task>-<unix-ms>",
 // trimmed to the 63-char k8s object-name limit by truncating the TASK
 // portion, never the trailing <unix-ms> disambiguator. The #768 retry loop
 // submits a second gate Job for the same task while the prior attempt's Job
@@ -730,7 +730,7 @@ func applyConfigDefaults(c RunGateJobToolConfig) RunGateJobToolConfig {
 // the prior Job (AlreadyExists -> GATE-ERROR -> could-not-verify -> GO). Keeping
 // the suffix guarantees each submission gets a distinct name.
 func gateJobName(taskName string, unixMilli int64) string {
-	const prefix = "foreman-gate-"
+	const prefix = "meitheal-gate-"
 	suffix := fmt.Sprintf("-%d", unixMilli)
 	budget := 63 - len(prefix) - len(suffix)
 	if budget < 0 {

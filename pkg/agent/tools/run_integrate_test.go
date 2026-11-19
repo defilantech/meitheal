@@ -91,17 +91,17 @@ func integrateFixture(t *testing.T, slices map[string]map[string]string) (string
 
 func TestRunIntegrate_CleanUnionPushed(t *testing.T) {
 	origin, ws := integrateFixture(t, map[string]map[string]string{
-		"foreman/s/a": {"a/new.txt": "AAA\n"},
-		"foreman/s/b": {"b/new.txt": "BBB\n"},
+		"meitheal/s/a": {"a/new.txt": "AAA\n"},
+		"meitheal/s/b": {"b/new.txt": "BBB\n"},
 	})
 	tool := &RunIntegrateTool{Workspace: ws}
 	args, _ := json.Marshal(map[string]any{
-		"branch":      "foreman/s/integ",
+		"branch":      "meitheal/s/integ",
 		"baseBranch":  "main",
 		"upstreamURL": origin, // base fetched from here; slices from origin remote
 		"slices": []map[string]any{
-			{"name": "a", "branch": "foreman/s/a"},
-			{"name": "b", "branch": "foreman/s/b"},
+			{"name": "a", "branch": "meitheal/s/a"},
+			{"name": "b", "branch": "meitheal/s/b"},
 		},
 	})
 	res, err := tool.Execute(context.Background(), args)
@@ -112,7 +112,7 @@ func TestRunIntegrate_CleanUnionPushed(t *testing.T) {
 		t.Fatalf("verdict = %q (%s), want GATE-PASS", res.Verdict, res.Summary)
 	}
 	// the integration branch was pushed to origin and carries both slices.
-	git(t, ws, "fetch", "-q", "origin", "foreman/s/integ")
+	git(t, ws, "fetch", "-q", "origin", "meitheal/s/integ")
 	names := git(t, ws, "ls-tree", "-r", "--name-only", "FETCH_HEAD")
 	if !strings.Contains(names, "a/new.txt") || !strings.Contains(names, "b/new.txt") {
 		t.Fatalf("integration branch missing a slice's file:\n%s", names)
@@ -121,17 +121,17 @@ func TestRunIntegrate_CleanUnionPushed(t *testing.T) {
 
 func TestRunIntegrate_OverlapIsGateFail(t *testing.T) {
 	origin, ws := integrateFixture(t, map[string]map[string]string{
-		"foreman/s/a": {"shared.txt": "from-a\n"},
-		"foreman/s/b": {"shared.txt": "from-b\n"},
+		"meitheal/s/a": {"shared.txt": "from-a\n"},
+		"meitheal/s/b": {"shared.txt": "from-b\n"},
 	})
 	tool := &RunIntegrateTool{Workspace: ws}
 	args, _ := json.Marshal(map[string]any{
-		"branch":      "foreman/s/integ",
+		"branch":      "meitheal/s/integ",
 		"baseBranch":  "main",
 		"upstreamURL": origin,
 		"slices": []map[string]any{
-			{"name": "a", "branch": "foreman/s/a"},
-			{"name": "b", "branch": "foreman/s/b"},
+			{"name": "a", "branch": "meitheal/s/a"},
+			{"name": "b", "branch": "meitheal/s/b"},
 		},
 	})
 	res, err := tool.Execute(context.Background(), args)
@@ -156,10 +156,10 @@ func TestRunIntegrate_BadArgsIsGateError(t *testing.T) {
 func TestRunIntegrate_ArgvInjectionRejected(t *testing.T) {
 	tool := &RunIntegrateTool{Workspace: t.TempDir()}
 	cases := []string{
-		`{"branch":"--upload-pack=touch /tmp/pwn","slices":[{"name":"a","branch":"foreman/s/a"}]}`,
+		`{"branch":"--upload-pack=touch /tmp/pwn","slices":[{"name":"a","branch":"meitheal/s/a"}]}`,
 		`{"branch":"integ","slices":[{"name":"a","branch":"--output=/etc/x"}]}`,
-		`{"branch":"integ","baseBranch":"-x","slices":[{"name":"a","branch":"foreman/s/a"}]}`,
-		`{"branch":"integ","upstreamURL":"--upload-pack=x","slices":[{"name":"a","branch":"foreman/s/a"}]}`,
+		`{"branch":"integ","baseBranch":"-x","slices":[{"name":"a","branch":"meitheal/s/a"}]}`,
+		`{"branch":"integ","upstreamURL":"--upload-pack=x","slices":[{"name":"a","branch":"meitheal/s/a"}]}`,
 	}
 	for _, c := range cases {
 		res, _ := tool.Execute(context.Background(), json.RawMessage(c))

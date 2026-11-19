@@ -26,7 +26,7 @@ limitations under the License.
 // scoping") but voted GO. The model's verdict cannot be trusted; the grounded
 // findings can.
 //
-// Disabled by FOREMAN_VERDICT_FROM_FINDINGS=0.
+// Disabled by MEITHEAL_VERDICT_FROM_FINDINGS=0.
 package agent
 
 import (
@@ -35,19 +35,19 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/reviewer"
 )
 
 // verdictFromFindingsDisabled reports whether the promote rail is off via
-// FOREMAN_VERDICT_FROM_FINDINGS=0. Default (unset) is enabled.
+// MEITHEAL_VERDICT_FROM_FINDINGS=0. Default (unset) is enabled.
 //
 // This toggle is independent of the grounded (demote) rail's
-// FOREMAN_GROUNDED_FINDINGS: disabling one leaves the other active. The joint
+// MEITHEAL_GROUNDED_FINDINGS: disabling one leaves the other active. The joint
 // invariant (verdict == NO-GO iff a grounded blocking finding exists) therefore
 // holds only when both rails are enabled, which is the default.
 func verdictFromFindingsDisabled() bool {
-	return os.Getenv("FOREMAN_VERDICT_FROM_FINDINGS") == "0"
+	return os.Getenv("MEITHEAL_VERDICT_FROM_FINDINGS") == "0"
 }
 
 // enforceReviewerVerdictFromFindings promotes a model GO to NO-GO when it
@@ -56,11 +56,11 @@ func verdictFromFindingsDisabled() bool {
 func enforceReviewerVerdictFromFindings(
 	log logr.Logger,
 	extra map[string]any,
-	verdict foremanv1alpha1.AgenticTaskVerdict,
+	verdict meithealv1alpha1.AgenticTaskVerdict,
 	changedLines func(file string) map[int]bool,
-) foremanv1alpha1.AgenticTaskVerdict {
+) meithealv1alpha1.AgenticTaskVerdict {
 	if verdictFromFindingsDisabled() ||
-		verdict != foremanv1alpha1.AgenticTaskVerdictGo ||
+		verdict != meithealv1alpha1.AgenticTaskVerdictGo ||
 		extra == nil {
 		return verdict
 	}
@@ -88,5 +88,5 @@ func enforceReviewerVerdictFromFindings(
 		"GO promoted to NO-GO: %d grounded blocking finding(s) present", len(grounded))
 	log.Info("reviewer verdict-from-findings: GO promoted to NO-GO; grounded blocking finding present",
 		"groundedCount", len(grounded))
-	return foremanv1alpha1.AgenticTaskVerdictNoGo
+	return meithealv1alpha1.AgenticTaskVerdictNoGo
 }

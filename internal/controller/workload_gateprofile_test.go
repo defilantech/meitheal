@@ -19,7 +19,7 @@ package controller
 import (
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // TestEffectiveGateProfile pins the step-over-workload resolution the
@@ -27,14 +27,14 @@ import (
 // wins, an unset step falls back to the Workload default, and both unset
 // leaves nil (the "go" preset, i.e. pre-feature behavior).
 func TestEffectiveGateProfile(t *testing.T) {
-	node := &foremanv1alpha1.GateProfile{Language: foremanv1alpha1.GateLanguageNode}
-	python := &foremanv1alpha1.GateProfile{Language: foremanv1alpha1.GateLanguagePython}
+	node := &meithealv1alpha1.GateProfile{Language: meithealv1alpha1.GateLanguageNode}
+	python := &meithealv1alpha1.GateProfile{Language: meithealv1alpha1.GateLanguagePython}
 
 	cases := []struct {
 		name     string
-		step     *foremanv1alpha1.GateProfile
-		workload *foremanv1alpha1.GateProfile
-		want     *foremanv1alpha1.GateProfile
+		step     *meithealv1alpha1.GateProfile
+		workload *meithealv1alpha1.GateProfile
+		want     *meithealv1alpha1.GateProfile
 	}{
 		{"both unset -> nil (go preset)", nil, nil, nil},
 		{"workload default applies when step unset", nil, node, node},
@@ -44,10 +44,10 @@ func TestEffectiveGateProfile(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			w := &foremanv1alpha1.Workload{
-				Spec: foremanv1alpha1.WorkloadSpec{GateProfile: tc.workload},
+			w := &meithealv1alpha1.Workload{
+				Spec: meithealv1alpha1.WorkloadSpec{GateProfile: tc.workload},
 			}
-			step := foremanv1alpha1.PipelineStep{GateProfile: tc.step}
+			step := meithealv1alpha1.PipelineStep{GateProfile: tc.step}
 			if got := effectiveGateProfile(step, w); got != tc.want {
 				t.Errorf("effectiveGateProfile() = %v, want %v", got, tc.want)
 			}

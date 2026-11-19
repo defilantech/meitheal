@@ -65,9 +65,9 @@ const sampleDiff = "diff --git a/x.go b/x.go\n" +
 // carries no diff at all.
 const lsOutput = "total 32\n" +
 	"drwxr-xr-x 2 root root 4096 Aug 15 10:00 pkg\n" +
-	"-rw-r--r-- 1 root root 1234 Aug 15 10:00 Dockerfile.foreman-agent\n"
+	"-rw-r--r-- 1 root root 1234 Aug 15 10:00 Dockerfile.agent\n"
 
-const dockerfileContent = "FROM golang:1.22\nCOPY . .\nRUN go build -o /out /cmd/foreman-agent\n"
+const dockerfileContent = "FROM golang:1.22\nCOPY . .\nRUN go build -o /out /cmd/meitheal-agent\n"
 
 func TestReviewerSawDiff_GitDiffHeader(t *testing.T) {
 	tr := []oai.Message{
@@ -106,7 +106,7 @@ func TestReviewerSawDiff_NoDiff_ObservedFailure(t *testing.T) {
 	tr := []oai.Message{
 		assistantBash("call-1", "ls -l"),
 		toolResult("bash", "call-1", lsOutput),
-		assistantBash("call-2", "cat Dockerfile.foreman-agent"),
+		assistantBash("call-2", "cat Dockerfile.agent"),
 		toolResult("bash", "call-2", dockerfileContent),
 	}
 	if reviewerSawDiff(tr) {
@@ -153,8 +153,8 @@ func TestReviewerSawDiff_EmptyToolNameCorrelatedByToolCallID(t *testing.T) {
 func TestUngroundedReviewFinding_GoNoDiff(t *testing.T) {
 	tr := []oai.Message{
 		assistantBash("call-1", "ls -l"),
-		toolResult("bash", "call-1", "total 8\n-rw-r--r-- 1 root root 100 Aug 15 10:00 Dockerfile.foreman-agent\n"),
-		assistantBash("call-2", "cat Dockerfile.foreman-agent"),
+		toolResult("bash", "call-1", "total 8\n-rw-r--r-- 1 root root 100 Aug 15 10:00 Dockerfile.agent\n"),
+		assistantBash("call-2", "cat Dockerfile.agent"),
 		toolResult("bash", "call-2", "FROM golang:1.22\n"),
 	}
 	failed, note := ungroundedReviewFinding(tr, "GO")
@@ -191,7 +191,7 @@ func TestUngroundedReviewFinding_GoWithDiff(t *testing.T) {
 func TestUngroundedReviewFinding_NoGoNoDiff(t *testing.T) {
 	tr := []oai.Message{
 		assistantBash("call-1", "ls -l"),
-		toolResult("bash", "call-1", "total 8\n-rw-r--r-- 1 root root 100 Aug 15 10:00 Dockerfile.foreman-agent\n"),
+		toolResult("bash", "call-1", "total 8\n-rw-r--r-- 1 root root 100 Aug 15 10:00 Dockerfile.agent\n"),
 	}
 	failed, note := ungroundedReviewFinding(tr, "NO-GO")
 	if failed {

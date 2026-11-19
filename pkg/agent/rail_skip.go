@@ -22,7 +22,7 @@ const railsSkippedKey = "railsSkipped"
 
 // Rail names. Used in railsSkipped entries and, for the rails that can
 // rewrite a verdict, in the verdictDemotedBy marker those rails stamp. The
-// demoting rails take their names from pkg/foreman/agent/reviewer so the
+// demoting rails take their names from pkg/agent/reviewer so the
 // controller, which reads verdictDemotedBy back out of the result envelope
 // and cannot import this package, compares against the same strings (#1636).
 const (

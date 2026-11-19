@@ -1,6 +1,6 @@
-# Foreman model compatibility
+# Meitheal model compatibility
 
-The Foreman native agent loop assumes the inference endpoint
+The Meitheal native agent loop assumes the inference endpoint
 behind every Agent speaks **OpenAI-style function calling**: it
 emits structured `tool_calls` in chat-completions responses, the
 loop parses them, dispatches the named tool, and feeds the result
@@ -27,14 +27,14 @@ welcome.
   reconciles known confabulation surfaces server-side (see
   [#582](https://github.com/defilantech/LLMKube/issues/582) and the
   `reconcileReviewer*` helpers in
-  `pkg/foreman/agent/executor_native.go`), so even a high-confab
+  `pkg/agent/executor_native.go`), so even a high-confab
   model is usable; the rate just describes how much work the
   reconciler does.
 - **Notes:** observed quirks worth documenting.
 
 ## What "verified" means here
 
-Every row below was produced by running the model as a Foreman agent against
+Every row below was produced by running the model as a Meitheal agent against
 **real issues in this repository**, not a synthetic benchmark. The counts are
 actual `AgenticTask` outcomes from the fleet.
 
@@ -55,7 +55,7 @@ than as a quality ranking.
 
 ## Hardware classes
 
-Foreman is not Apple-only, and has not been for some time. All three of these
+Meitheal is not Apple-only, and has not been for some time. All three of these
 run coders and reviewers today:
 
 | Class | Reference host | Runtime | Notes |
@@ -202,7 +202,7 @@ tool-calls implementation. Gemma 3 and Mistral-Small-3.2 do not.
 
 ## Contributing entries
 
-If you run Foreman against a model not in this table, please file
+If you run Meitheal against a model not in this table, please file
 an issue or PR with:
 
 - Model + quantization + host hardware
@@ -217,7 +217,7 @@ they actually saw.
 
 ## Context strategy: window vs session
 
-Foreman builds each turn's request from the running transcript using one of
+Meitheal builds each turn's request from the running transcript using one of
 two strategies, set per Agent via `spec.contextStrategy`.
 
 **`window` (default).** Observation masking: tool results older than
@@ -228,7 +228,7 @@ prompt every turn, it defeats prompt caching on runtimes that support it.
 **`session`.** A stable, append-only prefix. Nothing is masked, so a caching
 runtime (for example llama.cpp's prompt cache) reuses the prefix and only
 prefills the new tokens each turn. When the payload approaches
-`contextWindowTokens`, Foreman compacts by dropping the oldest middle turns,
+`contextWindowTokens`, Meitheal compacts by dropping the oldest middle turns,
 always keeping the system prompt, the original task, and the most recent turn.
 
 Use `session` for large-context models on caching runtimes. Two settings

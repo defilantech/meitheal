@@ -1,6 +1,6 @@
-# Running Foreman on non-Go projects
+# Running Meitheal on non-Go projects
 
-Foreman's verify gate is language-configurable. By default it runs the Go
+Meitheal's verify gate is language-configurable. By default it runs the Go
 toolchain (gofmt, golangci-lint, go build, go test), because LLMKube is a Go
 project. Point an AgenticTask at a `gateProfile` and the same clean-room gate
 runs Python, Rust, Node, or any command set you give it. The coder loop, the
@@ -13,7 +13,7 @@ end-to-end example you can clone and run.
 
 ## The gate, briefly
 
-When a coder branch is ready, Foreman runs it through a verify gate before a
+When a coder branch is ready, Meitheal runs it through a verify gate before a
 reviewer ever sees it. The gate is a short-lived Kubernetes Job: it clones the
 branch into a clean workspace, runs format, lint, build, and test commands in
 order, checks the tree is clean afterward, and emits `GATE PASS` or
@@ -56,7 +56,7 @@ steps alike), so a Workload-driven source (a work-queue bridge) can gate a
 non-Go repo without hand-authoring tasks.
 
 ```yaml
-apiVersion: foreman.llmkube.dev/v1alpha1
+apiVersion: meitheal.dev/v1alpha1
 kind: Workload
 spec:
   repo: your-org/your-node-app
@@ -187,7 +187,7 @@ installing them in-command on every gate run gets slow.
 
 ## A verified example
 
-The [`defilantech/foreman-python-example`](https://github.com/defilantech/foreman-python-example)
+The [`defilantech/meitheal-python-example`](https://github.com/defilantech/meitheal-python-example)
 repo is a minimal Python project wired for exactly this. It ships a
 `celsius_to_fahrenheit` function, a seeded task to add its
 `fahrenheit_to_celsius` companion, and an `AgenticTask` with the Python
@@ -197,7 +197,7 @@ repo is a minimal Python project wired for exactly this. It ships a
 Running the gate against a clean branch produces:
 
 ```
-=== clone defilantech/foreman-python-example @ gate-pass-demo ===
+=== clone defilantech/meitheal-python-example @ gate-pass-demo ===
 === pip install -q ruff && ruff format --check . ===
 2 files already formatted
 === pip install -q ruff && ruff check . ===
@@ -229,6 +229,6 @@ fails buggy code, which is the whole point.
 
 ## See also
 
-- [`defilantech/foreman-python-example`](https://github.com/defilantech/foreman-python-example): clone-and-run sample project for this page.
-- [Foreman overview](/docs/foreman): the CRDs and the coder / verifier / reviewer pipeline.
+- [`defilantech/meitheal-python-example`](https://github.com/defilantech/meitheal-python-example): clone-and-run sample project for this page.
+- [Meitheal overview](/docs/meitheal): the CRDs and the coder / verifier / reviewer pipeline.
 - [M4 verifier runbook](./runbook-m4): standing up the verify gate on a node.

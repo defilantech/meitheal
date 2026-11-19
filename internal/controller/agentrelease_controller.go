@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // nodeStatusPhase values for per-node rollout state.
@@ -62,17 +62,17 @@ type AgentReleaseReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agentreleases,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agentreleases/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=agentreleases/finalizers,verbs=update
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=fleetnodes,verbs=get;list;watch
-// +kubebuilder:rbac:groups=foreman.llmkube.dev,resources=fleetnodes/status,verbs=patch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agentreleases,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agentreleases/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=agentreleases/finalizers,verbs=update
+// +kubebuilder:rbac:groups=meitheal.dev,resources=fleetnodes,verbs=get;list;watch
+// +kubebuilder:rbac:groups=meitheal.dev,resources=fleetnodes/status,verbs=patch
 
 // Reconcile is the main reconciliation entry point for AgentRelease.
 func (r *AgentReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	var release foremanv1alpha1.AgentRelease
+	var release meithealv1alpha1.AgentRelease
 	if err := r.Get(ctx, req.NamespacedName, &release); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -95,8 +95,8 @@ func (r *AgentReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Terminal phases: nothing left to do.
-	if release.Status.Phase == foremanv1alpha1.AgentReleasePhaseSucceeded ||
-		release.Status.Phase == foremanv1alpha1.AgentReleasePhaseFailed {
+	if release.Status.Phase == meithealv1alpha1.AgentReleasePhaseSucceeded ||
+		release.Status.Phase == meithealv1alpha1.AgentReleasePhaseFailed {
 		return ctrl.Result{}, nil
 	}
 
@@ -105,7 +105,7 @@ func (r *AgentReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 // reconcileActive drives the main rollout state machine for a non-paused,
 // non-terminal AgentRelease.
-func (r *AgentReleaseReconciler) reconcileActive(ctx context.Context, release *foremanv1alpha1.AgentRelease) (ctrl.Result, error) {
+func (r *AgentReleaseReconciler) reconcileActive(ctx context.Context, release *meithealv1alpha1.AgentRelease) (ctrl.Result, error) {
 	now := time.Now()
 
 	// Resolve matching FleetNodes.
@@ -138,7 +138,7 @@ func (r *AgentReleaseReconciler) reconcileActive(ctx context.Context, release *f
 					if findArtifact(release.Spec.Artifacts, nodeOS, nodeArch) == nil {
 						msg := fmt.Sprintf("no artifact for %s/%s", nodeOS, nodeArch)
 						nodeStatuses[i].Phase = nodePhaseFailed
-						nodeStatuses[i].Reason = foremanv1alpha1.AgentReleaseNodeReasonNoArtifact
+						nodeStatuses[i].Reason = meithealv1alpha1.AgentReleaseNodeReasonNoArtifact
 						nodeStatuses[i].Message = msg
 						nodeStatuses[i].LastTransitionTime = &now2
 						failedNodes = append(failedNodes, nodes[j].Name)
@@ -204,7 +204,7 @@ func (r *AgentReleaseReconciler) reconcileActive(ctx context.Context, release *f
 		healthGateSecs = 30 * time.Second
 	}
 	requeueAfter := healthGateSecs
-	if halfHeartbeat := foremanv1alpha1.FleetNodeHeartbeatTimeout / 2; halfHeartbeat < requeueAfter {
+	if halfHeartbeat := meithealv1alpha1.FleetNodeHeartbeatTimeout / 2; halfHeartbeat < requeueAfter {
 		requeueAfter = halfHeartbeat
 	}
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
@@ -212,8 +212,8 @@ func (r *AgentReleaseReconciler) reconcileActive(ctx context.Context, release *f
 
 // resolveTargetNodes lists FleetNodes matching the release's agentKind and
 // optional label selector.
-func (r *AgentReleaseReconciler) resolveTargetNodes(ctx context.Context, release *foremanv1alpha1.AgentRelease) ([]foremanv1alpha1.FleetNode, error) {
-	var list foremanv1alpha1.FleetNodeList
+func (r *AgentReleaseReconciler) resolveTargetNodes(ctx context.Context, release *meithealv1alpha1.AgentRelease) ([]meithealv1alpha1.FleetNode, error) {
+	var list meithealv1alpha1.FleetNodeList
 	if err := r.List(ctx, &list); err != nil {
 		return nil, fmt.Errorf("list FleetNodes: %w", err)
 	}
@@ -227,7 +227,7 @@ func (r *AgentReleaseReconciler) resolveTargetNodes(ctx context.Context, release
 		}
 	}
 
-	var matched []foremanv1alpha1.FleetNode
+	var matched []meithealv1alpha1.FleetNode
 	for i := range list.Items {
 		n := &list.Items[i]
 		if n.Status.AgentKind != release.Spec.AgentKind {
@@ -253,12 +253,12 @@ func (r *AgentReleaseReconciler) resolveTargetNodes(ctx context.Context, release
 //   - names of nodes that hit a failure (no-artifact or timeout)
 func (r *AgentReleaseReconciler) computeNodeStatuses(
 	ctx context.Context,
-	release *foremanv1alpha1.AgentRelease,
-	nodes []foremanv1alpha1.FleetNode,
+	release *meithealv1alpha1.AgentRelease,
+	nodes []meithealv1alpha1.FleetNode,
 	now time.Time,
-) ([]foremanv1alpha1.AgentReleaseNodeStatus, int, []string, []string, error) {
+) ([]meithealv1alpha1.AgentReleaseNodeStatus, int, []string, []string, error) {
 	// Index existing status entries by name for O(1) lookup.
-	existing := make(map[string]foremanv1alpha1.AgentReleaseNodeStatus, len(release.Status.NodeStatuses))
+	existing := make(map[string]meithealv1alpha1.AgentReleaseNodeStatus, len(release.Status.NodeStatuses))
 	for _, ns := range release.Status.NodeStatuses {
 		existing[ns.Name] = ns
 	}
@@ -275,7 +275,7 @@ func (r *AgentReleaseReconciler) computeNodeStatuses(
 		minHealthySecs = 60 * time.Second
 	}
 
-	updated := make([]foremanv1alpha1.AgentReleaseNodeStatus, 0, len(nodes))
+	updated := make([]meithealv1alpha1.AgentReleaseNodeStatus, 0, len(nodes))
 	updatedCount := 0
 	var inFlight []string
 	var failed []string
@@ -285,7 +285,7 @@ func (r *AgentReleaseReconciler) computeNodeStatuses(
 		ns := existing[n.Name]
 		ns.Name = n.Name
 
-		ready := !n.HeartbeatStale(now) && n.Status.Phase == foremanv1alpha1.FleetNodePhaseReady
+		ready := !n.HeartbeatStale(now) && n.Status.Phase == meithealv1alpha1.FleetNodePhaseReady
 
 		if n.Status.AgentVersion == release.Spec.Version && ready {
 			// Node is reporting the target version with a fresh heartbeat.
@@ -337,7 +337,7 @@ func (r *AgentReleaseReconciler) computeNodeStatuses(
 				elapsed := now.Sub(ns.DispatchedAt.Time)
 				if elapsed > timeoutSecs {
 					ns.Phase = nodePhaseFailed
-					ns.Reason = foremanv1alpha1.AgentReleaseNodeReasonTimeout
+					ns.Reason = meithealv1alpha1.AgentReleaseNodeReasonTimeout
 					ns.Message = fmt.Sprintf("update timed out after %s (threshold: %s)",
 						elapsed.Round(time.Second), timeoutSecs)
 					nowMeta := metav1.NewTime(now)
@@ -393,7 +393,7 @@ func (r *AgentReleaseReconciler) computeNodeStatuses(
 // clearUpdateRequest clears the FleetNode's status.updateRequest via a
 // field-scoped merge patch, leaving all other status fields untouched.
 func (r *AgentReleaseReconciler) clearUpdateRequest(ctx context.Context, nodeName string) error {
-	var current foremanv1alpha1.FleetNode
+	var current meithealv1alpha1.FleetNode
 	if err := r.Get(ctx, types.NamespacedName{Name: nodeName}, &current); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil // already gone
@@ -415,16 +415,16 @@ func (r *AgentReleaseReconciler) clearUpdateRequest(ctx context.Context, nodeNam
 // and writes an updateRequest onto each matching FleetNode.
 func (r *AgentReleaseReconciler) dispatchCandidates(
 	ctx context.Context,
-	release *foremanv1alpha1.AgentRelease,
-	nodes []foremanv1alpha1.FleetNode,
-	nodeStatuses []foremanv1alpha1.AgentReleaseNodeStatus,
+	release *meithealv1alpha1.AgentRelease,
+	nodes []meithealv1alpha1.FleetNode,
+	nodeStatuses []meithealv1alpha1.AgentReleaseNodeStatus,
 	capacity int,
 	now time.Time,
 ) error {
 	log := logf.FromContext(ctx)
 
 	// Index current node statuses by name.
-	nsMap := make(map[string]foremanv1alpha1.AgentReleaseNodeStatus, len(nodeStatuses))
+	nsMap := make(map[string]meithealv1alpha1.AgentReleaseNodeStatus, len(nodeStatuses))
 	for _, ns := range nodeStatuses {
 		nsMap[ns.Name] = ns
 	}
@@ -468,7 +468,7 @@ func (r *AgentReleaseReconciler) dispatchCandidates(
 		}
 
 		// Re-fetch the FleetNode for a crash-safe write (guard against informer lag).
-		var current foremanv1alpha1.FleetNode
+		var current meithealv1alpha1.FleetNode
 		if err := r.Get(ctx, types.NamespacedName{Name: n.Name}, &current); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -477,7 +477,7 @@ func (r *AgentReleaseReconciler) dispatchCandidates(
 		}
 
 		patch := client.MergeFrom(current.DeepCopy())
-		current.Status.UpdateRequest = &foremanv1alpha1.FleetNodeUpdateRequest{
+		current.Status.UpdateRequest = &meithealv1alpha1.FleetNodeUpdateRequest{
 			TargetVersion: release.Spec.Version,
 			URL:           artifact.URL,
 			SHA256:        artifact.SHA256,
@@ -519,7 +519,7 @@ func (r *AgentReleaseReconciler) dispatchCandidates(
 // findArtifact returns the AgentReleaseArtifact matching the given os/arch,
 // or nil if none matches. Empty os/arch never matches (we need both to select
 // an artifact).
-func findArtifact(artifacts []foremanv1alpha1.AgentReleaseArtifact, nodeOS, nodeArch string) *foremanv1alpha1.AgentReleaseArtifact {
+func findArtifact(artifacts []meithealv1alpha1.AgentReleaseArtifact, nodeOS, nodeArch string) *meithealv1alpha1.AgentReleaseArtifact {
 	if nodeOS == "" || nodeArch == "" {
 		return nil
 	}
@@ -535,12 +535,12 @@ func findArtifact(artifacts []foremanv1alpha1.AgentReleaseArtifact, nodeOS, node
 // release status. Re-fetches the release before patching for crash-safety.
 func (r *AgentReleaseReconciler) patchCounts(
 	ctx context.Context,
-	release *foremanv1alpha1.AgentRelease,
+	release *meithealv1alpha1.AgentRelease,
 	targetCount, updatedCount int32,
 	inFlight []string,
-	nodeStatuses []foremanv1alpha1.AgentReleaseNodeStatus,
+	nodeStatuses []meithealv1alpha1.AgentReleaseNodeStatus,
 ) error {
-	var current foremanv1alpha1.AgentRelease
+	var current meithealv1alpha1.AgentRelease
 	if err := r.Get(ctx, types.NamespacedName{Name: release.Name}, &current); err != nil {
 		return fmt.Errorf("re-fetch AgentRelease for counts patch: %w", err)
 	}
@@ -555,30 +555,30 @@ func (r *AgentReleaseReconciler) patchCounts(
 }
 
 // haltFailed transitions the release to Failed and sets the Halted condition.
-func (r *AgentReleaseReconciler) haltFailed(ctx context.Context, release *foremanv1alpha1.AgentRelease, nodeName string) (ctrl.Result, error) {
-	var current foremanv1alpha1.AgentRelease
+func (r *AgentReleaseReconciler) haltFailed(ctx context.Context, release *meithealv1alpha1.AgentRelease, nodeName string) (ctrl.Result, error) {
+	var current meithealv1alpha1.AgentRelease
 	if err := r.Get(ctx, types.NamespacedName{Name: release.Name}, &current); err != nil {
 		return ctrl.Result{}, fmt.Errorf("re-fetch AgentRelease for halt: %w", err)
 	}
-	if current.Status.Phase == foremanv1alpha1.AgentReleasePhaseFailed {
+	if current.Status.Phase == meithealv1alpha1.AgentReleasePhaseFailed {
 		return ctrl.Result{}, nil // already halted
 	}
 
 	patch := client.MergeFrom(current.DeepCopy())
-	current.Status.Phase = foremanv1alpha1.AgentReleasePhaseFailed
+	current.Status.Phase = meithealv1alpha1.AgentReleasePhaseFailed
 	now := metav1.Now()
 
 	// Determine the reason: read the typed Reason field on the node status
 	// rather than parsing the human-readable message string.
-	reason := string(foremanv1alpha1.AgentReleaseNodeReasonTimeout)
+	reason := string(meithealv1alpha1.AgentReleaseNodeReasonTimeout)
 	msg := fmt.Sprintf("node %q timed out during update; rollout halted to bound blast radius", nodeName)
 	for _, ns := range current.Status.NodeStatuses {
 		if ns.Name == nodeName {
 			switch ns.Reason {
-			case foremanv1alpha1.AgentReleaseNodeReasonNoArtifact:
-				reason = string(foremanv1alpha1.AgentReleaseNodeReasonNoArtifact)
+			case meithealv1alpha1.AgentReleaseNodeReasonNoArtifact:
+				reason = string(meithealv1alpha1.AgentReleaseNodeReasonNoArtifact)
 				msg = fmt.Sprintf("node %q has no matching artifact: %s", nodeName, ns.Message)
-			case foremanv1alpha1.AgentReleaseNodeReasonTimeout:
+			case meithealv1alpha1.AgentReleaseNodeReasonTimeout:
 				// default msg already set above
 			}
 			break
@@ -596,16 +596,16 @@ func (r *AgentReleaseReconciler) haltFailed(ctx context.Context, release *forema
 }
 
 // setSucceeded marks the release as Succeeded and records the Complete condition.
-func (r *AgentReleaseReconciler) setSucceeded(ctx context.Context, release *foremanv1alpha1.AgentRelease) (ctrl.Result, error) {
-	var current foremanv1alpha1.AgentRelease
+func (r *AgentReleaseReconciler) setSucceeded(ctx context.Context, release *meithealv1alpha1.AgentRelease) (ctrl.Result, error) {
+	var current meithealv1alpha1.AgentRelease
 	if err := r.Get(ctx, types.NamespacedName{Name: release.Name}, &current); err != nil {
 		return ctrl.Result{}, fmt.Errorf("re-fetch AgentRelease for succeed: %w", err)
 	}
-	if current.Status.Phase == foremanv1alpha1.AgentReleasePhaseSucceeded {
+	if current.Status.Phase == meithealv1alpha1.AgentReleasePhaseSucceeded {
 		return ctrl.Result{}, nil
 	}
 	patch := client.MergeFrom(current.DeepCopy())
-	current.Status.Phase = foremanv1alpha1.AgentReleasePhaseSucceeded
+	current.Status.Phase = meithealv1alpha1.AgentReleasePhaseSucceeded
 	current.Status.InFlightNodes = nil
 	now := metav1.Now()
 	setCondition(&current.Status.Conditions, metav1.Condition{
@@ -619,13 +619,13 @@ func (r *AgentReleaseReconciler) setSucceeded(ctx context.Context, release *fore
 }
 
 // setAwaitingApproval holds the release at AwaitingApproval.
-func (r *AgentReleaseReconciler) setAwaitingApproval(ctx context.Context, release *foremanv1alpha1.AgentRelease) (ctrl.Result, error) {
-	var current foremanv1alpha1.AgentRelease
+func (r *AgentReleaseReconciler) setAwaitingApproval(ctx context.Context, release *meithealv1alpha1.AgentRelease) (ctrl.Result, error) {
+	var current meithealv1alpha1.AgentRelease
 	if err := r.Get(ctx, types.NamespacedName{Name: release.Name}, &current); err != nil {
 		return ctrl.Result{}, fmt.Errorf("re-fetch AgentRelease for awaiting approval: %w", err)
 	}
 	patch := client.MergeFrom(current.DeepCopy())
-	current.Status.Phase = foremanv1alpha1.AgentReleasePhaseAwaitingApproval
+	current.Status.Phase = meithealv1alpha1.AgentReleasePhaseAwaitingApproval
 	now := metav1.Now()
 	setCondition(&current.Status.Conditions, metav1.Condition{
 		Type:               "Approved",
@@ -638,13 +638,13 @@ func (r *AgentReleaseReconciler) setAwaitingApproval(ctx context.Context, releas
 }
 
 // setInProgress sets the phase to InProgress and the Approved=True condition.
-func (r *AgentReleaseReconciler) setInProgress(ctx context.Context, release *foremanv1alpha1.AgentRelease) error {
-	var current foremanv1alpha1.AgentRelease
+func (r *AgentReleaseReconciler) setInProgress(ctx context.Context, release *meithealv1alpha1.AgentRelease) error {
+	var current meithealv1alpha1.AgentRelease
 	if err := r.Get(ctx, types.NamespacedName{Name: release.Name}, &current); err != nil {
 		return fmt.Errorf("re-fetch AgentRelease for in-progress: %w", err)
 	}
 	patch := client.MergeFrom(current.DeepCopy())
-	current.Status.Phase = foremanv1alpha1.AgentReleasePhaseInProgress
+	current.Status.Phase = meithealv1alpha1.AgentReleasePhaseInProgress
 	now := metav1.Now()
 	setCondition(&current.Status.Conditions, metav1.Condition{
 		Type:               "Approved",
@@ -657,29 +657,29 @@ func (r *AgentReleaseReconciler) setInProgress(ctx context.Context, release *for
 }
 
 // setPaused sets phase=Paused (from any non-terminal phase).
-func (r *AgentReleaseReconciler) setPaused(ctx context.Context, release *foremanv1alpha1.AgentRelease) (ctrl.Result, error) {
-	if release.Status.Phase == foremanv1alpha1.AgentReleasePhasePaused ||
-		release.Status.Phase == foremanv1alpha1.AgentReleasePhaseSucceeded ||
-		release.Status.Phase == foremanv1alpha1.AgentReleasePhaseFailed {
+func (r *AgentReleaseReconciler) setPaused(ctx context.Context, release *meithealv1alpha1.AgentRelease) (ctrl.Result, error) {
+	if release.Status.Phase == meithealv1alpha1.AgentReleasePhasePaused ||
+		release.Status.Phase == meithealv1alpha1.AgentReleasePhaseSucceeded ||
+		release.Status.Phase == meithealv1alpha1.AgentReleasePhaseFailed {
 		return ctrl.Result{}, nil
 	}
-	var current foremanv1alpha1.AgentRelease
+	var current meithealv1alpha1.AgentRelease
 	if err := r.Get(ctx, types.NamespacedName{Name: release.Name}, &current); err != nil {
 		return ctrl.Result{}, fmt.Errorf("re-fetch AgentRelease for paused: %w", err)
 	}
 	patch := client.MergeFrom(current.DeepCopy())
-	current.Status.Phase = foremanv1alpha1.AgentReleasePhasePaused
+	current.Status.Phase = meithealv1alpha1.AgentReleasePhasePaused
 	return ctrl.Result{}, r.Status().Patch(ctx, &current, patch)
 }
 
 // setInitialPending normalizes an empty phase to Pending on first reconcile.
-func (r *AgentReleaseReconciler) setInitialPending(ctx context.Context, release *foremanv1alpha1.AgentRelease) (ctrl.Result, error) {
-	var current foremanv1alpha1.AgentRelease
+func (r *AgentReleaseReconciler) setInitialPending(ctx context.Context, release *meithealv1alpha1.AgentRelease) (ctrl.Result, error) {
+	var current meithealv1alpha1.AgentRelease
 	if err := r.Get(ctx, types.NamespacedName{Name: release.Name}, &current); err != nil {
 		return ctrl.Result{}, fmt.Errorf("re-fetch AgentRelease for pending init: %w", err)
 	}
 	patch := client.MergeFrom(current.DeepCopy())
-	current.Status.Phase = foremanv1alpha1.AgentReleasePhasePending
+	current.Status.Phase = meithealv1alpha1.AgentReleasePhasePending
 	current.Status.ObservedGeneration = release.Generation
 	current.Status.DesiredVersion = release.Spec.Version
 	if err := r.Status().Patch(ctx, &current, patch); err != nil {
@@ -693,8 +693,8 @@ func (r *AgentReleaseReconciler) setInitialPending(ctx context.Context, release 
 // version re-triggers the soak check promptly.
 func (r *AgentReleaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&foremanv1alpha1.AgentRelease{}).
-		Watches(&foremanv1alpha1.FleetNode{}, handler.EnqueueRequestsFromMapFunc(r.fleetNodeEnqueues)).
+		For(&meithealv1alpha1.AgentRelease{}).
+		Watches(&meithealv1alpha1.FleetNode{}, handler.EnqueueRequestsFromMapFunc(r.fleetNodeEnqueues)).
 		Named("agentrelease").
 		Complete(r)
 }
@@ -706,12 +706,12 @@ func (r *AgentReleaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *AgentReleaseReconciler) fleetNodeEnqueues(ctx context.Context, obj client.Object) []ctrl.Request {
 	log := logf.FromContext(ctx)
 
-	node, ok := obj.(*foremanv1alpha1.FleetNode)
+	node, ok := obj.(*meithealv1alpha1.FleetNode)
 	if !ok {
 		return nil
 	}
 
-	var list foremanv1alpha1.AgentReleaseList
+	var list meithealv1alpha1.AgentReleaseList
 	if err := r.List(ctx, &list); err != nil {
 		log.Error(err, "fleetnode-trigger list AgentReleases failed")
 		return nil
@@ -721,8 +721,8 @@ func (r *AgentReleaseReconciler) fleetNodeEnqueues(ctx context.Context, obj clie
 	for i := range list.Items {
 		ar := &list.Items[i]
 		// Skip terminal releases.
-		if ar.Status.Phase == foremanv1alpha1.AgentReleasePhaseSucceeded ||
-			ar.Status.Phase == foremanv1alpha1.AgentReleasePhaseFailed {
+		if ar.Status.Phase == meithealv1alpha1.AgentReleasePhaseSucceeded ||
+			ar.Status.Phase == meithealv1alpha1.AgentReleasePhaseFailed {
 			continue
 		}
 		// Filter by agentKind.

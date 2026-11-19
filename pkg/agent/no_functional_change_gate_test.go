@@ -74,7 +74,7 @@ func TestFunctionalChangeInDiff(t *testing.T) {
 		},
 		{
 			name:  "tests only",
-			names: "pkg/foreman/agent/thing_test.go",
+			names: "pkg/agent/thing_test.go",
 			want:  false,
 		},
 		{

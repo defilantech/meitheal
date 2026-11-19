@@ -23,21 +23,21 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func scheduledTask(
-	name, node string, kind foremanv1alpha1.AgenticTaskKind, age time.Duration,
-) *foremanv1alpha1.AgenticTask {
-	return &foremanv1alpha1.AgenticTask{
+	name, node string, kind meithealv1alpha1.AgenticTaskKind, age time.Duration,
+) *meithealv1alpha1.AgenticTask {
+	return &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
 			Namespace:         "default",
 			CreationTimestamp: metav1.NewTime(time.Now().Add(-age)),
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{Kind: kind},
-		Status: foremanv1alpha1.AgenticTaskStatus{
-			Phase:        foremanv1alpha1.AgenticTaskPhaseScheduled,
+		Spec: meithealv1alpha1.AgenticTaskSpec{Kind: kind},
+		Status: meithealv1alpha1.AgenticTaskStatus{
+			Phase:        meithealv1alpha1.AgenticTaskPhaseScheduled,
 			AssignedNode: node,
 		},
 	}
@@ -48,11 +48,11 @@ func scheduledTask(
 // Breadth-first (List-order) claiming starves downstream tasks behind a
 // deep issue-fix backlog, so no Workload ever completes.
 func TestSortTasksDepthFirst_KindOrder(t *testing.T) {
-	tasks := []*foremanv1alpha1.AgenticTask{
-		scheduledTask("free", "n", foremanv1alpha1.AgenticTaskKindFreeform, time.Hour),
-		scheduledTask("code", "n", foremanv1alpha1.AgenticTaskKindIssueFix, time.Hour),
-		scheduledTask("rev", "n", foremanv1alpha1.AgenticTaskKindReview, time.Minute),
-		scheduledTask("ver", "n", foremanv1alpha1.AgenticTaskKindVerify, time.Minute),
+	tasks := []*meithealv1alpha1.AgenticTask{
+		scheduledTask("free", "n", meithealv1alpha1.AgenticTaskKindFreeform, time.Hour),
+		scheduledTask("code", "n", meithealv1alpha1.AgenticTaskKindIssueFix, time.Hour),
+		scheduledTask("rev", "n", meithealv1alpha1.AgenticTaskKindReview, time.Minute),
+		scheduledTask("ver", "n", meithealv1alpha1.AgenticTaskKindVerify, time.Minute),
 	}
 	sortTasksDepthFirst(tasks)
 	got := []string{tasks[0].Name, tasks[1].Name, tasks[2].Name, tasks[3].Name}
@@ -67,9 +67,9 @@ func TestSortTasksDepthFirst_KindOrder(t *testing.T) {
 // TestSortTasksDepthFirst_OldestFirstWithinKind pins the tiebreak: within
 // a kind, the oldest Scheduled task is claimed first so nothing starves.
 func TestSortTasksDepthFirst_OldestFirstWithinKind(t *testing.T) {
-	tasks := []*foremanv1alpha1.AgenticTask{
-		scheduledTask("code-new", "n", foremanv1alpha1.AgenticTaskKindIssueFix, time.Minute),
-		scheduledTask("code-old", "n", foremanv1alpha1.AgenticTaskKindIssueFix, time.Hour),
+	tasks := []*meithealv1alpha1.AgenticTask{
+		scheduledTask("code-new", "n", meithealv1alpha1.AgenticTaskKindIssueFix, time.Minute),
+		scheduledTask("code-old", "n", meithealv1alpha1.AgenticTaskKindIssueFix, time.Hour),
 	}
 	sortTasksDepthFirst(tasks)
 	if tasks[0].Name != "code-old" {
@@ -81,9 +81,9 @@ func TestSortTasksDepthFirst_OldestFirstWithinKind(t *testing.T) {
 // regression: a review task scheduled AFTER a backlog of issue-fix tasks
 // must still be claimed first.
 func TestPollOnce_ClaimsReviewBeforeOlderIssueFix(t *testing.T) {
-	code := scheduledTask("wl-a-code-1", "node-1", foremanv1alpha1.AgenticTaskKindIssueFix, time.Hour)
-	review := scheduledTask("wl-b-review-2-0", "node-1", foremanv1alpha1.AgenticTaskKindReview, time.Minute)
-	other := scheduledTask("wl-c-code-3", "other-node", foremanv1alpha1.AgenticTaskKindReview, time.Minute)
+	code := scheduledTask("wl-a-code-1", "node-1", meithealv1alpha1.AgenticTaskKindIssueFix, time.Hour)
+	review := scheduledTask("wl-b-review-2-0", "node-1", meithealv1alpha1.AgenticTaskKindReview, time.Minute)
+	other := scheduledTask("wl-c-code-3", "other-node", meithealv1alpha1.AgenticTaskKindReview, time.Minute)
 
 	c := newRecoveryClient(t, code, review, other)
 	w := &AgenticTaskWatcher{
@@ -102,10 +102,10 @@ func TestPollOnce_ClaimsReviewBeforeOlderIssueFix(t *testing.T) {
 
 	// The review task must be the one claimed (Running), the older
 	// issue-fix must remain Scheduled.
-	if got := getTask(t, c, "wl-b-review-2-0"); got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseRunning {
+	if got := getTask(t, c, "wl-b-review-2-0"); got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseRunning {
 		t.Errorf("review task phase: want Running got %s", got.Status.Phase)
 	}
-	if got := getTask(t, c, "wl-a-code-1"); got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseScheduled {
+	if got := getTask(t, c, "wl-a-code-1"); got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseScheduled {
 		t.Errorf("issue-fix task phase: want Scheduled (not claimed) got %s", got.Status.Phase)
 	}
 	// The other node's task must be untouched.

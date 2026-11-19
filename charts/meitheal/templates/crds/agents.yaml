@@ -5,9 +5,12 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
-  name: agents.foreman.llmkube.dev
+    {{- if .Values.crds.keep }}
+    helm.sh/resource-policy: keep
+    {{- end }}
+  name: agents.meitheal.dev
 spec:
-  group: foreman.llmkube.dev
+  group: meitheal.dev
   names:
     kind: Agent
     listKind: AgentList
@@ -138,7 +141,7 @@ spec:
                     type: integer
                   image:
                     description: |-
-                      Image is the per-task Job image: the foreman-agent binary plus the
+                      Image is the per-task Job image: the meitheal-agent binary plus the
                       project toolchain (go/make/git). Required when Mode is Job.
                     type: string
                   mode:
@@ -217,7 +220,7 @@ spec:
               inferenceServiceRef:
                 description: |-
                   InferenceServiceRef names the LLMKube InferenceService in the same
-                  namespace that serves this Agent's model. The foreman-agent
+                  namespace that serves this Agent's model. The meitheal-agent
                   resolves it to a base URL ("http://<svc>.<ns>.svc:<port>/v1") at
                   task time. v0.1 uses inferenceServiceRef exclusively; v0.2 may
                   introduce an external-provider URL form.
@@ -464,7 +467,7 @@ spec:
                   the v0.1 behavior (resolve InferenceServiceRef). v0.2 adds
                   "cloud-proxy" for OpenAI-compatible HTTP endpoints (typically a
                   LiteLLM gateway); see ProviderConfig. Cloud-proxy Agents are
-                  subject to the foreman-operator's --allow-cloud-providers kill
+                  subject to the meitheal-operator's --allow-cloud-providers kill
                   switch and to per-Workload spec.allowCloudReviewers gating.
                 enum:
                 - local
@@ -606,7 +609,7 @@ spec:
                     description: |-
                       Roles filters to FleetNodes whose spec.roles include every named
                       role. Matches against FleetNodeSpec.Roles (the --roles flag on the
-                      foreman-agent). Used to route the gate Agent's tasks to nodes that
+                      meitheal-agent). Used to route the gate Agent's tasks to nodes that
                       advertise themselves as verifiers without coupling to per-node
                       labels.
                     items:
@@ -804,5 +807,4 @@ spec:
     storage: true
     subresources:
       status: {}
-
 {{- end }}

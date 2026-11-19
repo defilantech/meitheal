@@ -26,18 +26,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	executoragent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/tools/catalog"
 )
 
 // validAgent builds a baseline LLM-driven Agent that passes validation;
 // each test mutates one field to exercise a single branch.
-func validLLMAgent() *foremanv1alpha1.Agent {
-	return &foremanv1alpha1.Agent{
+func validLLMAgent() *meithealv1alpha1.Agent {
+	return &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "coder", Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:                foremanv1alpha1.AgentRoleCoder,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:                meithealv1alpha1.AgentRoleCoder,
 			InferenceServiceRef: corev1.LocalObjectReference{Name: "qwen"},
 			SystemPrompt:        "You are a coder.",
 			Tools:               []string{"read_file", "write_file", "submit_result"},
@@ -47,11 +47,11 @@ func validLLMAgent() *foremanv1alpha1.Agent {
 
 // validDeterministicAgent builds a baseline gate-shaped Agent (no
 // InferenceServiceRef, no SystemPrompt, one non-terminal tool).
-func validDeterministicAgent() *foremanv1alpha1.Agent {
-	return &foremanv1alpha1.Agent{
+func validDeterministicAgent() *meithealv1alpha1.Agent {
+	return &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "gate", Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:  foremanv1alpha1.AgentRoleVerifier,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:  meithealv1alpha1.AgentRoleVerifier,
 			Tools: []string{"run_gate_job", "submit_result"},
 		},
 	}
@@ -63,38 +63,38 @@ func TestAgentValidator_Create(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		mutate    func(*foremanv1alpha1.Agent)
+		mutate    func(*meithealv1alpha1.Agent)
 		wantError bool
 	}{
 		{
 			name:      "valid LLM-driven agent accepted",
-			mutate:    func(*foremanv1alpha1.Agent) {},
+			mutate:    func(*meithealv1alpha1.Agent) {},
 			wantError: false,
 		},
 		{
 			name: "valid deterministic agent accepted",
-			mutate: func(a *foremanv1alpha1.Agent) {
+			mutate: func(a *meithealv1alpha1.Agent) {
 				*a = *validDeterministicAgent()
 			},
 			wantError: false,
 		},
 		{
 			name: "LLM agent with empty systemPrompt rejected",
-			mutate: func(a *foremanv1alpha1.Agent) {
+			mutate: func(a *meithealv1alpha1.Agent) {
 				a.Spec.SystemPrompt = ""
 			},
 			wantError: true,
 		},
 		{
 			name: "LLM agent with whitespace-only systemPrompt rejected",
-			mutate: func(a *foremanv1alpha1.Agent) {
+			mutate: func(a *meithealv1alpha1.Agent) {
 				a.Spec.SystemPrompt = "   \n\t "
 			},
 			wantError: true,
 		},
 		{
 			name: "deterministic agent with systemPrompt rejected",
-			mutate: func(a *foremanv1alpha1.Agent) {
+			mutate: func(a *meithealv1alpha1.Agent) {
 				*a = *validDeterministicAgent()
 				a.Spec.SystemPrompt = "should not be here"
 			},
@@ -102,7 +102,7 @@ func TestAgentValidator_Create(t *testing.T) {
 		},
 		{
 			name: "deterministic agent with only submit_result rejected (no usable tool)",
-			mutate: func(a *foremanv1alpha1.Agent) {
+			mutate: func(a *meithealv1alpha1.Agent) {
 				*a = *validDeterministicAgent()
 				a.Spec.Tools = []string{"submit_result"}
 			},
@@ -110,18 +110,18 @@ func TestAgentValidator_Create(t *testing.T) {
 		},
 		{
 			name: "unknown tool name rejected",
-			mutate: func(a *foremanv1alpha1.Agent) {
+			mutate: func(a *meithealv1alpha1.Agent) {
 				a.Spec.Tools = []string{"read_file", "typo_tool", "submit_result"}
 			},
 			wantError: true,
 		},
 		{
 			name: "cloud-proxy agent is never deterministic; empty isvc requires systemPrompt path NOT taken",
-			mutate: func(a *foremanv1alpha1.Agent) {
+			mutate: func(a *meithealv1alpha1.Agent) {
 				// Provider cloud-proxy with empty InferenceServiceRef is
 				// LLM-driven (isDeterministicAgent == false), so a
 				// non-empty systemPrompt is REQUIRED, not forbidden.
-				a.Spec.Provider = foremanv1alpha1.AgentProviderCloudProxy
+				a.Spec.Provider = meithealv1alpha1.AgentProviderCloudProxy
 				a.Spec.InferenceServiceRef = corev1.LocalObjectReference{}
 				a.Spec.SystemPrompt = "You are a cloud reviewer."
 			},
@@ -129,8 +129,8 @@ func TestAgentValidator_Create(t *testing.T) {
 		},
 		{
 			name: "cloud-proxy agent with empty systemPrompt rejected",
-			mutate: func(a *foremanv1alpha1.Agent) {
-				a.Spec.Provider = foremanv1alpha1.AgentProviderCloudProxy
+			mutate: func(a *meithealv1alpha1.Agent) {
+				a.Spec.Provider = meithealv1alpha1.AgentProviderCloudProxy
 				a.Spec.InferenceServiceRef = corev1.LocalObjectReference{}
 				a.Spec.SystemPrompt = ""
 			},
@@ -211,7 +211,7 @@ func TestAgentValidator_Update_Grandfathering(t *testing.T) {
 
 // TestDeterministicPredicateMatchesExecutor is the real drift guard. The
 // webhook keeps a PRIVATE copy of the deterministic predicate (it must not
-// import pkg/foreman/agent into the operator binary). This test, which is
+// import pkg/agent into the operator binary). This test, which is
 // allowed to import the executor package, asserts that the webhook's
 // private copies produce identical results to the exported executor
 // helpers (executoragent.IsDeterministicAgent /
@@ -224,21 +224,21 @@ func TestAgentValidator_Update_Grandfathering(t *testing.T) {
 // version of this test did not provide.
 func TestDeterministicPredicateMatchesExecutor(t *testing.T) {
 	t.Run("IsDeterministicAgent", func(t *testing.T) {
-		specs := []foremanv1alpha1.AgentSpec{
+		specs := []meithealv1alpha1.AgentSpec{
 			// LLM-driven: inferenceServiceRef set, default provider.
 			{InferenceServiceRef: corev1.LocalObjectReference{Name: "qwen"}},
 			// Deterministic: empty provider, empty isvc.
 			{},
 			// Deterministic: explicit local provider, empty isvc.
-			{Provider: foremanv1alpha1.AgentProviderLocal},
+			{Provider: meithealv1alpha1.AgentProviderLocal},
 			// LLM-driven: local provider but isvc set.
-			{Provider: foremanv1alpha1.AgentProviderLocal, InferenceServiceRef: corev1.LocalObjectReference{Name: "qwen"}},
+			{Provider: meithealv1alpha1.AgentProviderLocal, InferenceServiceRef: corev1.LocalObjectReference{Name: "qwen"}},
 			// LLM-driven: cloud-proxy is never deterministic, even with empty isvc.
-			{Provider: foremanv1alpha1.AgentProviderCloudProxy},
-			{Provider: foremanv1alpha1.AgentProviderCloudProxy, InferenceServiceRef: corev1.LocalObjectReference{Name: "remote"}},
+			{Provider: meithealv1alpha1.AgentProviderCloudProxy},
+			{Provider: meithealv1alpha1.AgentProviderCloudProxy, InferenceServiceRef: corev1.LocalObjectReference{Name: "remote"}},
 		}
 		for _, spec := range specs {
-			a := &foremanv1alpha1.Agent{Spec: spec}
+			a := &meithealv1alpha1.Agent{Spec: spec}
 			want := executoragent.IsDeterministicAgent(spec)
 			if got := isDeterministicAgent(a); got != want {
 				t.Errorf("isDeterministicAgent(%+v) = %v; executor IsDeterministicAgent = %v (webhook private copy drifted from executor)", spec, got, want)
@@ -296,17 +296,17 @@ func TestCanonicalToolNamesCoversWhitelist(t *testing.T) {
 func TestValidateAgentPromptShape_MessageNamesTheRightField(t *testing.T) {
 	cases := []struct {
 		name     string
-		agent    *foremanv1alpha1.Agent
+		agent    *meithealv1alpha1.Agent
 		wantCite string
 		notCite  string
 	}{
 		{
 			name: "cloud-proxy cites the provider",
-			agent: func() *foremanv1alpha1.Agent {
+			agent: func() *meithealv1alpha1.Agent {
 				a := validLLMAgent()
-				a.Spec.Provider = foremanv1alpha1.AgentProviderCloudProxy
+				a.Spec.Provider = meithealv1alpha1.AgentProviderCloudProxy
 				a.Spec.InferenceServiceRef = corev1.LocalObjectReference{}
-				a.Spec.ProviderConfig = &foremanv1alpha1.ProviderConfig{
+				a.Spec.ProviderConfig = &meithealv1alpha1.ProviderConfig{
 					BaseURL: "https://example.invalid/v1", Model: "m",
 				}
 				a.Spec.SystemPrompt = ""
@@ -317,7 +317,7 @@ func TestValidateAgentPromptShape_MessageNamesTheRightField(t *testing.T) {
 		},
 		{
 			name: "local cites the inferenceServiceRef",
-			agent: func() *foremanv1alpha1.Agent {
+			agent: func() *meithealv1alpha1.Agent {
 				a := validLLMAgent()
 				a.Spec.SystemPrompt = ""
 				return a

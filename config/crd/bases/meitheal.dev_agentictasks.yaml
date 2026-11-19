@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
-  name: agentictasks.foreman.llmkube.dev
+  name: agentictasks.meitheal.dev
 spec:
-  group: foreman.llmkube.dev
+  group: meitheal.dev
   names:
     kind: AgenticTask
     listKind: AgenticTaskList
@@ -36,7 +36,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          AgenticTask is the unit of dispatchable agentic work. The Foreman scheduler
+          AgenticTask is the unit of dispatchable agentic work. The Meitheal scheduler
           matches each Pending task to a FleetNode whose advertised capability
           satisfies the task's RequiredCapability, then a FleetAgent on that node
           picks up the task and runs the matching executor.
@@ -451,7 +451,7 @@ spec:
                     description: |-
                       Roles filters to FleetNodes whose spec.roles include every named
                       role. Matches against FleetNodeSpec.Roles (the --roles flag on the
-                      foreman-agent). Used to route the gate Agent's tasks to nodes that
+                      meitheal-agent). Used to route the gate Agent's tasks to nodes that
                       advertise themselves as verifiers without coupling to per-node
                       labels.
                     items:
@@ -477,7 +477,7 @@ spec:
                   images:
                     description: |-
                       Images lists the built-in scan-target ids to scan (e.g. "controller",
-                      "foreman-agent"). Empty means all built-in targets: a nil/empty
+                      "router-proxy"). Empty means all built-in targets: a nil/empty
                       Images is the nil-means-all rule, and Resolve passes it through as a
                       nil ResolvedScan.Images. Unknown ids are rejected by Resolve's
                       caller; Resolve itself ignores the list beyond the empty-means-all
@@ -680,7 +680,7 @@ spec:
               result:
                 description: |-
                   Result is the structured JSON the agent emitted, validated against the
-                  foreman.v1 schema. Opaque to the API server.
+                  meitheal.v1 schema. Opaque to the API server.
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
               startedAt:

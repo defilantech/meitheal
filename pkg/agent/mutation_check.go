@@ -122,9 +122,9 @@ func mutationFindingFromResults(failures []string) (ok bool, note string) {
 }
 
 // mutationCheckDisabled reports whether the mutation check has been explicitly
-// turned off via the FOREMAN_MUTATION_CHECK environment variable. The default
+// turned off via the MEITHEAL_MUTATION_CHECK environment variable. The default
 // (unset or any value other than "0") is ENABLED; only the literal "0"
 // disables it, so a stray "1" or empty value never silences the check.
 func mutationCheckDisabled() bool {
-	return os.Getenv("FOREMAN_MUTATION_CHECK") == "0"
+	return os.Getenv("MEITHEAL_MUTATION_CHECK") == "0"
 }

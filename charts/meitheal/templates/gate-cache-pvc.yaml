@@ -1,4 +1,4 @@
-{{- range $name, $cfg := include "foreman.agents" . | fromYaml }}
+{{- range $name, $cfg := include "meitheal.agents" . | fromYaml }}
 ---
 {{- /* Merge defaults BEFORE the enabled gate so a per-agent entry that
        omits `enabled` inherits it from .Values.agent instead of being
@@ -14,10 +14,10 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "foreman.gateCache.pvcName" $ctx }}
-  namespace: {{ include "foreman.namespace" $ }}
+  name: {{ include "meitheal.gateCache.pvcName" $ctx }}
+  namespace: {{ include "meitheal.namespace" $ }}
   labels:
-    {{- include "foreman.agent.labels" $ | nindent 4 }}
+    {{- include "meitheal.agent.labels" $ | nindent 4 }}
   {{- with $agent.gateCache.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

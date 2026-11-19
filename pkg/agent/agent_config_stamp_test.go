@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // A verdict minted by an under-configured agent must carry that fact in its
@@ -11,8 +11,8 @@ import (
 // this covers the artifact, so an uninstructed review is self-incriminating
 // even if nobody looked at `kubectl get agents`.
 func TestStampAgentConfigWarnings(t *testing.T) {
-	blind := foremanv1alpha1.AgentSpec{
-		Role:  foremanv1alpha1.AgentRoleReviewer,
+	blind := meithealv1alpha1.AgentSpec{
+		Role:  meithealv1alpha1.AgentRoleReviewer,
 		Tools: []string{"read_file", "grep", "bash", "submit_result"},
 	}
 	terminal := &ToolResult{}
@@ -23,8 +23,8 @@ func TestStampAgentConfigWarnings(t *testing.T) {
 	}
 
 	// A complete config stamps nothing: a warning on every record is noise.
-	complete := foremanv1alpha1.AgentSpec{
-		Role: foremanv1alpha1.AgentRoleReviewer, SystemPrompt: "# p",
+	complete := meithealv1alpha1.AgentSpec{
+		Role: meithealv1alpha1.AgentRoleReviewer, SystemPrompt: "# p",
 		Tools: []string{"fetch_issue", "submit_result"},
 	}
 	terminal = &ToolResult{Extra: map[string]any{}}

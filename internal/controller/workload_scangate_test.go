@@ -19,7 +19,7 @@ package controller
 import (
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // TestEffectiveScanGate pins the step-over-workload resolution the
@@ -28,14 +28,14 @@ import (
 // back to the Workload default, and both unset leaves nil — i.e. no scan
 // gate, the pre-feature behavior.
 func TestEffectiveScanGate(t *testing.T) {
-	agentImage := &foremanv1alpha1.ScanGate{Images: []string{"foreman-agent"}}
-	all := &foremanv1alpha1.ScanGate{}
+	agentImage := &meithealv1alpha1.ScanGate{Images: []string{"meitheal-agent"}}
+	all := &meithealv1alpha1.ScanGate{}
 
 	cases := []struct {
 		name     string
-		step     *foremanv1alpha1.ScanGate
-		workload *foremanv1alpha1.ScanGate
-		want     *foremanv1alpha1.ScanGate
+		step     *meithealv1alpha1.ScanGate
+		workload *meithealv1alpha1.ScanGate
+		want     *meithealv1alpha1.ScanGate
 	}{
 		{"both unset -> nil (no scan gate)", nil, nil, nil},
 		{"workload default applies when step unset", nil, agentImage, agentImage},
@@ -45,10 +45,10 @@ func TestEffectiveScanGate(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			w := &foremanv1alpha1.Workload{
-				Spec: foremanv1alpha1.WorkloadSpec{ScanGate: tc.workload},
+			w := &meithealv1alpha1.Workload{
+				Spec: meithealv1alpha1.WorkloadSpec{ScanGate: tc.workload},
 			}
-			step := foremanv1alpha1.PipelineStep{ScanGate: tc.step}
+			step := meithealv1alpha1.PipelineStep{ScanGate: tc.step}
 			if got := effectiveScanGate(step, w); got != tc.want {
 				t.Errorf("effectiveScanGate() = %v, want %v", got, tc.want)
 			}

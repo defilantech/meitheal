@@ -28,7 +28,7 @@ limitations under the License.
 // turn and truncation-continuation machinery working against a model that
 // actually emits thinking blocks.
 //
-// As with oai, the official SDK is deliberately not used: Foreman needs
+// As with oai, the official SDK is deliberately not used: Meitheal needs
 // exactly one HTTP shape, wants provider-specific retry semantics, and
 // does not want the SDK's transitive cone.
 package anthropic

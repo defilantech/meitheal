@@ -68,10 +68,10 @@ func TestScanGateResolve(t *testing.T) {
 		{
 			name: "explicit images override nil-means-all",
 			gate: &ScanGate{
-				Images: []string{"controller", "foreman-agent"},
+				Images: []string{"controller", "router-proxy"},
 			},
 			want: ResolvedScan{
-				Images:        []string{"controller", "foreman-agent"},
+				Images:        []string{"controller", "router-proxy"},
 				Severity:      []string{"CRITICAL", "HIGH"},
 				IgnoreUnfixed: true,
 				BuilderImage:  "golang:1.26",

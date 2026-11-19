@@ -29,7 +29,7 @@ import (
 
 func testRecord() audit.Record {
 	return audit.Record{
-		SchemaVersion: "foreman.audit.v1",
+		SchemaVersion: "meitheal.audit.v1",
 		RecordedAt:    "2026-08-23T18:44:22Z",
 		Repo:          "defilantech/LLMKube",
 		Issue:         1602,
@@ -180,8 +180,8 @@ func TestWriteBundle_WritesAuditTranscriptAndMeta(t *testing.T) {
 
 	var meta BundleMeta
 	readJSON(t, filepath.Join(dir, "meta.json"), &meta)
-	if meta.SchemaVersion != "foreman.archive.v1" {
-		t.Errorf("meta.schemaVersion = %q, want literal \"foreman.archive.v1\"", meta.SchemaVersion)
+	if meta.SchemaVersion != "meitheal.archive.v1" {
+		t.Errorf("meta.schemaVersion = %q, want literal \"meitheal.archive.v1\"", meta.SchemaVersion)
 	}
 	if !meta.HasTranscript {
 		t.Error("meta.hasTranscript = false, want true")
@@ -212,7 +212,7 @@ func TestWriteBundle_JSONByteFormatIsPinned(t *testing.T) {
 		t.Fatalf("read meta.json: %v", err)
 	}
 	want := `{
-  "schemaVersion": "foreman.archive.v1",
+  "schemaVersion": "meitheal.archive.v1",
   "taskName": "wl-1602-code",
   "recordedAt": "2026-08-23T18:44:22Z",
   "hasTranscript": true
@@ -225,7 +225,7 @@ func TestWriteBundle_JSONByteFormatIsPinned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read audit.json: %v", err)
 	}
-	if !strings.HasPrefix(string(auditBytes), "{\n  \"schemaVersion\": \"foreman.audit.v1\",\n") {
+	if !strings.HasPrefix(string(auditBytes), "{\n  \"schemaVersion\": \"meitheal.audit.v1\",\n") {
 		t.Errorf("audit.json is not two-space-indented JSON:\n%s", auditBytes)
 	}
 }
@@ -318,7 +318,7 @@ func TestWriteBundle_UnwritableRootFails(t *testing.T) {
 	// a chmod 0500 directory. Root ignores POSIX permission bits, so a mode-
 	// based unwritable directory is writable for uid 0 and this assertion
 	// inverted under any root container: CI runs unprivileged and stayed
-	// green while the Foreman gate Job, which runs as root, failed every run.
+	// green while the Meitheal gate Job, which runs as root, failed every run.
 	// ENOTDIR is refused for every uid, so the test now means the same thing
 	// wherever it runs.
 	root := filepath.Join(t.TempDir(), "not-a-directory")

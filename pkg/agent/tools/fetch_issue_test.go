@@ -75,7 +75,7 @@ func TestFetchIssueTool_HappyPath(t *testing.T) {
 		  "title": "[BUG] host-ip auto-detect picks unreachable virtual interface",
 		  "body": %q,
 		  "state": "open",
-		  "labels": [{"name":"bug"},{"name":"foreman"}]
+		  "labels": [{"name":"bug"},{"name":"meitheal"}]
 		}`, body)
 	}))
 	defer srv.Close()
@@ -99,7 +99,7 @@ func TestFetchIssueTool_HappyPath(t *testing.T) {
 		t.Errorf("body: %v", out["body"])
 	}
 	labels, _ := out["labels"].([]string)
-	if len(labels) != 2 || labels[0] != "bug" || labels[1] != "foreman" {
+	if len(labels) != 2 || labels[0] != "bug" || labels[1] != "meitheal" {
 		t.Errorf("labels: %v", labels)
 	}
 }

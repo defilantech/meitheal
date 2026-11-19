@@ -1,4 +1,4 @@
-# Karpenter NodePool for Foreman verification-gate Jobs on spot GPU capacity.
+# Karpenter NodePool for Meitheal verification-gate Jobs on spot GPU capacity.
 #
 # This NodePool provisions spot instances with a single GPU, applies a
 # nvidia.com/gpu taint so only gate Jobs (which carry the matching
@@ -6,15 +6,15 @@
 #
 # Apply after Karpenter is installed:
 #
-#   kubectl apply -f examples/foreman/spot-nodepool-karpenter.yaml
+#   kubectl apply -f examples/spot-nodepool-karpenter.yaml
 #
 # The companion gate-Job patch is at
-# examples/foreman/spot-gate-job-patch.yaml.
+# examples/spot-gate-job-patch.yaml.
 
 apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
-  name: foreman-gate-spot
+  name: meitheal-gate-spot
 spec:
   template:
     spec:
@@ -41,7 +41,7 @@ spec:
       nodeClassRef:
         group: karpenter.k8s.aws
         kind: EC2NodeClass
-        name: foreman-gate-spot
+        name: meitheal-gate-spot
   disruption:
     consolidationPolicy: WhenEmpty
     consolidateAfter: 1m

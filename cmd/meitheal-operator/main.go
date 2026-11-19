@@ -14,11 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Command foreman-operator is the control plane for the Foreman agentic
-// workload subsystem. It runs alongside (not inside) the LLMKube core
-// operator and reconciles the foreman.llmkube.dev API group: Workload,
-// AgenticTask, FleetNode. Installing LLMKube alone does not install or
-// require this binary.
+// Command meitheal-operator is the control plane for Meitheal's agentic
+// workloads. It reconciles the meitheal.dev API group: Workload,
+// AgenticTask, FleetNode, Agent and AgentRelease.
 package main
 
 import (
@@ -42,10 +40,10 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremancontroller "github.com/defilantech/meitheal/internal/controller"
-	llmkubemetrics "github.com/defilantech/meitheal/internal/metrics"
-	foremanwebhook "github.com/defilantech/meitheal/internal/webhook"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealcontroller "github.com/defilantech/meitheal/internal/controller"
+	meithealmetrics "github.com/defilantech/meitheal/internal/metrics"
+	meithealwebhook "github.com/defilantech/meitheal/internal/webhook"
 	"github.com/defilantech/meitheal/pkg/audit"
 )
 
@@ -61,9 +59,9 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(foremanv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(meithealv1alpha1.AddToScheme(scheme))
 
-	ctrlmetrics.Registry.MustRegister(llmkubemetrics.ForemanCollectors...)
+	ctrlmetrics.Registry.MustRegister(meithealmetrics.MeithealCollectors...)
 }
 
 func main() {
@@ -137,7 +135,7 @@ func main() {
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "foreman-operator.llmkube.dev",
+		LeaderElectionID:       "meitheal-operator.meitheal.dev",
 		WebhookServer: webhookserver.NewServer(webhookserver.Options{
 			Port:    webhookPort,
 			CertDir: webhookCertDir,
@@ -148,7 +146,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&foremancontroller.WorkloadReconciler{
+	if err := (&meithealcontroller.WorkloadReconciler{
 		Client:              mgr.GetClient(),
 		Scheme:              mgr.GetScheme(),
 		Recorder:            mgr.GetEventRecorder("workload-controller"),
@@ -165,7 +163,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&foremancontroller.FleetNodeReconciler{
+	if err := (&meithealcontroller.FleetNodeReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
@@ -173,7 +171,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&foremancontroller.AgentReconciler{
+	if err := (&meithealcontroller.AgentReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
@@ -181,7 +179,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&foremancontroller.AgentReleaseReconciler{
+	if err := (&meithealcontroller.AgentReleaseReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
@@ -190,11 +188,11 @@ func main() {
 	}
 
 	if serveWebhooks {
-		if err := foremanwebhook.SetupAgentWebhookWithManager(mgr); err != nil {
+		if err := meithealwebhook.SetupAgentWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "Agent")
 			os.Exit(1)
 		}
-		if err := foremanwebhook.SetupAgenticTaskWebhookWithManager(mgr); err != nil {
+		if err := meithealwebhook.SetupAgenticTaskWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "AgenticTask")
 			os.Exit(1)
 		}
@@ -212,7 +210,7 @@ func main() {
 
 	// Audit reaper (#990): the writer stamps audit ConfigMaps without
 	// ownerReferences by design (they must outlive the AgenticTask for
-	// compliance) — see pkg/foreman/audit/writer.go. Without a periodic
+	// compliance) — see pkg/audit/writer.go. Without a periodic
 	// reaper they accumulate unbounded, so we register one here. The
 	// reaper's NeedLeaderElection makes it a no-op on standby replicas
 	// when --leader-elect is enabled; with retention=0 it just waits
@@ -235,7 +233,7 @@ func main() {
 		setupLog.Info("audit reaper disabled (retention=0)")
 	}
 
-	setupLog.Info("starting foreman-operator")
+	setupLog.Info("starting meitheal-operator")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
@@ -266,8 +264,8 @@ func webhookCertsPresent(certDir string) bool {
 // would ever be written.
 func agenticTaskReconciler(
 	c client.Client, s *runtime.Scheme, archiveDir string,
-) *foremancontroller.AgenticTaskReconciler {
-	return &foremancontroller.AgenticTaskReconciler{
+) *meithealcontroller.AgenticTaskReconciler {
+	return &meithealcontroller.AgenticTaskReconciler{
 		Client:     c,
 		Scheme:     s,
 		ArchiveDir: archiveDir,

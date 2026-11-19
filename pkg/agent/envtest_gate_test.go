@@ -69,16 +69,16 @@ func TestEvaluatePostPushEnvtest(t *testing.T) {
 	t.Run("task identity is threaded to the runner (#893)", func(t *testing.T) {
 		r := &fakeEnvtestJobRunner{pass: true, ran: true}
 		evaluatePostPushEnvtest(context.Background(), true, r,
-			"foreman-system", "fix-issue-893", "repo", "br", "url", "up")
-		if r.gotTaskNamespace != "foreman-system" || r.gotTaskName != "fix-issue-893" {
-			t.Fatalf("runner got task identity (%q,%q), want (foreman-system,fix-issue-893)",
+			"meitheal-system", "fix-issue-893", "repo", "br", "url", "up")
+		if r.gotTaskNamespace != "meitheal-system" || r.gotTaskName != "fix-issue-893" {
+			t.Fatalf("runner got task identity (%q,%q), want (meitheal-system,fix-issue-893)",
 				r.gotTaskNamespace, r.gotTaskName)
 		}
 	})
 	t.Run("upstream URL is threaded to the runner (#1731)", func(t *testing.T) {
 		r := &fakeEnvtestJobRunner{pass: true, ran: true}
 		evaluatePostPushEnvtest(context.Background(), true, r,
-			"foreman-system", "fix-issue-1731", "repo", "br", "clone",
+			"meitheal-system", "fix-issue-1731", "repo", "br", "clone",
 			"https://github.com/defilantech/LLMKube.git")
 		if r.gotUpstreamURL != "https://github.com/defilantech/LLMKube.git" {
 			t.Fatalf("runner got upstreamURL %q, want the canonical repo URL; "+

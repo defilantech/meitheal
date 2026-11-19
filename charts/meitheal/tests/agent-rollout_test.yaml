@@ -26,7 +26,7 @@ tests:
       - ./values-multi.yaml
     documentSelector:
       path: metadata.name
-      value: RELEASE-NAME-foreman-default-agent
+      value: RELEASE-NAME-meitheal-default-agent
       matchMany: false
     asserts:
       - equal:
@@ -44,7 +44,7 @@ tests:
       - ./values-multi.yaml
     documentSelector:
       path: metadata.name
-      value: RELEASE-NAME-foreman-llmkube-fork-agent
+      value: RELEASE-NAME-meitheal-llmkube-fork-agent
       matchMany: false
     asserts:
       - equal:
@@ -71,7 +71,7 @@ tests:
       agents.default.terminationGracePeriodSeconds: 180
     documentSelector:
       path: metadata.name
-      value: RELEASE-NAME-foreman-default-agent
+      value: RELEASE-NAME-meitheal-default-agent
       matchMany: false
     asserts:
       - equal:
@@ -125,7 +125,7 @@ tests:
       agents.default.terminationGracePeriodSeconds: 180
     documentSelector:
       path: metadata.name
-      value: RELEASE-NAME-foreman-llmkube-fork-agent
+      value: RELEASE-NAME-meitheal-llmkube-fork-agent
       matchMany: false
     asserts:
       - equal:
@@ -150,7 +150,7 @@ tests:
       agents.default.terminationGracePeriodSeconds: 180
     documentSelector:
       path: metadata.name
-      value: RELEASE-NAME-foreman-default-agent
+      value: RELEASE-NAME-meitheal-default-agent
       matchMany: false
     asserts:
       - equal:
@@ -314,7 +314,7 @@ tests:
       agents.llmkube-fork.strategy.type: Recreate
     documentSelector:
       path: metadata.name
-      value: RELEASE-NAME-foreman-llmkube-fork-agent
+      value: RELEASE-NAME-meitheal-llmkube-fork-agent
       matchMany: false
     asserts:
       # mustMergeOverwrite deep-merges .Values.agent into each pool, so the

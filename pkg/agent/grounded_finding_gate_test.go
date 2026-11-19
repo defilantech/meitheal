@@ -25,7 +25,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/reviewer"
 )
 
@@ -52,8 +52,8 @@ func changed(fix map[string]map[int]bool) func(string) map[int]bool {
 func TestGroundedFindings_GroundedBlockerStaysNoGo(t *testing.T) {
 	extra := findingExtra("blocker", "pkg/cli/cache.go", 42)
 	fix := map[string]map[int]bool{"pkg/cli/cache.go": {42: true}}
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("grounded blocker must keep NO-GO, got %s", got)
 	}
 	if _, demoted := extra["groundedFindingDemotion"]; demoted {
@@ -65,8 +65,8 @@ func TestGroundedFindings_FabricatedFileDemotes(t *testing.T) {
 	// Cites a file the diff never changed (the docs-fabrication case).
 	extra := findingExtra("blocker", "docs/MODEL-CACHE.md", 10)
 	fix := map[string]map[int]bool{"pkg/cli/cache.go": {42: true}} // docs file absent
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("fabricated-file NO-GO must demote to GO, got %s", got)
 	}
 	if extra["groundedFindingDemotion"] != true {
@@ -81,8 +81,8 @@ func TestGroundedFindings_UnchangedLineInChangedFileDemotes(t *testing.T) {
 	// Cites a changed file but a line OUTSIDE any hunk (the kubectl-exec case).
 	extra := findingExtra("major", "pkg/cli/delete.go", 999)
 	fix := map[string]map[int]bool{"pkg/cli/delete.go": {106: true, 107: true}} // 999 not changed
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("unchanged-line NO-GO must demote to GO, got %s", got)
 	}
 }
@@ -90,8 +90,8 @@ func TestGroundedFindings_UnchangedLineInChangedFileDemotes(t *testing.T) {
 func TestGroundedFindings_NoLineDemotes(t *testing.T) {
 	extra := findingExtra("blocker", "pkg/cli/cache.go", 0) // line 0 = not pinned
 	fix := map[string]map[int]bool{"pkg/cli/cache.go": {42: true}}
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("blocking finding with no line must demote to GO, got %s", got)
 	}
 }
@@ -99,8 +99,8 @@ func TestGroundedFindings_NoLineDemotes(t *testing.T) {
 func TestGroundedFindings_MinorOnlyDemotes(t *testing.T) {
 	extra := findingExtra("minor", "pkg/cli/cache.go", 42) // minor is not blocking
 	fix := map[string]map[int]bool{"pkg/cli/cache.go": {42: true}}
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("NO-GO with only minor findings must demote to GO, got %s", got)
 	}
 }
@@ -108,8 +108,8 @@ func TestGroundedFindings_MinorOnlyDemotes(t *testing.T) {
 func TestGroundedFindings_GoUntouched(t *testing.T) {
 	extra := findingExtra("blocker", "docs/MODEL-CACHE.md", 10) // ungrounded, but verdict is GO
 	fix := map[string]map[int]bool{}
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictGo, changed(fix))
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictGo, changed(fix))
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("GO must pass through untouched, got %s", got)
 	}
 	if _, demoted := extra["groundedFindingDemotion"]; demoted {
@@ -118,11 +118,11 @@ func TestGroundedFindings_GoUntouched(t *testing.T) {
 }
 
 func TestGroundedFindings_ToggleOff(t *testing.T) {
-	t.Setenv("FOREMAN_GROUNDED_FINDINGS", "0")
+	t.Setenv("MEITHEAL_GROUNDED_FINDINGS", "0")
 	extra := findingExtra("blocker", "docs/MODEL-CACHE.md", 10) // ungrounded
 	fix := map[string]map[int]bool{}
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("toggle off must leave NO-GO untouched, got %s", got)
 	}
 }
@@ -130,8 +130,8 @@ func TestGroundedFindings_ToggleOff(t *testing.T) {
 func TestGroundedFindings_GitUnavailableDegradesOpen(t *testing.T) {
 	extra := findingExtra("blocker", "docs/MODEL-CACHE.md", 10) // ungrounded
 	// changedLines == nil signals git unavailable -> degrade-open (no demotion).
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("nil changedLines must leave verdict untouched, got %s", got)
 	}
 }
@@ -213,8 +213,8 @@ func TestGroundedFindings_REJECTExemptFromDemotion(t *testing.T) {
 	extra := findingExtra("blocker", "docs/MODEL-CACHE.md", 10) // ungrounded
 	extra["reviewOutcome"] = "REJECT"
 	fix := map[string]map[int]bool{} // no changed lines
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("REJECT must not be demoted to GO, got %s", got)
 	}
 	if _, demoted := extra["groundedFindingDemotion"]; demoted {
@@ -227,8 +227,8 @@ func TestGroundedFindings_REJECTExemptWithGroundedFindings(t *testing.T) {
 	extra := findingExtra("blocker", "pkg/cli/cache.go", 42)
 	extra["reviewOutcome"] = "REJECT"
 	fix := map[string]map[int]bool{"pkg/cli/cache.go": {42: true}}
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("REJECT with grounded findings must stay NO-GO, got %s", got)
 	}
 }
@@ -238,8 +238,8 @@ func TestGroundedFindings_RequestChangesDemotesWhenUngrounded(t *testing.T) {
 	extra := findingExtra("blocker", "docs/MODEL-CACHE.md", 10) // ungrounded
 	extra["reviewOutcome"] = "REQUEST-CHANGES"
 	fix := map[string]map[int]bool{} // no changed lines
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("REQUEST-CHANGES with ungrounded findings must demote to GO, got %s", got)
 	}
 }
@@ -333,7 +333,7 @@ func TestResolveAgainstDiff(t *testing.T) {
 		{
 			name:     "ambiguous basename stays ungrounded",
 			file:     "cache.go",
-			diff:     []string{"pkg/cli/cache.go", "pkg/foreman/agent/cache.go"},
+			diff:     []string{"pkg/cli/cache.go", "pkg/agent/cache.go"},
 			expected: "",
 		},
 		{
@@ -361,7 +361,7 @@ func TestResolveAgainstDiff(t *testing.T) {
 
 // TestInDiff asserts the inDiff helper (#1004).
 func TestInDiff(t *testing.T) {
-	diff := []string{"pkg/cli/cache.go", "pkg/foreman/agent/cache.go"}
+	diff := []string{"pkg/cli/cache.go", "pkg/agent/cache.go"}
 	if !inDiff("pkg/cli/cache.go", diff) {
 		t.Error("expected pkg/cli/cache.go in diff")
 	}
@@ -421,19 +421,19 @@ func TestGroundedBlockingFindings_AbsolutePathGrounds(t *testing.T) {
 // that a bare basename that matches multiple diff files stays ungrounded
 // (#1004).
 func TestGroundedBlockingFindings_AmbiguousBasenameStaysUngrounded(t *testing.T) {
-	diff := []string{"pkg/cli/cache.go", "pkg/foreman/agent/cache.go"}
+	diff := []string{"pkg/cli/cache.go", "pkg/agent/cache.go"}
 	changed := func(f string) map[int]bool {
 		normalized := normalizeFilePath(f)
 		if inDiff(normalized, diff) {
 			return map[string]map[int]bool{
-				"pkg/cli/cache.go":           {42: true},
-				"pkg/foreman/agent/cache.go": {42: true},
+				"pkg/cli/cache.go":   {42: true},
+				"pkg/agent/cache.go": {42: true},
 			}[normalized]
 		}
 		if resolved := resolveAgainstDiff(normalized, diff); resolved != "" {
 			return map[string]map[int]bool{
-				"pkg/cli/cache.go":           {42: true},
-				"pkg/foreman/agent/cache.go": {42: true},
+				"pkg/cli/cache.go":   {42: true},
+				"pkg/agent/cache.go": {42: true},
 			}[resolved]
 		}
 		return nil
@@ -492,8 +492,8 @@ func TestGroundedFindings_NoFindingsDemotesEvenWithoutDiff(t *testing.T) {
 	// The exact production shape: extra carries no findings key at all, and
 	// the diff is unavailable so changedLines is nil.
 	extra := map[string]any{"outcome": "MODEL-DECIDED", "turnCount": 3}
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("a NO-GO citing no findings is unearned regardless of diff availability; got %s", got)
 	}
 	if demoted, _ := extra["groundedFindingDemotion"].(bool); !demoted {
@@ -505,8 +505,8 @@ func TestGroundedFindings_NoFindingsDemotesWithDiff(t *testing.T) {
 	// Same rejection, diff available: the answer must not depend on that.
 	extra := map[string]any{"outcome": "MODEL-DECIDED"}
 	fix := map[string]map[int]bool{"pkg/cli/cache.go": {42: true}}
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, changed(fix))
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("no-findings NO-GO must demote with the diff too, got %s", got)
 	}
 }
@@ -516,8 +516,8 @@ func TestGroundedFindings_UncheckableNoGoIsRecorded(t *testing.T) {
 	// judged. The verdict stands (no overreach) but must be marked so a
 	// verdict that could not be checked is distinguishable afterwards.
 	extra := findingExtra("blocker", "pkg/cli/cache.go", 42)
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("an uncheckable NO-GO carrying findings must stand, got %s", got)
 	}
 	if unavailable, _ := extra["groundingUnavailable"].(bool); !unavailable {
@@ -532,8 +532,8 @@ func TestGroundedFindings_RejectExemptionSurvivesNilDiff(t *testing.T) {
 	// A do-not-retry rejection stays NO-GO even with no findings and no diff:
 	// the new zero-findings path must not overturn the REJECT exemption.
 	extra := map[string]any{"reviewOutcome": "REJECT"}
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictNoGo, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictNoGo, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("REJECT must stay NO-GO, got %s", got)
 	}
 }
@@ -542,8 +542,8 @@ func TestGroundedFindings_GoWithNilDiffUntouched(t *testing.T) {
 	// The rail only ever acts on NO-GO. A GO with no diff is left alone and
 	// must not be marked, or every clean review would carry the flag.
 	extra := map[string]any{"outcome": "MODEL-DECIDED"}
-	got := enforceReviewerGroundedFindings(logr.Discard(), extra, foremanv1alpha1.AgenticTaskVerdictGo, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerGroundedFindings(logr.Discard(), extra, meithealv1alpha1.AgenticTaskVerdictGo, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("GO must be untouched, got %s", got)
 	}
 	if _, marked := extra["groundingUnavailable"]; marked {

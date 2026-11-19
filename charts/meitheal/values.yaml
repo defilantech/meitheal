@@ -1,12 +1,12 @@
-# Default values for the Foreman chart.
+# Default values for the Meitheal chart.
 #
-# Foreman is opt-in: installing it pulls in foreman-operator (the
+# Installing the chart pulls in meitheal-operator (the
 # controllers for Agent / AgenticTask / FleetNode / Workload) plus
-# zero or more foreman-agent Pods (the per-node worker that claims
+# zero or more meitheal-agent Pods (the per-node worker that claims
 # Scheduled tasks and runs them). See README and
-# https://llmkube.com/docs/foreman/install-verifier-node for a full install walkthrough.
+# docs/install-verifier-node.md for a full install walkthrough.
 
-# Optional name overrides. Same semantics as the llmkube chart.
+# Optional name overrides.
 nameOverride: ""
 fullnameOverride: ""
 
@@ -24,13 +24,16 @@ imagePullSecrets: []
 # the CRDs (e.g., operator.enabled: false, webhook.enabled: false).
 crds:
   install: true
+  # Keep the CRDs on `helm uninstall` (helm.sh/resource-policy: keep).
+  # Deleting a CRD deletes every custom resource of that kind with it.
+  keep: true
 
-# Foreman-wide policy knobs that span operator + agent. Add new
+# Meitheal-wide policy knobs that span operator + agent. Add new
 # settings here when they are not naturally scoped to one component.
 networkPolicies:
   enabled: false
   additionalEgressCIDRs: []
-foreman:
+meitheal:
   # allowCloudProviders is the cluster-wide sovereignty kill switch
   # for cloud-proxy reviewer Agents (v0.2).
   #
@@ -43,15 +46,15 @@ foreman:
   # should set this false.
   allowCloudProviders: true
 
-  # Foreman CRD status metrics via kube-state-metrics Custom Resource State.
+  # Meitheal CRD status metrics via kube-state-metrics Custom Resource State.
   #
-  # Maps the Foreman CRD status fields (Workload, AgenticTask, FleetNode) to
+  # Maps the Meitheal CRD status fields (Workload, AgenticTask, FleetNode) to
   # Prometheus gauges so job and fleet state is scrapable and alertable in the
   # Prometheus + Grafana stack operators already run. Pure configuration
   # against the kube-state-metrics already deployed in most clusters: no new
   # operator code.
   #
-  # The CRS config is rendered as a ConfigMap in the Foreman release namespace.
+  # The CRS config is rendered as a ConfigMap in the Meitheal release namespace.
   # The kube-state-metrics deployment (or the kube-prometheus-stack
   # `kube-state-metrics.customResourceState` values path) must be pointed at
   # this ConfigMap for the metrics to land in the existing scrape pipeline.
@@ -63,7 +66,7 @@ foreman:
     # Metrics path the CRS ConfigMap is served at inside the ConfigMap.
     # Matches the kube-prometheus-stack default (`/etc/ksm-cmaps/...`) so
     # the stack picks it up without extra wiring.
-    configMapKey: foreman-crs.yaml
+    configMapKey: meitheal-crs.yaml
     # Namespace to render the CRS ConfigMap into. kube-state-metrics can
     # only mount ConfigMaps from its own namespace, so set this when it
     # runs elsewhere (e.g. observability). Empty = the release namespace.
@@ -79,7 +82,7 @@ foreman:
       # fires. Must be > FleetNodeHeartbeatTimeout (90s) to avoid flapping.
       staleHeartbeatDuration: 5m
       # Numeric threshold in seconds used for the `> N` comparison in the
-      # ForemanFleetNodeHeartbeatStale expr. Defaults to 300 (5 minutes).
+      # MeithealFleetNodeHeartbeatStale expr. Defaults to 300 (5 minutes).
       # The `staleHeartbeatDuration` duration string is used for the `for:`
       # field and the alert description instead.
       staleHeartbeatSeconds: 300
@@ -107,12 +110,12 @@ foreman:
   #
   # AGENT VERSION SKEW: archival captures transcripts only from agents at
   # the same version as this chart. The `transcriptRef` lift that
-  # publishes a transcript ships in foreman-agent; the archiver that reads
-  # it ships in foreman-operator. Metal agents are commonly updated out of
+  # publishes a transcript ships in meitheal-agent; the archiver that reads
+  # it ships in meitheal-operator. Metal agents are commonly updated out of
   # band from the chart, so skew is normal. Against an older agent
   # `status.transcriptRef` stays empty, the archiver takes neither the
   # transcript_read nor the transcript_empty branch, every bundle records
-  # `hasTranscript: false`, and foreman_archive_failures_total stays at
+  # `hasTranscript: false`, and meitheal_archive_failures_total stays at
   # zero. That is indistinguishable from a fleet of deterministic runs, so
   # there is no failure signal at all: bring the agents to this version
   # before you trust a transcript to be there.
@@ -129,7 +132,7 @@ foreman:
     enabled: false
     # Absolute path the operator writes bundles to, and the mount path of
     # the volume below. The two are always the same path by construction.
-    dir: /var/lib/foreman/archive
+    dir: /var/lib/meitheal/archive
     # Volume mounted at `dir` when enabled. Any volume source works; the
     # operator never learns what is behind it. Empty here on purpose: the
     # chart renders `emptyDir: {}` when you name no source, which keeps a
@@ -140,7 +143,7 @@ foreman:
     #
     #   volume:
     #     persistentVolumeClaim:
-    #       claimName: foreman-archive
+    #       claimName: meitheal-archive
     #
     # Do NOT put `emptyDir: {}` back here as the default. Helm deep-merges
     # your values onto the chart's, so a default source is ADDED to the one
@@ -156,7 +159,7 @@ foreman:
     # provisioners hand out a freshly-bound PVC owned root:root 0755. With
     # no fsGroup the operator cannot create its bundle directory, every
     # terminal task increments
-    # foreman_archive_failures_total{reason="write"}, and not one bundle is
+    # meitheal_archive_failures_total{reason="write"}, and not one bundle is
     # written. The emptyDir default hides this completely, because the
     # kubelet creates an emptyDir already owned by the pod.
     #
@@ -184,10 +187,10 @@ foreman:
 #       replicaCount: 1
 #       roles: [coder-fork]
 #       gitRemoteURL: https://github.com/<you>/LLMKube
-#       githubToken: { secretName: foreman-agent-fork, secretKey: GITHUB_TOKEN }
+#       githubToken: { secretName: meitheal-agent-fork, secretKey: GITHUB_TOKEN }
 #       commitAuthorName: "<you>"
 #       commitAuthorEmail: "<you>@users.noreply.github.com"
-#       coderGitSecret: foreman-fork-credentials     # per-agent coder PAT
+#       coderGitSecret: meitheal-fork-credentials     # per-agent coder PAT
 #       gateCache: { enabled: false }                  # fork agents don't gate
 #
 # Each entry's fields DEEP-MERGE with the legacy `agent:` block above
@@ -203,7 +206,7 @@ foreman:
 # explicitly under `agents:` with the name `default` (or any other key).
 #
 # UPGRADE NOTE, existing `agents:` users only (#1523). Every pool's
-# Deployment now carries `foreman.llmkube.dev/agent-pool: <key>` in its
+# Deployment now carries `meitheal.dev/agent-pool: <key>` in its
 # selector. Before this, all pools rendered the SAME selector, so each
 # Deployment adopted the others' pods and the controllers fought over
 # replicaCount. A Deployment's selector is immutable, so `helm upgrade`
@@ -227,7 +230,7 @@ operator:
 
   image:
     # registry: ghcr.io                                 # optional prefix
-    repository: ghcr.io/defilantech/llmkube-foreman-operator
+    repository: ghcr.io/defilantech/meitheal-operator
     tag: ""                                             # defaults to .Chart.AppVersion
     digest: ""                                          # wins over tag when set
     pullPolicy: IfNotPresent
@@ -239,7 +242,7 @@ operator:
   leaderElection:
     enabled: true
 
-  # The four foreman controllers stream logs at this level. Bump to
+  # The four meitheal controllers stream logs at this level. Bump to
   # debug only when debugging a bad reconcile cycle.
   logLevel: info
 
@@ -330,7 +333,7 @@ webhook:
   # and the new pod is not yet Ready. During that window, with
   # failurePolicy "Fail", EVERY Agent and AgenticTask CREATE/UPDATE
   # clusterwide is rejected (the API server cannot reach any webhook
-  # backend), which can stall the Foreman pipeline and any controller
+  # backend), which can stall the Meitheal pipeline and any controller
   # that patches these CRs. If that window is unacceptable, either set
   # failurePolicy to "Ignore" (accept unvalidated CRs during the gap) or
   # run 2+ operator replicas so a Ready webhook backend always exists
@@ -349,8 +352,8 @@ webhook:
   certValidityDays: 3650
 
 agent:
-  # foreman-agent claims Scheduled AgenticTasks for this node and
-  # executes them. Disable when only running the foreman-operator
+  # meitheal-agent claims Scheduled AgenticTasks for this node and
+  # executes them. Disable when only running the meitheal-operator
   # (e.g. on the control-plane cluster while workers run elsewhere).
   enabled: true
   replicaCount: 1
@@ -362,9 +365,9 @@ agent:
   # dropping its work (#1438): the watcher's poll loop stops claiming new
   # tasks, but the turns it already launched keep running and write their
   # terminal status before the process exits, so a rollout no longer kills a
-  # local-model turn mid-patch (pkg/foreman/agent/watcher.go). The FleetNode
+  # local-model turn mid-patch (pkg/agent/watcher.go). The FleetNode
   # registrar keeps its existing Draining heartbeat throughout
-  # (pkg/foreman/agent/fleetnode.go).
+  # (pkg/agent/fleetnode.go).
   #
   # The default of 300s (5 min) is generous for a bounded turn to land its
   # final patch without a forced kill. A turn that runs past the window is
@@ -377,7 +380,7 @@ agent:
   # replacement pod registers under a different name (the agent falls back
   # to os.Hostname(), the POD name; see the strategy note below), so it
   # never sees the dead pod's work. It is checkClaimExpiry in
-  # internal/foreman/controller/agentictask_controller.go, which releases
+  # internal/controller/agentictask_controller.go, which releases
   # the task back to Pending once the assigned FleetNode's heartbeat goes
   # stale and terminal-fails it on the third expiry. The cost is real: a
   # rollout during a long run spends one of that task's three strikes, so
@@ -412,7 +415,7 @@ agent:
   # knowingly, and re-read #1640 first if it has been resolved.
   #
   # Know what "knowingly" costs. The sharper hazard is not the lost Scheduled
-  # claim, it is recoverOrphanedTasks (pkg/foreman/agent/watcher.go): it runs
+  # claim, it is recoverOrphanedTasks (pkg/agent/watcher.go): it runs
   # once at agent startup and resets EVERY task in phase=Running assigned to
   # its own FleetNode back to Pending. A surging pod that shared a node-scoped
   # identity with its still-running sibling would reset that sibling's
@@ -437,10 +440,10 @@ agent:
     # registry: ghcr.io
     # Default: the lean runtime image (alpine + git). To run a coder-enabled
     # in-cluster agent, point this at the coder image
-    # (ghcr.io/defilantech/llmkube-foreman-agent-coder, same tag), which ships
+    # (ghcr.io/defilantech/meitheal-agent-coder, same tag), which ships
     # the Go toolchain + golangci-lint/controller-gen/make/helm the coder's
     # fast self-gate needs, and add "coder" to agent.roles below (#835).
-    repository: ghcr.io/defilantech/llmkube-foreman-agent
+    repository: ghcr.io/defilantech/meitheal-agent
     tag: ""
     digest: ""
     pullPolicy: IfNotPresent
@@ -449,7 +452,7 @@ agent:
     create: true
     name: ""
 
-  # Executor mode the foreman-agent starts in.
+  # Executor mode the meitheal-agent starts in.
   #   stub:   sleep 10s + write a synthetic Succeeded result. Useful
   #           for chart-install smoke tests and for nodes that should
   #           visibly register without yet hosting a model.
@@ -459,7 +462,7 @@ agent:
   # an InferenceService because it's deterministic.
   mode: stub
 
-  # --roles flag passed to the foreman-agent. The scheduler matches
+  # --roles flag passed to the meitheal-agent. The scheduler matches
   # AgenticTask.spec.requiredCapability.roles against this set.
   # Conventions: "worker" = "this node can run user-facing
   # AgenticTasks"; "verifier" = "this node can host the gate Agent";
@@ -481,7 +484,7 @@ agent:
   nodeLabels: {}
 
   # --task-namespace flag. Empty = watch all namespaces. Pin to a
-  # namespace when a single Foreman install serves multiple
+  # namespace when a single Meitheal install serves multiple
   # tenants that should not see each other's tasks.
   taskNamespace: ""
 
@@ -496,18 +499,18 @@ agent:
   # of 4 in place.
   maxSupervisedTasks: 0
 
-  # --foreman-namespace flag. Namespace the agent submits gate Jobs
+  # --meitheal-namespace flag. Namespace the agent submits gate Jobs
   # into. Defaults to the release namespace, which is where the chart
-  # creates the foreman-gate-cache PVC. Override only when the PVC
+  # creates the meitheal-gate-cache PVC. Override only when the PVC
   # and the agent live in different namespaces.
-  foremanNamespace: ""
+  meithealNamespace: ""
 
   # Accelerator family this node advertises in its FleetNode capability.
   # One of: metal, cuda, vulkan, none. Required on Linux, since the
   # scheduler rejects capability-pinned tasks when this is empty.
   accelerator: ""
 
-  # Models the foreman-agent advertises in its FleetNode.spec
+  # Models the meitheal-agent advertises in its FleetNode.spec
   # heartbeat. Use kebab-case slugs (e.g. "qwen36-35b-carnice-mtp").
   installedModels: []
 
@@ -559,7 +562,7 @@ agent:
   # agent's roles include "worker" (i.e. it can host the coder Agent).
   # Verifier-only nodes can leave these empty -- the gate path does not
   # commit anything.
-  commitAuthorName: ""    # defaults to "Foreman Bot" inside the binary
+  commitAuthorName: ""    # defaults to "Meitheal Bot" inside the binary
   commitAuthorEmail: ""
 
   # The memory LIMIT is a cap, not a reservation (requests stays lean), so a
@@ -624,7 +627,7 @@ agents: {}
 
 # coder gates the ServiceAccount + namespaced Role the Job-mode coder
 # pods run under (#620). A Job-mode Agent (spec.execution.mode=Job) runs
-# `foreman-agent run-task` in an ephemeral Job whose pod uses this SA.
+# `meitheal-agent run-task` in an ephemeral Job whose pod uses this SA.
 # The run-task body only READS the AgenticTask, the referenced Agent, and
 # its InferenceService, so the Role is read-only. Leave enabled when any
 # Agent in the cluster uses Job-mode execution; disable on clusters that
@@ -637,19 +640,19 @@ coder:
     # RoleBinding. Set false to bind an externally managed SA (still
     # gets the Role + RoleBinding so long as coder.enabled is true).
     create: true
-    # Name of the coder Job ServiceAccount. Defaults to "foreman-coder"
-    # so a sample Agent's spec.execution.serviceAccountName=foreman-coder
+    # Name of the coder Job ServiceAccount. Defaults to "meitheal-coder"
+    # so a sample Agent's spec.execution.serviceAccountName=meitheal-coder
     # works without extra wiring. Override to suit your naming.
     name: ""
 
   # Git Secret the coder Job projects as GITHUB_TOKEN for the clone +
-  # push (#620). These pass through to the foreman-agent watcher as
+  # push (#620). These pass through to the meitheal-agent watcher as
   # --coder-git-secret / --coder-git-secret-key.
   #
-  # Defaults match the standalone foreman-git-credentials Secret (key
+  # Defaults match the standalone meitheal-git-credentials Secret (key
   # "token") so existing installs are unchanged. To REUSE an existing
   # git Secret instead of creating a new one, point these at it: e.g.
-  # gitCredentialsSecret: foreman-github with gitCredentialsSecretKey:
-  # GITHUB_TOKEN reuses the same Secret the foreman-agent itself uses.
-  gitCredentialsSecret: foreman-git-credentials
+  # gitCredentialsSecret: meitheal-github with gitCredentialsSecretKey:
+  # GITHUB_TOKEN reuses the same Secret the meitheal-agent itself uses.
+  gitCredentialsSecret: meitheal-git-credentials
   gitCredentialsSecretKey: token

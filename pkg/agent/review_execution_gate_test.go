@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
@@ -34,8 +34,8 @@ func assistantFunction(id, name, args string) oai.Message {
 
 func TestTranscriptRanGoTest_BashCommand(t *testing.T) {
 	tr := []oai.Message{
-		assistantBash("call-1", "go test ./pkg/foreman/agent/ -run TestReviewerSawDiff -count=1"),
-		toolResult("bash", "call-1", "ok  \tpkg/foreman/agent\n"),
+		assistantBash("call-1", "go test ./pkg/agent/ -run TestReviewerSawDiff -count=1"),
+		toolResult("bash", "call-1", "ok  \tpkg/agent\n"),
 	}
 	if !transcriptRanGoTest(tr) {
 		t.Fatalf("expected transcriptRanGoTest=true for a `go test` bash command, got false")
@@ -62,8 +62,8 @@ func TestTranscriptRanGoTest_ReadFileResultDoesNotCount(t *testing.T) {
 	// review_execution_gate_test.go fixtures contain exactly such a literal),
 	// so a read_file result must not satisfy the rail.
 	tr := []oai.Message{
-		assistantFunction("call-1", "read_file", `{"path":"pkg/foreman/agent/review_execution_gate_test.go"}`),
-		toolResult("read_file", "call-1", "package agent\n\ngo test ./pkg/foreman/agent/ -run TestX -count=1\n"),
+		assistantFunction("call-1", "read_file", `{"path":"pkg/agent/review_execution_gate_test.go"}`),
+		toolResult("read_file", "call-1", "package agent\n\ngo test ./pkg/agent/ -run TestX -count=1\n"),
 	}
 	if transcriptRanGoTest(tr) {
 		t.Fatalf("expected transcriptRanGoTest=false for a read_file result that merely mentions `go test`, got true")
@@ -124,13 +124,13 @@ func TestTranscriptRanGoTest_EmptyTranscript(t *testing.T) {
 // transcript contains a `go test` call must not be marked as skipped.
 func TestEnforceReviewerExecution_GoDiffRanGoTest(t *testing.T) {
 	tr := []oai.Message{
-		assistantBash("call-1", "go test ./pkg/foreman/agent/ -run TestReviewerSawDiff -count=1"),
-		toolResult("bash", "call-1", "ok  \tpkg/foreman/agent\n"),
+		assistantBash("call-1", "go test ./pkg/agent/ -run TestReviewerSawDiff -count=1"),
+		toolResult("bash", "call-1", "ok  \tpkg/agent\n"),
 	}
 	extra := map[string]any{}
-	got := enforceReviewerExecution(logr.Discard(), extra, []string{"pkg/foreman/agent/x.go"}, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, tr)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerExecution(logr.Discard(), extra, []string{"pkg/agent/x.go"}, nil,
+		meithealv1alpha1.AgenticTaskVerdictGo, tr)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("expected GO to stand when `go test` ran, got %v", got)
 	}
 	if _, demoted := extra["verdictDemoted"]; demoted {
@@ -148,13 +148,13 @@ func TestEnforceReviewerExecution_GoDiffNoGoTest(t *testing.T) {
 	tr := []oai.Message{
 		assistantBash("call-1", "git diff main...HEAD"),
 		toolResult("bash", "call-1", "diff --git a/x.go b/x.go\n@@ -1 +1 @@\n"),
-		assistantBash("call-2", "read_file pkg/foreman/agent/x.go"),
+		assistantBash("call-2", "read_file pkg/agent/x.go"),
 		toolResult("bash", "call-2", "package agent\n"),
 	}
 	extra := map[string]any{}
-	got := enforceReviewerExecution(logr.Discard(), extra, []string{"pkg/foreman/agent/x.go"}, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, tr)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	got := enforceReviewerExecution(logr.Discard(), extra, []string{"pkg/agent/x.go"}, nil,
+		meithealv1alpha1.AgenticTaskVerdictGo, tr)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("expected GO to stand (marking, not demotion), got %v", got)
 	}
 	reason, ok := skippedFor(extra, railExecution)
@@ -187,8 +187,8 @@ func TestEnforceReviewerExecution_NonGoDiffExempt(t *testing.T) {
 	}
 	extra := map[string]any{}
 	got := enforceReviewerExecution(logr.Discard(), extra, []string{"docs/x.md"}, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, tr)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+		meithealv1alpha1.AgenticTaskVerdictGo, tr)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("expected a non-.go diff to be exempt (GO stands), got %v", got)
 	}
 	if _, demoted := extra["verdictDemoted"]; demoted {
@@ -206,8 +206,8 @@ func TestEnforceReviewerExecution_NonGoVerdictUntouched(t *testing.T) {
 	}
 	extra := map[string]any{}
 	got := enforceReviewerExecution(logr.Discard(), extra, []string{"x.go"}, nil,
-		foremanv1alpha1.AgenticTaskVerdictNoGo, tr)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		meithealv1alpha1.AgenticTaskVerdictNoGo, tr)
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("a non-GO verdict is not this rail's business, got %v", got)
 	}
 	if _, demoted := extra["verdictDemoted"]; demoted {
@@ -229,7 +229,7 @@ func TestTranscriptRanGoTest_CommandPrefixes(t *testing.T) {
 		want    bool
 	}{
 		{name: "bare", command: "go test ./...", want: true},
-		{name: "time prefix", command: "time go test ./pkg/foreman/agent/ -count=1", want: true},
+		{name: "time prefix", command: "time go test ./pkg/agent/ -count=1", want: true},
 		{name: "env assignment prefix", command: "GOFLAGS=-v go test ./...", want: true},
 		{name: "two env assignments", command: "CGO_ENABLED=0 GOFLAGS=-mod=mod go test ./...", want: true},
 		{name: "indented line of a script", rawArgs: `{"command":"cd /tmp\n  go test ./..."}`, want: true},
@@ -271,8 +271,8 @@ func TestEnforceReviewerExecution_DiffUnavailableRecordsSkip(t *testing.T) {
 
 	extra := map[string]any{}
 	got := enforceReviewerExecution(logr.Discard(), extra, nil, diffErr,
-		foremanv1alpha1.AgenticTaskVerdictGo, tr)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+		meithealv1alpha1.AgenticTaskVerdictGo, tr)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("expected GO to stand when the diff is unavailable (marking, not demotion), got %v", got)
 	}
 	reason, ok := skippedFor(extra, railExecution)
@@ -295,7 +295,7 @@ func TestEnforceReviewerExecution_DiffUnavailableRecordsSkip(t *testing.T) {
 		assistantBash("call-1", "go test ./..."),
 		toolResult("bash", "call-1", "ok\n"),
 	}
-	enforceReviewerExecution(logr.Discard(), extra, nil, diffErr, foremanv1alpha1.AgenticTaskVerdictGo, ran)
+	enforceReviewerExecution(logr.Discard(), extra, nil, diffErr, meithealv1alpha1.AgenticTaskVerdictGo, ran)
 	if reason, ok := skippedFor(extra, railExecution); !ok || reason != skipReasonNoDiff {
 		t.Fatalf("want %s: %s even when go test ran, extra=%v", railExecution, skipReasonNoDiff, extra)
 	}
@@ -303,8 +303,8 @@ func TestEnforceReviewerExecution_DiffUnavailableRecordsSkip(t *testing.T) {
 	// A non-GO verdict is untouched and records nothing.
 	extra = map[string]any{}
 	got = enforceReviewerExecution(logr.Discard(), extra, nil, diffErr,
-		foremanv1alpha1.AgenticTaskVerdictNoGo, tr)
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+		meithealv1alpha1.AgenticTaskVerdictNoGo, tr)
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Fatalf("a non-GO verdict is not this rail's business, got %v", got)
 	}
 	if _, skipped := skippedFor(extra, railExecution); skipped {

@@ -81,11 +81,11 @@ func TestContradictionsNamedFileNotChanged(t *testing.T) {
 	claim := StageClaim{
 		Stage:      "coder",
 		Verdict:    "GO",
-		NamedFiles: []string{"pkg/foreman/agent/repo/commit.go", "pkg/foreman/agent/nonexistent.go"},
+		NamedFiles: []string{"pkg/agent/repo/commit.go", "pkg/agent/nonexistent.go"},
 	}
 	facts := BranchFacts{
 		CommitsAhead: 1,
-		FilesChanged: []string{"pkg/foreman/agent/repo/commit.go", "README.md"},
+		FilesChanged: []string{"pkg/agent/repo/commit.go", "README.md"},
 		HeadSHA:      "abc",
 		BaseSHA:      "def",
 	}
@@ -94,7 +94,7 @@ func TestContradictionsNamedFileNotChanged(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected exactly one contradiction, got %d: %q", len(got), got)
 	}
-	want := "coder: named file pkg/foreman/agent/nonexistent.go is not among the changed files"
+	want := "coder: named file pkg/agent/nonexistent.go is not among the changed files"
 	if got[0] != want {
 		t.Fatalf("got %q, want %q", got[0], want)
 	}
@@ -124,11 +124,11 @@ func TestContradictionsConsistentReturnsNil(t *testing.T) {
 		Verdict:           "GO",
 		ClaimsEdits:       true,
 		ClaimsEmptyBranch: false,
-		NamedFiles:        []string{"pkg/foreman/agent/repo/commit.go"},
+		NamedFiles:        []string{"pkg/agent/repo/commit.go"},
 	}
 	facts := BranchFacts{
 		CommitsAhead: 2,
-		FilesChanged: []string{"pkg/foreman/agent/repo/commit.go", "README.md"},
+		FilesChanged: []string{"pkg/agent/repo/commit.go", "README.md"},
 		HeadSHA:      "abc",
 		BaseSHA:      "def",
 	}

@@ -40,7 +40,7 @@ import (
 // file/line anchors, or check-run conclusions beyond a pre-trimmed log
 // excerpt. The fix is to stop passing a digest and instead expose one
 // bounded GitHub surface (this tool) using the same token the
-// foreman-agent already loads at startup.
+// meitheal-agent already loads at startup.
 //
 // Security shape vs the GH_TOKEN-env alternative:
 //
@@ -50,9 +50,9 @@ import (
 //     through this tool.
 //   - The token lives behind a TokenSource closure; the struct stores
 //     no credentials between calls.
-//   - Containerised foreman-agents do not need `gh` installed in their
+//   - Containerised meitheal-agents do not need `gh` installed in their
 //     image; pure Go HTTP suffices.
-//   - Token rotation surface is one file (~/.config/foreman/github-token)
+//   - Token rotation surface is one file (~/.config/github-token)
 //     instead of also a per-user `gh` config or per-process env var
 //     inherited by every bash subprocess.
 type FetchPullRequestTool struct {
@@ -105,7 +105,7 @@ func (t *FetchPullRequestTool) Schema() oai.ToolSchemaDef {
 //     string): wrapped fmt.Errorf naming the field.
 //   - token resolution failure: wrapped error citing the env var /
 //     file the operator is expected to populate; this points at the
-//     foreman-agent host, not the model.
+//     meitheal-agent host, not the model.
 //   - 404: "PR not found" so the model can choose to ERROR out rather
 //     than guess.
 //   - 401 / 403: "unauthorized" with a hint that the token is wrong
@@ -142,7 +142,7 @@ func (t *FetchPullRequestTool) Execute(ctx context.Context, args json.RawMessage
 		return nil, fmt.Errorf(
 			"fetch_pull_request: no GitHub token "+
 				"(set GITHUB_TOKEN env or populate "+
-				"~/.config/foreman/github-token on the FleetNode): %w", err)
+				"~/.config/github-token on the FleetNode): %w", err)
 	}
 	pr, err := t.Fetcher.Fetch(ctx, owner, name, a.Number, token)
 	if err != nil {
@@ -154,7 +154,7 @@ func (t *FetchPullRequestTool) Execute(ctx context.Context, args json.RawMessage
 			case herr.IsUnauthorized():
 				return nil, fmt.Errorf(
 					"fetch_pull_request: unauthorized for %s#%d; "+
-						"foreman-agent's GitHub token may be missing the repo scope, "+
+						"meitheal-agent's GitHub token may be missing the repo scope, "+
 						"or the PR is in a private repo not visible to it",
 					a.Repo, a.Number)
 			}

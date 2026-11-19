@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func samplePlan() slicePlan {
@@ -63,14 +63,14 @@ func TestBuildSliceWorkload_PipelineShape(t *testing.T) {
 	// slice steps
 	for i, name := range []string{"exporter", "dashboard"} {
 		s := steps[i]
-		if s.Name != name || s.Kind != foremanv1alpha1.AgenticTaskKindIssueFix {
+		if s.Name != name || s.Kind != meithealv1alpha1.AgenticTaskKindIssueFix {
 			t.Fatalf("step %d = %s/%s, want %s/issue-fix", i, s.Name, s.Kind, name)
 		}
-		// branch is foreman/slicer-<issue>-<runid>/<name>; runid is 8 hex chars.
+		// branch is meitheal/slicer-<issue>-<runid>/<name>; runid is 8 hex chars.
 		if len(s.Payload.Branch) < 24 ||
-			!strings.HasPrefix(s.Payload.Branch, "foreman/slicer-700-") ||
+			!strings.HasPrefix(s.Payload.Branch, "meitheal/slicer-700-") ||
 			!strings.HasSuffix(s.Payload.Branch, "/"+name) {
-			t.Errorf("slice %s branch = %q, want foreman/slicer-700-<runid>/%s", name, s.Payload.Branch, name)
+			t.Errorf("slice %s branch = %q, want meitheal/slicer-700-<runid>/%s", name, s.Payload.Branch, name)
 		}
 		if s.AgentRef.Name != "coder-metal" {
 			t.Errorf("slice %s agent = %q", name, s.AgentRef.Name)
@@ -82,7 +82,7 @@ func TestBuildSliceWorkload_PipelineShape(t *testing.T) {
 
 	// integrate step
 	integ := steps[2]
-	if integ.Name != "integrate" || integ.Kind != foremanv1alpha1.AgenticTaskKindIntegrate {
+	if integ.Name != "integrate" || integ.Kind != meithealv1alpha1.AgenticTaskKindIntegrate {
 		t.Fatalf("integrate step = %s/%s", integ.Name, integ.Kind)
 	}
 	if got := integ.DependsOn; len(got) != 2 || got[0] != "exporter" || got[1] != "dashboard" {
@@ -95,7 +95,7 @@ func TestBuildSliceWorkload_PipelineShape(t *testing.T) {
 
 	// reconcile step
 	rec := steps[3]
-	if rec.Name != "reconcile" || rec.Kind != foremanv1alpha1.AgenticTaskKindReconcile {
+	if rec.Name != "reconcile" || rec.Kind != meithealv1alpha1.AgenticTaskKindReconcile {
 		t.Fatalf("reconcile step = %s/%s", rec.Name, rec.Kind)
 	}
 	if len(rec.DependsOn) != 1 || rec.DependsOn[0] != "integrate" {
@@ -121,9 +121,9 @@ func TestBuildSliceWorkload_PipelineShape(t *testing.T) {
 // assertVerifyStep checks the slicer's trailing verify step: it gates the same
 // integration branch reconcile targets, depends on reconcile, uses the verify
 // agent, and carries a bare make-target payload (no slice refs / pins / contract).
-func assertVerifyStep(t *testing.T, ver, rec foremanv1alpha1.PipelineStep) {
+func assertVerifyStep(t *testing.T, ver, rec meithealv1alpha1.PipelineStep) {
 	t.Helper()
-	if ver.Name != "verify" || ver.Kind != foremanv1alpha1.AgenticTaskKindVerify {
+	if ver.Name != "verify" || ver.Kind != meithealv1alpha1.AgenticTaskKindVerify {
 		t.Fatalf("verify step = %s/%s, want verify/verify", ver.Name, ver.Kind)
 	}
 	if len(ver.DependsOn) != 1 || ver.DependsOn[0] != "reconcile" {
@@ -153,7 +153,7 @@ func TestBuildSliceWorkload_VerifyOptOut(t *testing.T) {
 		t.Fatalf("opt-out want 4 steps (no verify), got %d", len(steps))
 	}
 	for _, s := range steps {
-		if s.Kind == foremanv1alpha1.AgenticTaskKindVerify {
+		if s.Kind == meithealv1alpha1.AgenticTaskKindVerify {
 			t.Errorf("verify step present despite empty --verify-agent: %+v", s)
 		}
 	}
@@ -166,12 +166,12 @@ func TestBuildSliceWorkload_VerifyOptOut(t *testing.T) {
 // generated fresh per Workload.
 func checkRunIDConsistency(
 	t *testing.T,
-	sliceSteps []foremanv1alpha1.PipelineStep,
-	integ foremanv1alpha1.PipelineStep,
+	sliceSteps []meithealv1alpha1.PipelineStep,
+	integ meithealv1alpha1.PipelineStep,
 	label string,
 ) {
 	t.Helper()
-	integRunID := strings.TrimPrefix(integ.Payload.Slices[0].Branch, "foreman/slicer-700-")
+	integRunID := strings.TrimPrefix(integ.Payload.Slices[0].Branch, "meitheal/slicer-700-")
 	integRunID = strings.TrimSuffix(integRunID, "/exporter")
 	for _, s := range sliceSteps {
 		if !strings.Contains(s.Payload.Branch, "-"+integRunID+"/") {
@@ -185,7 +185,7 @@ func checkRunIDConsistency(
 
 // TestBuildSliceWorkload_RunIDUniquePerWorkload asserts that two independent
 // builds of the same plan produce different run-scoped branch segments, so a
-// re-run of `llmkube foreman slice` on the same issue never collides with
+// re-run of `meitheal slice` on the same issue never collides with
 // branches left on the fork by the prior run (issue #1054).
 func TestBuildSliceWorkload_RunIDUniquePerWorkload(t *testing.T) {
 	plan := samplePlan()
@@ -199,10 +199,10 @@ func TestBuildSliceWorkload_RunIDUniquePerWorkload(t *testing.T) {
 	if branch1 == branch2 {
 		t.Errorf("two Workloads for the same plan produced the same branch %q; runid must be unique per invocation", branch1)
 	}
-	// Both must still follow the foreman/slicer-<issue>-<runid>/<name> shape.
-	const wantPrefix = "foreman/slicer-700-"
+	// Both must still follow the meitheal/slicer-<issue>-<runid>/<name> shape.
+	const wantPrefix = "meitheal/slicer-700-"
 	if !strings.HasPrefix(branch1, wantPrefix) || !strings.HasPrefix(branch2, wantPrefix) {
-		t.Errorf("branches must be foreman/slicer-<issue>-<runid>/<name>; got %q, %q", branch1, branch2)
+		t.Errorf("branches must be meitheal/slicer-<issue>-<runid>/<name>; got %q, %q", branch1, branch2)
 	}
 }
 

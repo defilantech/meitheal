@@ -38,8 +38,8 @@ func TestRunCoderJobPassesForgeFlags(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).WithStatusSubresource(&batchv1.Job{}).Build()
-	jobName := "foreman-coder-forge"
-	key := types.NamespacedName{Namespace: "foreman-system", Name: jobName}
+	jobName := "meitheal-coder-forge"
+	key := types.NamespacedName{Namespace: "meitheal-system", Name: jobName}
 	go flipStatusOnce(ctx, c, key, 1, 0)
 
 	tool := &RunCoderJob{
@@ -71,11 +71,11 @@ func TestRunCoderJobPassesForgeFlags(t *testing.T) {
 // Unset forge settings leave the flags off, so run-task infers the forge the
 // way the watcher did instead of parsing an empty value.
 func TestRenderCoderJobOmitsUnsetForgeFlags(t *testing.T) {
-	job, err := renderCoderJob(coderRendererInput{
-		Name: "foreman-coder-noforge", Namespace: "foreman-system", Image: "img",
+	job, err := renderCoderJob(coderRendererInput{ //nolint:gosec // G101: a Secret name, not a credential
+		Name: "meitheal-coder-noforge", Namespace: "meitheal-system", Image: "img",
 		TaskName: "noforge", TaskNamespace: "default", ActiveDeadlineSeconds: 3600,
 		CPURequest: "2", CPULimit: "4", MemRequest: "4Gi", MemLimit: "8Gi",
-		GitCredentialsSecret: "foreman-git-credentials",
+		GitCredentialsSecret: "meitheal-git-credentials",
 	})
 	if err != nil {
 		t.Fatalf("renderCoderJob: %v", err)

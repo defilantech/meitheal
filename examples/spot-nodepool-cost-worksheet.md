@@ -1,6 +1,6 @@
 # Spot GPU NodePool Cost Worksheet
 
-This worksheet estimates the cost of running Foreman verification-gate
+This worksheet estimates the cost of running Meitheal verification-gate
 Jobs on spot GPU capacity via the Karpenter NodePool defined in
 `spot-nodepool-karpenter.yaml`.
 

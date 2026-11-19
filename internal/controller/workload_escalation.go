@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // escalationSteps decides which escalate-<N>-<j> review steps to emit
@@ -52,8 +52,8 @@ import (
 // time, and user-authored pipeline step names could otherwise
 // false-match the review-<N>-* prefixes scanned here.
 func escalationSteps(
-	w *foremanv1alpha1.Workload, children []foremanv1alpha1.AgenticTask,
-) (steps []foremanv1alpha1.PipelineStep, escalated []int32) {
+	w *meithealv1alpha1.Workload, children []meithealv1alpha1.AgenticTask,
+) (steps []meithealv1alpha1.PipelineStep, escalated []int32) {
 	if len(w.Spec.EscalationReviewerAgentRefs) == 0 ||
 		len(w.Spec.ReviewerAgentRefs) == 0 ||
 		len(w.Spec.Issues) == 0 {
@@ -84,11 +84,11 @@ func escalationSteps(
 			case strings.HasPrefix(step, basePrefix):
 				baseTotal++
 				phase := children[i].Status.Phase
-				if phase == foremanv1alpha1.AgenticTaskPhaseSucceeded ||
-					phase == foremanv1alpha1.AgenticTaskPhaseFailed {
+				if phase == meithealv1alpha1.AgenticTaskPhaseSucceeded ||
+					phase == meithealv1alpha1.AgenticTaskPhaseFailed {
 					baseTerminal++
 				}
-				if children[i].Status.Verdict == foremanv1alpha1.AgenticTaskVerdictNoGo {
+				if children[i].Status.Verdict == meithealv1alpha1.AgenticTaskVerdictNoGo {
 					baseNoGo++
 				}
 			}
@@ -98,18 +98,18 @@ func escalationSteps(
 			continue
 		}
 
-		branch := fmt.Sprintf("foreman/%s/issue-%d", w.Name, n)
+		branch := fmt.Sprintf("meitheal/%s/issue-%d", w.Name, n)
 		issueEscalated := false
 		for j, ref := range w.Spec.EscalationReviewerAgentRefs {
 			name := fmt.Sprintf("escalate-%d-%d", n, j)
 			if _, exists := existingEsc[name]; exists {
 				continue
 			}
-			steps = append(steps, foremanv1alpha1.PipelineStep{
+			steps = append(steps, meithealv1alpha1.PipelineStep{
 				Name:     name,
-				Kind:     foremanv1alpha1.AgenticTaskKindReview,
+				Kind:     meithealv1alpha1.AgenticTaskKindReview,
 				AgentRef: ref,
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:   w.Spec.Repo,
 					Issue:  n,
 					Branch: branch,
@@ -132,8 +132,8 @@ func escalationSteps(
 // applicable). Returns the refreshed children slice so rollup counts
 // the new tasks as in-flight; on a no-op it returns the input slice.
 func (r *WorkloadReconciler) emitEscalations(
-	ctx context.Context, w *foremanv1alpha1.Workload, children []foremanv1alpha1.AgenticTask,
-) ([]foremanv1alpha1.AgenticTask, error) {
+	ctx context.Context, w *meithealv1alpha1.Workload, children []meithealv1alpha1.AgenticTask,
+) ([]meithealv1alpha1.AgenticTask, error) {
 	log := logf.FromContext(ctx).WithName("workload").WithValues("workload", client.ObjectKeyFromObject(w))
 
 	if len(w.Spec.Pipeline) > 0 {
@@ -251,7 +251,7 @@ func (r *WorkloadReconciler) emitEscalations(
 		if _, ok := existing[ref.Name]; ok {
 			continue
 		}
-		children = append(children, foremanv1alpha1.AgenticTask{
+		children = append(children, meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{Name: ref.Name, Namespace: ref.Namespace},
 		})
 	}

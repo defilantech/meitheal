@@ -1,11 +1,11 @@
-# Patch for a Foreman verification-gate Job that targets the spot GPU
+# Patch for a Meitheal verification-gate Job that targets the spot GPU
 # NodePool defined in spot-nodepool-karpenter.yaml.
 #
 # Apply as a strategic merge patch against the Job created by the
-# foreman-agent gate executor:
+# meitheal-agent gate executor:
 #
-#   kubectl patch job <gate-job-name> -n foreman-system \
-#     --type=strategic -p "$(cat examples/foreman/spot-gate-job-patch.yaml)"
+#   kubectl patch job <gate-job-name> -n meitheal-system \
+#     --type=strategic -p "$(cat examples/spot-gate-job-patch.yaml)"
 #
 # Or embed the toleration and nodeSelector directly in the gate Agent
 # spec if you control the Agent manifest.
@@ -24,7 +24,7 @@ spec:
           effect: NoSchedule
       # Pin to the spot GPU NodePool via its label.
       nodeSelector:
-        karpenter.sh/nodepool: foreman-gate-spot
+        karpenter.sh/nodepool: meitheal-gate-spot
       # Retry up to 3 times with a 30s backoff between attempts.
       # Spot instances can be interrupted; the Job controller will
       # reschedule on a new node if the pod is terminated.
@@ -33,7 +33,7 @@ spec:
       activeDeadlineSeconds: 900
       containers:
         - name: gate
-          image: ghcr.io/defilantech/foreman-agent:latest
+          image: ghcr.io/defilantech/meitheal-agent:latest
           command:
             - /bin/sh
             - -c

@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func TestCoderJobResultToResult_PreservesPromotedOutcome(t *testing.T) {
@@ -34,9 +34,9 @@ func TestCoderJobResultToResult_PreservesPromotedOutcome(t *testing.T) {
 
 	t.Run("ALREADY-RESOLVED envelope survives the Job hop", func(t *testing.T) {
 		cjr := CoderJobResult{
-			Verdict: string(foremanv1alpha1.AgenticTaskVerdictNoGo),
+			Verdict: string(meithealv1alpha1.AgenticTaskVerdictNoGo),
 			Summary: "already fixed by abc1234",
-			Branch:  "foreman/wl/issue-970",
+			Branch:  "meitheal/wl/issue-970",
 			JobName: "coder-job-1",
 			ResultExtra: map[string]any{
 				"outcome":    "ALREADY-RESOLVED",
@@ -59,14 +59,14 @@ func TestCoderJobResultToResult_PreservesPromotedOutcome(t *testing.T) {
 		if r.Extra["executionMode"] != "Job" || r.Extra["jobName"] != "coder-job-1" {
 			t.Errorf("supervisor fields missing: %v", r.Extra)
 		}
-		if r.Extra["intendedBranch"] != "foreman/wl/issue-970" {
+		if r.Extra["intendedBranch"] != "meitheal/wl/issue-970" {
 			t.Errorf("intendedBranch missing: %v", r.Extra)
 		}
 	})
 
 	t.Run("NEEDS-VERIFICATION envelope survives with unverified", func(t *testing.T) {
 		cjr := CoderJobResult{
-			Verdict: string(foremanv1alpha1.AgenticTaskVerdictNoGo),
+			Verdict: string(meithealv1alpha1.AgenticTaskVerdictNoGo),
 			ResultExtra: map[string]any{
 				"outcome":    "NEEDS-VERIFICATION",
 				"unverified": []any{"claim A"},
@@ -82,7 +82,7 @@ func TestCoderJobResultToResult_PreservesPromotedOutcome(t *testing.T) {
 	})
 
 	t.Run("no envelope falls back to the legacy generic outcome", func(t *testing.T) {
-		cjr := CoderJobResult{Verdict: string(foremanv1alpha1.AgenticTaskVerdictNoGo)}
+		cjr := CoderJobResult{Verdict: string(meithealv1alpha1.AgenticTaskVerdictNoGo)}
 		r := coderJobResultToResult("issue-fix", start, cjr)
 		if r.Extra["outcome"] != "MODEL-NO-GO" {
 			t.Errorf("fallback outcome: want MODEL-NO-GO got %v", r.Extra["outcome"])
@@ -91,7 +91,7 @@ func TestCoderJobResultToResult_PreservesPromotedOutcome(t *testing.T) {
 
 	t.Run("envelope with empty outcome also falls back", func(t *testing.T) {
 		cjr := CoderJobResult{
-			Verdict:     string(foremanv1alpha1.AgenticTaskVerdictNoGo),
+			Verdict:     string(meithealv1alpha1.AgenticTaskVerdictNoGo),
 			ResultExtra: map[string]any{"outcome": "", "turnCount": 3},
 		}
 		r := coderJobResultToResult("issue-fix", start, cjr)
@@ -105,8 +105,8 @@ func TestCoderJobResultToResult_PreservesPromotedOutcome(t *testing.T) {
 
 	t.Run("GO keeps envelope fields and stamps supervisor keys over collisions", func(t *testing.T) {
 		cjr := CoderJobResult{
-			Verdict:   string(foremanv1alpha1.AgenticTaskVerdictGo),
-			Branch:    "foreman/wl/issue-1",
+			Verdict:   string(meithealv1alpha1.AgenticTaskVerdictGo),
+			Branch:    "meitheal/wl/issue-1",
 			CommitSHA: "def5678",
 			JobName:   "coder-job-2",
 			ResultExtra: map[string]any{
@@ -116,7 +116,7 @@ func TestCoderJobResultToResult_PreservesPromotedOutcome(t *testing.T) {
 			},
 		}
 		r := coderJobResultToResult("issue-fix", start, cjr)
-		if r.Extra["branch"] != "foreman/wl/issue-1" {
+		if r.Extra["branch"] != "meitheal/wl/issue-1" {
 			t.Errorf("supervisor branch must win over envelope: %v", r.Extra["branch"])
 		}
 		if r.Extra["turnCount"] != 12 {
@@ -142,16 +142,16 @@ func TestCoderJobResultToResult_CarriesResultExtraOnEveryBranch(t *testing.T) {
 		"kind":       "ConfigMap",
 		"apiVersion": "v1",
 		"namespace":  "default",
-		"name":       "foreman-transcript-coder-1656",
+		"name":       "meitheal-transcript-coder-1656",
 	}
 
 	cases := []struct {
 		name    string
 		verdict string
 	}{
-		{"GO", string(foremanv1alpha1.AgenticTaskVerdictGo)},
-		{"NO-GO", string(foremanv1alpha1.AgenticTaskVerdictNoGo)},
-		{"INCOMPLETE", string(foremanv1alpha1.AgenticTaskVerdictIncomplete)},
+		{"GO", string(meithealv1alpha1.AgenticTaskVerdictGo)},
+		{"NO-GO", string(meithealv1alpha1.AgenticTaskVerdictNoGo)},
+		{"INCOMPLETE", string(meithealv1alpha1.AgenticTaskVerdictIncomplete)},
 		{"ERROR", "ERROR"},
 	}
 
@@ -171,7 +171,7 @@ func TestCoderJobResultToResult_CarriesResultExtraOnEveryBranch(t *testing.T) {
 			if !ok {
 				t.Fatalf("transcriptRef dropped on the %s branch: Extra = %v", tc.name, r.Extra)
 			}
-			if ref["name"] != "foreman-transcript-coder-1656" {
+			if ref["name"] != "meitheal-transcript-coder-1656" {
 				t.Errorf("transcriptRef.name = %v, want the transcript ConfigMap name", ref["name"])
 			}
 			if r.Extra["turnCount"] != 42 {
@@ -189,7 +189,7 @@ func TestCoderJobResultToResult_CarriesResultExtraOnEveryBranch(t *testing.T) {
 	// deliberately let the pod's envelope win, which #1077 already pins.
 	t.Run("the supervisor's forced outcome still overrides the pod's", func(t *testing.T) {
 		forced := map[string]string{
-			string(foremanv1alpha1.AgenticTaskVerdictIncomplete): "INCOMPLETE",
+			string(meithealv1alpha1.AgenticTaskVerdictIncomplete): "INCOMPLETE",
 			"ERROR": "JOB-ERROR",
 		}
 		for verdict, want := range forced {

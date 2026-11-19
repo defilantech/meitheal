@@ -1,9 +1,9 @@
 # Curated ModelProfile for Ornith-1.0 coders.
 #
-# Apply after the foreman chart (which installs the ModelProfile CRD) is
+# Apply after the meitheal chart (which installs the ModelProfile CRD) is
 # installed and its CRD is established:
 #
-#   kubectl apply -f examples/foreman/modelprofile-ornith.yaml
+#   kubectl apply -f examples/modelprofile-ornith.yaml
 #
 # Then reference it from a coder Agent:
 #
@@ -18,12 +18,12 @@
 # custom resource of a chart-defined CRD races the CRD's establishment on a
 # fresh `helm install`. The CRD + RBAC ship in the chart; profiles are
 # applied (by an operator or by GitOps) once the CRD exists.
-apiVersion: foreman.llmkube.dev/v1alpha1
+apiVersion: meitheal.dev/v1alpha1
 kind: ModelProfile
 metadata:
   name: ornith
   labels:
-    foreman.llmkube.dev/profile-source: shipped
+    meitheal.dev/profile-source: shipped
 spec:
   systemPromptAddendum: |
     OPERATING MODE:

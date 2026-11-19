@@ -44,7 +44,7 @@ var defaultScanSeverity = []string{"CRITICAL", "HIGH"}
 // matches ScanGate.Images' own "Empty means all built-in targets".
 type ScanGate struct {
 	// Images lists the built-in scan-target ids to scan (e.g. "controller",
-	// "foreman-agent"). Empty means all built-in targets: a nil/empty
+	// "router-proxy"). Empty means all built-in targets: a nil/empty
 	// Images is the nil-means-all rule, and Resolve passes it through as a
 	// nil ResolvedScan.Images. Unknown ids are rejected by Resolve's
 	// caller; Resolve itself ignores the list beyond the empty-means-all

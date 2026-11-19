@@ -1,4 +1,4 @@
-{{- range $name, $cfg := include "foreman.agents" . | fromYaml }}
+{{- range $name, $cfg := include "meitheal.agents" . | fromYaml }}
 ---
 {{- /* Merge defaults BEFORE the enabled gate so a per-agent entry that
        omits `enabled` inherits it from .Values.agent instead of being
@@ -14,43 +14,43 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "foreman.agent.serviceAccountName" $ctx }}
-  namespace: {{ include "foreman.namespace" $ }}
+  name: {{ include "meitheal.agent.serviceAccountName" $ctx }}
+  namespace: {{ include "meitheal.namespace" $ }}
   labels:
-    {{- include "foreman.agent.labels" $ | nindent 4 }}
+    {{- include "meitheal.agent.labels" $ | nindent 4 }}
 ---
 {{- end }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "foreman.agent.resourceName" $ctx }}
+  name: {{ include "meitheal.agent.resourceName" $ctx }}
   labels:
-    {{- include "foreman.agent.labels" $ | nindent 4 }}
+    {{- include "meitheal.agent.labels" $ | nindent 4 }}
 rules:
   # FleetNode self-registration + heartbeat.
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources: ["fleetnodes"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources: ["fleetnodes/status"]
     verbs: ["get", "update", "patch"]
 
   # AgenticTask watcher: claim Scheduled tasks for this node, update
   # status on completion.
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources: ["agentictasks"]
     verbs: ["get", "list", "watch", "update", "patch"]
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources: ["agentictasks/status"]
     verbs: ["get", "update", "patch"]
 
   # Read the referenced Agent CR + the InferenceService it points at
   # to resolve the executor's base URL.
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources: ["agents"]
     verbs: ["get", "list", "watch"]
   # Read the optional ModelProfile a given Agent may reference.
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources: ["modelprofiles"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["inference.llmkube.dev"]
@@ -96,7 +96,7 @@ rules:
     resources: ["configmaps"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
-  # run_gate_job tool submits + reads Jobs in the foreman namespace.
+  # run_gate_job tool submits + reads Jobs in the meitheal namespace.
   # Pod log access lives on the core "pods/log" subresource.
   - apiGroups: ["batch"]
     resources: ["jobs"]
@@ -116,16 +116,16 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "foreman.agent.resourceName" $ctx }}
+  name: {{ include "meitheal.agent.resourceName" $ctx }}
   labels:
-    {{- include "foreman.agent.labels" $ | nindent 4 }}
+    {{- include "meitheal.agent.labels" $ | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "foreman.agent.resourceName" $ctx }}
+  name: {{ include "meitheal.agent.resourceName" $ctx }}
 subjects:
   - kind: ServiceAccount
-    name: {{ include "foreman.agent.serviceAccountName" $ctx }}
-    namespace: {{ include "foreman.namespace" $ }}
+    name: {{ include "meitheal.agent.serviceAccountName" $ctx }}
+    namespace: {{ include "meitheal.namespace" $ }}
 {{- end }}
 {{- end }}

@@ -369,7 +369,7 @@ func TestProgressMonitor_BashFileWriteResetsStreak(t *testing.T) {
 	// the streak must reset on the bash write so it does NOT trip.
 	_ = mon.Observe(1, []oai.ToolCall{makeCall("a", "read_file", `{}`)}, transcript)
 	_ = mon.Observe(2, []oai.ToolCall{makeCall("b", "read_file", `{}`)}, transcript)
-	heredoc := `{"command":"cat <<EOF > charts/foreman/templates/network-policy.yaml\nkind: NetworkPolicy\nEOF"}`
+	heredoc := `{"command":"cat <<EOF > charts/meitheal/templates/network-policy.yaml\nkind: NetworkPolicy\nEOF"}`
 	d := mon.Observe(3, []oai.ToolCall{makeCall("c", "bash", heredoc)}, transcript)
 	if d.Action != ProgressContinue {
 		t.Fatalf("turn 3 (bash heredoc write): expected Continue; got %+v", d)
@@ -378,7 +378,7 @@ func TestProgressMonitor_BashFileWriteResetsStreak(t *testing.T) {
 	if d.Action != ProgressContinue {
 		t.Fatalf("turn 4: expected Continue (streak reset by bash write); got %+v", d)
 	}
-	sedCmd := `{"command":"sed -i 's/a/b/' charts/foreman/values.yaml"}`
+	sedCmd := `{"command":"sed -i 's/a/b/' charts/meitheal/values.yaml"}`
 	d = mon.Observe(5, []oai.ToolCall{makeCall("e", "bash", sedCmd)}, transcript)
 	if d.Action != ProgressContinue {
 		t.Fatalf("turn 5 (sed -i): expected Continue; got %+v", d)
@@ -394,7 +394,7 @@ func TestProgressMonitor_ReadOnlyBashStillTripsStreak(t *testing.T) {
 	transcript := []oai.Message{}
 	cmds := []string{
 		`{"command":"ls -R charts/"}`,
-		`{"command":"helm lint charts/foreman"}`,
+		`{"command":"helm lint charts/meitheal"}`,
 		`{"command":"go test ./... > /dev/null 2>&1"}`,
 	}
 	var d ProgressDecision
@@ -419,7 +419,7 @@ func TestBashWritesWorkspace_Legacy(t *testing.T) {
 		{"cp a b", true},
 		{"patch -p1 < x.diff", true},
 		{"ls -R charts/", false},
-		{"helm lint charts/foreman", false},
+		{"helm lint charts/meitheal", false},
 		{"cat foo.yaml", false},
 		{"grep -r foo .", false},
 		{"go test ./... > /dev/null 2>&1", false},
@@ -669,7 +669,7 @@ func TestProgressMonitor_EditDisarmsNudgedRepeatedTool(t *testing.T) {
 		RepeatedToolThreshold: 3,
 	})
 	transcript := []oai.Message{}
-	buildArgs := `{"command":"go build ./pkg/foreman/agent/tools/..."}`
+	buildArgs := `{"command":"go build ./pkg/agent/tools/..."}`
 
 	// Spin to the nudge.
 	_ = mon.Observe(1, []oai.ToolCall{makeCall("a", "bash", buildArgs)}, transcript)

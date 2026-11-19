@@ -23,18 +23,18 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // claimedRunningTask builds an AgenticTask in phase=Running that is owned by
 // the given node with the given claimedAt timestamp. It is used to seed both
 // the fake client (the live object the controller sees) and the in-memory
 // copy the watcher holds after calling claim().
-func claimedRunningTask(name, node string, claimedAt metav1.Time) *foremanv1alpha1.AgenticTask {
-	return &foremanv1alpha1.AgenticTask{
+func claimedRunningTask(name, node string, claimedAt metav1.Time) *meithealv1alpha1.AgenticTask {
+	return &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Status: foremanv1alpha1.AgenticTaskStatus{
-			Phase:        foremanv1alpha1.AgenticTaskPhaseRunning,
+		Status: meithealv1alpha1.AgenticTaskStatus{
+			Phase:        meithealv1alpha1.AgenticTaskPhaseRunning,
 			AssignedNode: node,
 			ClaimedAt:    &claimedAt,
 		},
@@ -44,7 +44,7 @@ func claimedRunningTask(name, node string, claimedAt metav1.Time) *foremanv1alph
 // inMemoryTask builds an in-memory copy (the watcher's `t`) with the given
 // ownership. This simulates the task pointer that claim() leaves behind after
 // mutating t.Status.ClaimedAt and succeeding, but before the executor returns.
-func inMemoryTask(name, node string, claimedAt metav1.Time) *foremanv1alpha1.AgenticTask {
+func inMemoryTask(name, node string, claimedAt metav1.Time) *meithealv1alpha1.AgenticTask {
 	return claimedRunningTask(name, node, claimedAt)
 }
 
@@ -60,10 +60,10 @@ func TestPatchTerminal_StandsDownWhenTaskReleased(t *testing.T) {
 	t1 := metav1.NewTime(time.Unix(time.Now().Add(-2*time.Minute).Unix(), 0))
 
 	// Live object: controller reset it to Pending, cleared claim.
-	released := &foremanv1alpha1.AgenticTask{
+	released := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "code-668a", Namespace: "default"},
-		Status: foremanv1alpha1.AgenticTaskStatus{
-			Phase:        foremanv1alpha1.AgenticTaskPhasePending,
+		Status: meithealv1alpha1.AgenticTaskStatus{
+			Phase:        meithealv1alpha1.AgenticTaskPhasePending,
 			AssignedNode: "",
 			ClaimedAt:    nil,
 		},
@@ -74,7 +74,7 @@ func TestPatchTerminal_StandsDownWhenTaskReleased(t *testing.T) {
 	// In-memory copy: what the watcher held after claim() returned.
 	tInMemory := inMemoryTask("code-668a", "node-a", t1)
 
-	res := NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictGo, "done", time.Second)
+	res := NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictGo, "done", time.Second)
 
 	err := w.patchTerminal(context.Background(), tInMemory, res, nil)
 	if err != nil {
@@ -83,7 +83,7 @@ func TestPatchTerminal_StandsDownWhenTaskReleased(t *testing.T) {
 
 	// The live object must not have been touched — it must still be Pending.
 	got := getTask(t, c, "code-668a")
-	if got.Status.Phase != foremanv1alpha1.AgenticTaskPhasePending {
+	if got.Status.Phase != meithealv1alpha1.AgenticTaskPhasePending {
 		t.Fatalf("phase = %q, want Pending (stand-down should prevent terminal patch)", got.Status.Phase)
 	}
 	if got.Status.Verdict != "" {
@@ -111,7 +111,7 @@ func TestPatchTerminal_StandsDownWhenTaskReClaimedElsewhere(t *testing.T) {
 	// In-memory copy: the original claim by node-a at t1.
 	tInMemory := inMemoryTask("code-668b", "node-a", t1)
 
-	res := NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictGo, "done", time.Second)
+	res := NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictGo, "done", time.Second)
 
 	err := w.patchTerminal(context.Background(), tInMemory, res, nil)
 	if err != nil {
@@ -120,7 +120,7 @@ func TestPatchTerminal_StandsDownWhenTaskReClaimedElsewhere(t *testing.T) {
 
 	// The live object must not have been patched — node-b's Running state intact.
 	got := getTask(t, c, "code-668b")
-	if got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseRunning {
+	if got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseRunning {
 		t.Fatalf("phase = %q, want Running (node-b still owns it)", got.Status.Phase)
 	}
 	if got.Status.AssignedNode != "node-b" {
@@ -147,17 +147,17 @@ func TestPatchTerminal_NormalPathStillLands(t *testing.T) {
 	// In-memory copy: same node, same timestamp.
 	tInMemory := inMemoryTask("code-668c", "node-a", t1)
 
-	res := NewResult("issue-fix", foremanv1alpha1.AgenticTaskVerdictGo, "fixed it", time.Second)
+	res := NewResult("issue-fix", meithealv1alpha1.AgenticTaskVerdictGo, "fixed it", time.Second)
 
 	if err := w.patchTerminal(context.Background(), tInMemory, res, nil); err != nil {
 		t.Fatalf("patchTerminal returned error: %v", err)
 	}
 
 	got := getTask(t, c, "code-668c")
-	if got.Status.Phase != foremanv1alpha1.AgenticTaskPhaseSucceeded {
+	if got.Status.Phase != meithealv1alpha1.AgenticTaskPhaseSucceeded {
 		t.Fatalf("phase = %q, want Succeeded", got.Status.Phase)
 	}
-	if got.Status.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got.Status.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict = %q, want GO", got.Status.Verdict)
 	}
 	if got.Status.FinishedAt == nil {

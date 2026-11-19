@@ -41,7 +41,7 @@ var agentRoleRequiredTools = map[AgentRole][]string{
 	AgentRoleReviewer: {"fetch_issue"},
 }
 
-// isDeterministicSpec mirrors pkg/foreman/agent.IsDeterministicAgent: it
+// isDeterministicSpec mirrors pkg/agent.IsDeterministicAgent: it
 // reports whether the Agent runs the model-free branch, i.e. the executor
 // routes it by ENDPOINT ABSENCE (no LLM at all), not by tool shape. A
 // deterministic agent never renders a system prompt, so the
@@ -49,9 +49,9 @@ var agentRoleRequiredTools = map[AgentRole][]string{
 //
 // Kept as a private copy rather than importing the agent package because
 // the api package is the leaf both sides depend on; importing
-// pkg/foreman/agent here would invert the dependency (the executor imports
+// pkg/agent here would invert the dependency (the executor imports
 // this package for AgentSpec). The two implementations are asserted
-// equivalent by the equivalence test in pkg/foreman/agent, following the
+// equivalent by the equivalence test in pkg/agent, following the
 // same pattern the admission webhook uses.
 func (s *AgentSpec) isDeterministicSpec() bool {
 	if s.Provider != "" && s.Provider != AgentProviderLocal {

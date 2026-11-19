@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // The scope rail's own short-circuits. See rail_skip_test.go for the shared
@@ -14,9 +14,9 @@ import (
 func TestScopeOverlap_NoIssueBodyIsRecorded(t *testing.T) {
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra, "",
-		[]string{"pkg/foreman/agent/foo.go"}, foremanv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
+		[]string{"pkg/agent/foo.go"}, meithealv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
 
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("verdict must not change, got %v", got)
 	}
 	reason, ok := skippedFor(extra, railScopeOverlap)
@@ -31,10 +31,10 @@ func TestScopeOverlap_NoIssueBodyIsRecorded(t *testing.T) {
 func TestScopeOverlap_NoDiffFilesIsRecorded(t *testing.T) {
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra,
-		"Fix `pkg/foreman/agent/executor_native.go`.", nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
+		"Fix `pkg/agent/executor_native.go`.", nil,
+		meithealv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
 
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("verdict must not change, got %v", got)
 	}
 	reason, ok := skippedFor(extra, railScopeOverlap)
@@ -50,8 +50,8 @@ func TestScopeOverlap_NoDiffFilesIsRecorded(t *testing.T) {
 func TestScopeOverlap_RanAndMatchedIsNotMarkedSkipped(t *testing.T) {
 	extra := map[string]any{}
 	enforceReviewerScopeOverlap(logr.Discard(), extra,
-		"Fix `pkg/foreman/agent/foo.go`.", []string{"pkg/foreman/agent/foo.go"},
-		foremanv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
+		"Fix `pkg/agent/foo.go`.", []string{"pkg/agent/foo.go"},
+		meithealv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
 
 	if _, ok := skippedFor(extra, railScopeOverlap); ok {
 		t.Errorf("a check that ran must not be marked skipped, extra=%v", extra)
@@ -61,11 +61,11 @@ func TestScopeOverlap_RanAndMatchedIsNotMarkedSkipped(t *testing.T) {
 func TestScopeOverlap_RanAndDriftedIsNotMarkedSkipped(t *testing.T) {
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra,
-		"Fix `pkg/foreman/agent/executor_native.go`.",
-		[]string{"pkg/foreman/agent/unrelated.go"},
-		foremanv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
+		"Fix `pkg/agent/executor_native.go`.",
+		[]string{"pkg/agent/unrelated.go"},
+		meithealv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
 
-	if got != foremanv1alpha1.AgenticTaskVerdictNoGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictNoGo {
 		t.Errorf("real drift must still demote, got %v", got)
 	}
 	if _, ok := skippedFor(extra, railScopeOverlap); ok {
@@ -75,8 +75,8 @@ func TestScopeOverlap_RanAndDriftedIsNotMarkedSkipped(t *testing.T) {
 
 func TestScopeOverlap_NilExtraDoesNotPanic(t *testing.T) {
 	got := enforceReviewerScopeOverlap(logr.Discard(), nil, "body", []string{"a.go"},
-		foremanv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+		meithealv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("verdict must not change, got %v", got)
 	}
 }
@@ -88,10 +88,10 @@ func TestScopeOverlap_NoPathRefsIsRecorded(t *testing.T) {
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra,
 		"Make the reviewer stop approving work it never looked at.",
-		[]string{"pkg/foreman/agent/foo.go"},
-		foremanv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
+		[]string{"pkg/agent/foo.go"},
+		meithealv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
 
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("verdict must not change, got %v", got)
 	}
 	reason, ok := skippedFor(extra, railScopeOverlap)
@@ -110,9 +110,9 @@ func TestScopeOverlap_DriftNotDemotedRecordsWhich(t *testing.T) {
 	// Docs-only diff: drift is real but a docs change is not scope drift.
 	extra := map[string]any{}
 	got := enforceReviewerScopeOverlap(logr.Discard(), extra,
-		"Fix `pkg/foreman/agent/executor_native.go`.", []string{"README.md"},
-		foremanv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
-	if got != foremanv1alpha1.AgenticTaskVerdictGo {
+		"Fix `pkg/agent/executor_native.go`.", []string{"README.md"},
+		meithealv1alpha1.AgenticTaskVerdictGo, nil, TestLayout{}, nil, nil, nil)
+	if got != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Errorf("docs-only diff must not demote, got %v", got)
 	}
 	if r, _ := extra["scopeDriftNotDemoted"].(string); r != scopeNotDemotedNoSourceFile {
@@ -122,8 +122,8 @@ func TestScopeOverlap_DriftNotDemotedRecordsWhich(t *testing.T) {
 	// Already non-GO: nothing to demote.
 	extra = map[string]any{}
 	enforceReviewerScopeOverlap(logr.Discard(), extra,
-		"Fix `pkg/foreman/agent/executor_native.go`.", []string{"pkg/foreman/agent/other.go"},
-		foremanv1alpha1.AgenticTaskVerdictNoGo, nil, TestLayout{}, nil, nil, nil)
+		"Fix `pkg/agent/executor_native.go`.", []string{"pkg/agent/other.go"},
+		meithealv1alpha1.AgenticTaskVerdictNoGo, nil, TestLayout{}, nil, nil, nil)
 	if r, _ := extra["scopeDriftNotDemoted"].(string); r != scopeNotDemotedAlreadyNonGo {
 		t.Errorf("want %q, got %q (extra=%v)", scopeNotDemotedAlreadyNonGo, r, extra)
 	}

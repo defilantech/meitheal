@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 func newTestScheme(t *testing.T) *runtime.Scheme {
@@ -40,8 +40,8 @@ func newTestScheme(t *testing.T) *runtime.Scheme {
 	if err := scheme.AddToScheme(s); err != nil {
 		t.Fatalf("clientgoscheme.AddToScheme: %v", err)
 	}
-	if err := foremanv1alpha1.AddToScheme(s); err != nil {
-		t.Fatalf("foreman scheme: %v", err)
+	if err := meithealv1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("meitheal scheme: %v", err)
 	}
 	return s
 }
@@ -51,17 +51,17 @@ func newFakeClient(t *testing.T, objs ...client.Object) client.Client {
 	return fake.NewClientBuilder().
 		WithScheme(newTestScheme(t)).
 		WithObjects(objs...).
-		WithStatusSubresource(&foremanv1alpha1.FleetNode{}).
+		WithStatusSubresource(&meithealv1alpha1.FleetNode{}).
 		Build()
 }
 
 // fixedCapability is a deterministic CapabilityProvider so heartbeat-
 // patch assertions don't depend on the host's live sysctl / vm_stat.
 type fixedCapability struct {
-	cap foremanv1alpha1.FleetNodeCapability
+	cap meithealv1alpha1.FleetNodeCapability
 }
 
-func (f *fixedCapability) Capability() foremanv1alpha1.FleetNodeCapability { return f.cap }
+func (f *fixedCapability) Capability() meithealv1alpha1.FleetNodeCapability { return f.cap }
 
 // fixedSupervisionCapacity is a deterministic SupervisionCapacityProvider so
 // the heartbeat-publish assertions do not depend on any in-process state.
@@ -77,44 +77,44 @@ func (f fixedSupervisionCapacity) SupervisionCapacity() (int32, *int32) {
 func TestSpecEqual(t *testing.T) {
 	cases := []struct {
 		name string
-		a, b foremanv1alpha1.FleetNodeSpec
+		a, b meithealv1alpha1.FleetNodeSpec
 		want bool
 	}{
-		{"both_zero", foremanv1alpha1.FleetNodeSpec{}, foremanv1alpha1.FleetNodeSpec{}, true},
+		{"both_zero", meithealv1alpha1.FleetNodeSpec{}, meithealv1alpha1.FleetNodeSpec{}, true},
 		{
 			"identical_fully_populated",
-			foremanv1alpha1.FleetNodeSpec{NodeName: "m5", TailscaleAddr: "ts", Roles: []string{"worker", "verifier"}},
-			foremanv1alpha1.FleetNodeSpec{NodeName: "m5", TailscaleAddr: "ts", Roles: []string{"worker", "verifier"}},
+			meithealv1alpha1.FleetNodeSpec{NodeName: "m5", TailscaleAddr: "ts", Roles: []string{"worker", "verifier"}},
+			meithealv1alpha1.FleetNodeSpec{NodeName: "m5", TailscaleAddr: "ts", Roles: []string{"worker", "verifier"}},
 			true,
 		},
 		{
 			"different_node_name",
-			foremanv1alpha1.FleetNodeSpec{NodeName: "m5"},
-			foremanv1alpha1.FleetNodeSpec{NodeName: "m6"},
+			meithealv1alpha1.FleetNodeSpec{NodeName: "m5"},
+			meithealv1alpha1.FleetNodeSpec{NodeName: "m6"},
 			false,
 		},
 		{
 			"different_tailscale_addr",
-			foremanv1alpha1.FleetNodeSpec{NodeName: "m5", TailscaleAddr: "a"},
-			foremanv1alpha1.FleetNodeSpec{NodeName: "m5", TailscaleAddr: "b"},
+			meithealv1alpha1.FleetNodeSpec{NodeName: "m5", TailscaleAddr: "a"},
+			meithealv1alpha1.FleetNodeSpec{NodeName: "m5", TailscaleAddr: "b"},
 			false,
 		},
 		{
 			"different_roles_length",
-			foremanv1alpha1.FleetNodeSpec{Roles: []string{"worker"}},
-			foremanv1alpha1.FleetNodeSpec{Roles: []string{"worker", "verifier"}},
+			meithealv1alpha1.FleetNodeSpec{Roles: []string{"worker"}},
+			meithealv1alpha1.FleetNodeSpec{Roles: []string{"worker", "verifier"}},
 			false,
 		},
 		{
 			"role_value_mismatch",
-			foremanv1alpha1.FleetNodeSpec{Roles: []string{"worker"}},
-			foremanv1alpha1.FleetNodeSpec{Roles: []string{"verifier"}},
+			meithealv1alpha1.FleetNodeSpec{Roles: []string{"worker"}},
+			meithealv1alpha1.FleetNodeSpec{Roles: []string{"verifier"}},
 			false,
 		},
 		{
 			"role_order_matters",
-			foremanv1alpha1.FleetNodeSpec{Roles: []string{"worker", "verifier"}},
-			foremanv1alpha1.FleetNodeSpec{Roles: []string{"verifier", "worker"}},
+			meithealv1alpha1.FleetNodeSpec{Roles: []string{"worker", "verifier"}},
+			meithealv1alpha1.FleetNodeSpec{Roles: []string{"verifier", "worker"}},
 			false,
 		},
 	}
@@ -133,7 +133,7 @@ func TestRegistrar_Upsert_CreatesIfMissing(t *testing.T) {
 	r := &Registrar{
 		Client:   kc,
 		NodeName: "m5-max",
-		Spec: foremanv1alpha1.FleetNodeSpec{
+		Spec: meithealv1alpha1.FleetNodeSpec{
 			NodeName: "m5-max",
 			Roles:    []string{"worker"},
 		},
@@ -142,7 +142,7 @@ func TestRegistrar_Upsert_CreatesIfMissing(t *testing.T) {
 	if err := r.Upsert(context.Background()); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "m5-max"}, &got); err != nil {
 		t.Fatalf("Get after create: %v", err)
 	}
@@ -155,9 +155,9 @@ func TestRegistrar_Upsert_CreatesIfMissing(t *testing.T) {
 }
 
 func TestRegistrar_Upsert_UpdatesIfSpecChanged(t *testing.T) {
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "m5-max"},
-		Spec: foremanv1alpha1.FleetNodeSpec{
+		Spec: meithealv1alpha1.FleetNodeSpec{
 			NodeName: "m5-max",
 			Roles:    []string{"worker"},
 		},
@@ -166,7 +166,7 @@ func TestRegistrar_Upsert_UpdatesIfSpecChanged(t *testing.T) {
 	r := &Registrar{
 		Client:   kc,
 		NodeName: "m5-max",
-		Spec: foremanv1alpha1.FleetNodeSpec{
+		Spec: meithealv1alpha1.FleetNodeSpec{
 			NodeName:      "m5-max",
 			TailscaleAddr: "m5-max.tail-scale.ts.net",
 			Roles:         []string{"worker", "verifier"},
@@ -176,7 +176,7 @@ func TestRegistrar_Upsert_UpdatesIfSpecChanged(t *testing.T) {
 	if err := r.Upsert(context.Background()); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "m5-max"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -189,9 +189,9 @@ func TestRegistrar_Upsert_UpdatesIfSpecChanged(t *testing.T) {
 }
 
 func TestRegistrar_Upsert_NoopIfSpecUnchanged(t *testing.T) {
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "m5-max", ResourceVersion: "1"},
-		Spec: foremanv1alpha1.FleetNodeSpec{
+		Spec: meithealv1alpha1.FleetNodeSpec{
 			NodeName: "m5-max",
 			Roles:    []string{"worker"},
 		},
@@ -200,7 +200,7 @@ func TestRegistrar_Upsert_NoopIfSpecUnchanged(t *testing.T) {
 	r := &Registrar{
 		Client:   kc,
 		NodeName: "m5-max",
-		Spec: foremanv1alpha1.FleetNodeSpec{
+		Spec: meithealv1alpha1.FleetNodeSpec{
 			NodeName: "m5-max",
 			Roles:    []string{"worker"},
 		},
@@ -209,7 +209,7 @@ func TestRegistrar_Upsert_NoopIfSpecUnchanged(t *testing.T) {
 	if err := r.Upsert(context.Background()); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "m5-max"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -279,14 +279,14 @@ func TestRegistrar_Upsert_SetsLabelsOnCreate(t *testing.T) {
 	r := &Registrar{
 		Client:   kc,
 		NodeName: "incluster-agent",
-		Spec:     foremanv1alpha1.FleetNodeSpec{NodeName: "incluster-agent", Roles: []string{"worker", "coder"}},
+		Spec:     meithealv1alpha1.FleetNodeSpec{NodeName: "incluster-agent", Roles: []string{"worker", "coder"}},
 		Labels:   map[string]string{"coder-pool": "amd"},
 		Provider: &fixedCapability{},
 	}
 	if err := r.Upsert(context.Background()); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "incluster-agent"}, &got); err != nil {
 		t.Fatalf("Get after create: %v", err)
 	}
@@ -300,26 +300,26 @@ func TestRegistrar_Upsert_ReappliesLabelsOnExisting(t *testing.T) {
 	// label dropped on pod recreate) while carrying an unrelated label. Upsert
 	// must re-add the managed label without disturbing the unmanaged one, even
 	// though the spec is unchanged.
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            "incluster-agent",
 			ResourceVersion: "1",
 			Labels:          map[string]string{"unmanaged": "keep"},
 		},
-		Spec: foremanv1alpha1.FleetNodeSpec{NodeName: "incluster-agent", Roles: []string{"worker", "coder"}},
+		Spec: meithealv1alpha1.FleetNodeSpec{NodeName: "incluster-agent", Roles: []string{"worker", "coder"}},
 	}
 	kc := newFakeClient(t, existing)
 	r := &Registrar{
 		Client:   kc,
 		NodeName: "incluster-agent",
-		Spec:     foremanv1alpha1.FleetNodeSpec{NodeName: "incluster-agent", Roles: []string{"worker", "coder"}},
+		Spec:     meithealv1alpha1.FleetNodeSpec{NodeName: "incluster-agent", Roles: []string{"worker", "coder"}},
 		Labels:   map[string]string{"coder-pool": "amd"},
 		Provider: &fixedCapability{},
 	}
 	if err := r.Upsert(context.Background()); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "incluster-agent"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -332,13 +332,13 @@ func TestRegistrar_Upsert_ReappliesLabelsOnExisting(t *testing.T) {
 }
 
 func TestRegistrar_PatchHeartbeat_WritesPhaseAndCapability(t *testing.T) {
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "m5-max"},
-		Spec:       foremanv1alpha1.FleetNodeSpec{NodeName: "m5-max"},
+		Spec:       meithealv1alpha1.FleetNodeSpec{NodeName: "m5-max"},
 	}
 	kc := newFakeClient(t, existing)
-	cap := foremanv1alpha1.FleetNodeCapability{
-		Accelerator:      foremanv1alpha1.FleetNodeAccelerator("metal"),
+	cap := meithealv1alpha1.FleetNodeCapability{
+		Accelerator:      meithealv1alpha1.FleetNodeAccelerator("metal"),
 		TotalRAMGB:       128,
 		AvailableRAMGB:   64,
 		MaxContextTokens: 131072,
@@ -350,14 +350,14 @@ func TestRegistrar_PatchHeartbeat_WritesPhaseAndCapability(t *testing.T) {
 		Provider: &fixedCapability{cap: cap},
 	}
 	before := time.Now().Add(-time.Second)
-	if _, err := r.PatchHeartbeat(context.Background(), foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := r.PatchHeartbeat(context.Background(), meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		t.Fatalf("PatchHeartbeat: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "m5-max"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Status.Phase != foremanv1alpha1.FleetNodePhaseReady {
+	if got.Status.Phase != meithealv1alpha1.FleetNodePhaseReady {
 		t.Errorf("Phase = %q, want Ready", got.Status.Phase)
 	}
 	if got.Status.LastHeartbeatTime == nil {
@@ -381,9 +381,9 @@ func TestRegistrar_PatchHeartbeat_WritesPhaseAndCapability(t *testing.T) {
 }
 
 func TestRegistrar_PatchHeartbeat_StampsVersionAndKind(t *testing.T) {
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "studio"},
-		Spec:       foremanv1alpha1.FleetNodeSpec{NodeName: "studio"},
+		Spec:       meithealv1alpha1.FleetNodeSpec{NodeName: "studio"},
 	}
 	kc := newFakeClient(t, existing)
 	r := &Registrar{
@@ -391,29 +391,29 @@ func TestRegistrar_PatchHeartbeat_StampsVersionAndKind(t *testing.T) {
 		NodeName: "studio",
 		Provider: &fixedCapability{},
 		Version:  "v0.9.0",
-		Kind:     "foreman-agent",
+		Kind:     "meitheal-agent",
 	}
-	if _, err := r.PatchHeartbeat(context.Background(), foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := r.PatchHeartbeat(context.Background(), meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		t.Fatalf("PatchHeartbeat: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "studio"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
 	if got.Status.AgentVersion != "v0.9.0" {
 		t.Errorf("AgentVersion = %q, want %q", got.Status.AgentVersion, "v0.9.0")
 	}
-	if got.Status.AgentKind != foremanv1alpha1.FleetNodeAgentKind("foreman-agent") {
-		t.Errorf("AgentKind = %q, want %q", got.Status.AgentKind, "foreman-agent")
+	if got.Status.AgentKind != meithealv1alpha1.FleetNodeAgentKind("meitheal-agent") {
+		t.Errorf("AgentKind = %q, want %q", got.Status.AgentKind, "meitheal-agent")
 	}
 }
 
 func TestRegistrar_PatchHeartbeat_EmptyVersionOmitted(t *testing.T) {
 	// When Version and Kind are not set, the status fields must remain empty
 	// (not overwrite a value set by a newer agent restart with blank).
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "studio2"},
-		Spec:       foremanv1alpha1.FleetNodeSpec{NodeName: "studio2"},
+		Spec:       meithealv1alpha1.FleetNodeSpec{NodeName: "studio2"},
 	}
 	kc := newFakeClient(t, existing)
 	r := &Registrar{
@@ -422,10 +422,10 @@ func TestRegistrar_PatchHeartbeat_EmptyVersionOmitted(t *testing.T) {
 		Provider: &fixedCapability{},
 		// Version and Kind intentionally zero
 	}
-	if _, err := r.PatchHeartbeat(context.Background(), foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := r.PatchHeartbeat(context.Background(), meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		t.Fatalf("PatchHeartbeat: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "studio2"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -442,13 +442,13 @@ func TestRegistrar_PatchHeartbeat_EmptyVersionOmitted(t *testing.T) {
 //  1. emits a final Draining heartbeat so the operator stops routing tasks,
 //  2. returns ErrSelfUpdateRestart (not nil, not a generic error).
 func TestRegistrar_Run_SelfUpdateDrainsAndReturnsRestartError(t *testing.T) {
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "studio-update"},
-		Spec:       foremanv1alpha1.FleetNodeSpec{NodeName: "studio-update"},
-		Status: foremanv1alpha1.FleetNodeStatus{
-			UpdateRequest: &foremanv1alpha1.FleetNodeUpdateRequest{
+		Spec:       meithealv1alpha1.FleetNodeSpec{NodeName: "studio-update"},
+		Status: meithealv1alpha1.FleetNodeStatus{
+			UpdateRequest: &meithealv1alpha1.FleetNodeUpdateRequest{
 				TargetVersion: "v0.9.0",
-				URL:           "http://example.com/foreman-agent-v0.9.0",
+				URL:           "http://example.com/meitheal-agent-v0.9.0",
 				SHA256:        "a" + strings.Repeat("b", 63),
 			},
 		},
@@ -489,11 +489,11 @@ func TestRegistrar_Run_SelfUpdateDrainsAndReturnsRestartError(t *testing.T) {
 	}
 
 	// Final phase must be Draining (agent told operator it is going away).
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "studio-update"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Status.Phase != foremanv1alpha1.FleetNodePhaseDraining {
+	if got.Status.Phase != meithealv1alpha1.FleetNodePhaseDraining {
 		t.Errorf("final phase = %q, want Draining", got.Status.Phase)
 	}
 }
@@ -501,11 +501,11 @@ func TestRegistrar_Run_SelfUpdateDrainsAndReturnsRestartError(t *testing.T) {
 // TestRegistrar_Run_SelfUpdateNilUpdaterNoRestart verifies that when Updater
 // is nil (pre-PR4 / disabled) Run keeps heartbeating normally.
 func TestRegistrar_Run_SelfUpdateNilUpdaterNoRestart(t *testing.T) {
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "studio-noupdate"},
-		Spec:       foremanv1alpha1.FleetNodeSpec{NodeName: "studio-noupdate"},
-		Status: foremanv1alpha1.FleetNodeStatus{
-			UpdateRequest: &foremanv1alpha1.FleetNodeUpdateRequest{
+		Spec:       meithealv1alpha1.FleetNodeSpec{NodeName: "studio-noupdate"},
+		Status: meithealv1alpha1.FleetNodeStatus{
+			UpdateRequest: &meithealv1alpha1.FleetNodeUpdateRequest{
 				TargetVersion: "v0.9.0",
 				URL:           "http://example.com/bin",
 				SHA256:        "a" + strings.Repeat("b", 63),
@@ -540,15 +540,15 @@ func TestRegistrar_Run_SelfUpdateNilUpdaterNoRestart(t *testing.T) {
 }
 
 func TestRegistrar_Run_DrainsAndExitsOnCancel(t *testing.T) {
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "m5-max"},
-		Spec:       foremanv1alpha1.FleetNodeSpec{NodeName: "m5-max"},
+		Spec:       meithealv1alpha1.FleetNodeSpec{NodeName: "m5-max"},
 	}
 	kc := newFakeClient(t, existing)
 	r := &Registrar{
 		Client:   kc,
 		NodeName: "m5-max",
-		Provider: &fixedCapability{cap: foremanv1alpha1.FleetNodeCapability{TotalRAMGB: 128}},
+		Provider: &fixedCapability{cap: meithealv1alpha1.FleetNodeCapability{TotalRAMGB: 128}},
 		Interval: 50 * time.Millisecond,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -568,11 +568,11 @@ func TestRegistrar_Run_DrainsAndExitsOnCancel(t *testing.T) {
 		t.Fatal("Run did not return within 2s of cancel")
 	}
 
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "m5-max"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Status.Phase != foremanv1alpha1.FleetNodePhaseDraining {
+	if got.Status.Phase != meithealv1alpha1.FleetNodePhaseDraining {
 		t.Errorf("final phase = %q, want Draining", got.Status.Phase)
 	}
 }
@@ -587,7 +587,7 @@ func TestRegistrar_PatchHeartbeat_StampsKubernetesNode(t *testing.T) {
 	r := &Registrar{
 		Client:   kc,
 		NodeName: "coder-agent-abc12",
-		Spec: foremanv1alpha1.FleetNodeSpec{
+		Spec: meithealv1alpha1.FleetNodeSpec{
 			NodeName: "coder-agent-abc12",
 			Roles:    []string{"coder"},
 		},
@@ -597,10 +597,10 @@ func TestRegistrar_PatchHeartbeat_StampsKubernetesNode(t *testing.T) {
 	if err := r.Upsert(context.Background()); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
-	if _, err := r.PatchHeartbeat(context.Background(), foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := r.PatchHeartbeat(context.Background(), meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		t.Fatalf("PatchHeartbeat: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "coder-agent-abc12"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -619,7 +619,7 @@ func TestRegistrar_PatchHeartbeat_OmitsKubernetesNodeWhenUnset(t *testing.T) {
 	r := &Registrar{
 		Client:   kc,
 		NodeName: "mac-studio-reviewer",
-		Spec: foremanv1alpha1.FleetNodeSpec{
+		Spec: meithealv1alpha1.FleetNodeSpec{
 			NodeName: "mac-studio-reviewer",
 			Roles:    []string{"reviewer"},
 		},
@@ -628,10 +628,10 @@ func TestRegistrar_PatchHeartbeat_OmitsKubernetesNodeWhenUnset(t *testing.T) {
 	if err := r.Upsert(context.Background()); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
-	if _, err := r.PatchHeartbeat(context.Background(), foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := r.PatchHeartbeat(context.Background(), meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		t.Fatalf("PatchHeartbeat: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "mac-studio-reviewer"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -650,7 +650,7 @@ func TestRegistrar_PatchHeartbeat_OmitsKubernetesNodeWhenUnset(t *testing.T) {
 // the agent restarts without the FLEET_NODE_NAME downward-API env var.
 func TestRegistrar_PatchHeartbeat_KeepsExistingKubernetesNodeWhenUnset(t *testing.T) {
 	kc := newFakeClient(t)
-	spec := foremanv1alpha1.FleetNodeSpec{
+	spec := meithealv1alpha1.FleetNodeSpec{
 		NodeName: "coder-agent-abc12",
 		Roles:    []string{"coder"},
 	}
@@ -664,7 +664,7 @@ func TestRegistrar_PatchHeartbeat_KeepsExistingKubernetesNodeWhenUnset(t *testin
 	if err := stamped.Upsert(context.Background()); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
-	if _, err := stamped.PatchHeartbeat(context.Background(), foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := stamped.PatchHeartbeat(context.Background(), meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		t.Fatalf("PatchHeartbeat (stamped): %v", err)
 	}
 
@@ -675,11 +675,11 @@ func TestRegistrar_PatchHeartbeat_KeepsExistingKubernetesNodeWhenUnset(t *testin
 		Spec:     spec,
 		Provider: &fixedCapability{},
 	}
-	if _, err := unset.PatchHeartbeat(context.Background(), foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := unset.PatchHeartbeat(context.Background(), meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		t.Fatalf("PatchHeartbeat (unset): %v", err)
 	}
 
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "coder-agent-abc12"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -694,9 +694,9 @@ func TestRegistrar_PatchHeartbeat_KeepsExistingKubernetesNodeWhenUnset(t *testin
 // FleetNode.status on the heartbeat patch, on the same patch as the phase and
 // heartbeat time -- not a second write path.
 func TestRegistrar_PatchHeartbeat_PublishesSupervisionCapacity(t *testing.T) {
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "m5-max"},
-		Spec:       foremanv1alpha1.FleetNodeSpec{NodeName: "m5-max"},
+		Spec:       meithealv1alpha1.FleetNodeSpec{NodeName: "m5-max"},
 	}
 	kc := newFakeClient(t, existing)
 	max := int32(4)
@@ -706,10 +706,10 @@ func TestRegistrar_PatchHeartbeat_PublishesSupervisionCapacity(t *testing.T) {
 		Provider: &fixedCapability{},
 		Watcher:  fixedSupervisionCapacity{current: 3, maximum: &max},
 	}
-	if _, err := r.PatchHeartbeat(context.Background(), foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := r.PatchHeartbeat(context.Background(), meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		t.Fatalf("PatchHeartbeat: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "m5-max"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -731,9 +731,9 @@ func TestRegistrar_PatchHeartbeat_PublishesSupervisionCapacity(t *testing.T) {
 // pointer on the API and the Registrar writes it whenever a bound is
 // reported.
 func TestRegistrar_PatchHeartbeat_SupervisionCapacityZeroMaximum(t *testing.T) {
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "m5-full"},
-		Spec:       foremanv1alpha1.FleetNodeSpec{NodeName: "m5-full"},
+		Spec:       meithealv1alpha1.FleetNodeSpec{NodeName: "m5-full"},
 	}
 	kc := newFakeClient(t, existing)
 	zero := int32(0)
@@ -743,10 +743,10 @@ func TestRegistrar_PatchHeartbeat_SupervisionCapacityZeroMaximum(t *testing.T) {
 		Provider: &fixedCapability{},
 		Watcher:  fixedSupervisionCapacity{current: 0, maximum: &zero},
 	}
-	if _, err := r.PatchHeartbeat(context.Background(), foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := r.PatchHeartbeat(context.Background(), meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		t.Fatalf("PatchHeartbeat: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "m5-full"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -771,9 +771,9 @@ func TestRegistrar_PatchHeartbeat_SupervisionCapacityZeroMaximum(t *testing.T) {
 // field exists passes with the feature entirely unwired, so this absent-case
 // guard is what pins the write path down.
 func TestRegistrar_PatchHeartbeat_SupervisionCapacityAbsentWhenNoProvider(t *testing.T) {
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "studio-old"},
-		Spec:       foremanv1alpha1.FleetNodeSpec{NodeName: "studio-old"},
+		Spec:       meithealv1alpha1.FleetNodeSpec{NodeName: "studio-old"},
 	}
 	kc := newFakeClient(t, existing)
 	r := &Registrar{
@@ -782,10 +782,10 @@ func TestRegistrar_PatchHeartbeat_SupervisionCapacityAbsentWhenNoProvider(t *tes
 		Provider: &fixedCapability{},
 		// Watcher intentionally nil (older agent, no bound to report).
 	}
-	if _, err := r.PatchHeartbeat(context.Background(), foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := r.PatchHeartbeat(context.Background(), meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		t.Fatalf("PatchHeartbeat: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "studio-old"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -800,11 +800,11 @@ func TestRegistrar_PatchHeartbeat_SupervisionCapacityAbsentWhenNoProvider(t *tes
 // leave the field where it was, not emit null.
 func TestRegistrar_PatchHeartbeat_SupervisionCapacityAbsentPreservesExisting(t *testing.T) {
 	max := int32(4)
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "studio-upgrade"},
-		Spec:       foremanv1alpha1.FleetNodeSpec{NodeName: "studio-upgrade"},
-		Status: foremanv1alpha1.FleetNodeStatus{
-			SupervisionCapacity: &foremanv1alpha1.SupervisionCapacity{
+		Spec:       meithealv1alpha1.FleetNodeSpec{NodeName: "studio-upgrade"},
+		Status: meithealv1alpha1.FleetNodeStatus{
+			SupervisionCapacity: &meithealv1alpha1.SupervisionCapacity{
 				Current: 2,
 				Maximum: &max,
 			},
@@ -818,10 +818,10 @@ func TestRegistrar_PatchHeartbeat_SupervisionCapacityAbsentPreservesExisting(t *
 		// Watcher nil: the upgraded agent reports nothing, so the existing
 		// budget must survive.
 	}
-	if _, err := r.PatchHeartbeat(context.Background(), foremanv1alpha1.FleetNodePhaseReady); err != nil {
+	if _, err := r.PatchHeartbeat(context.Background(), meithealv1alpha1.FleetNodePhaseReady); err != nil {
 		t.Fatalf("PatchHeartbeat: %v", err)
 	}
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "studio-upgrade"}, &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -840,9 +840,9 @@ func TestRegistrar_PatchHeartbeat_SupervisionCapacityAbsentPreservesExisting(t *
 // the heartbeat loop detects the NotFound error, re-registers the node via
 // Upsert, and restores it to Ready status (#1778).
 func TestRegistrar_Run_ReRegistersWhenFleetNodeDeleted(t *testing.T) {
-	existing := &foremanv1alpha1.FleetNode{
+	existing := &meithealv1alpha1.FleetNode{
 		ObjectMeta: metav1.ObjectMeta{Name: "worker-re-register"},
-		Spec: foremanv1alpha1.FleetNodeSpec{
+		Spec: meithealv1alpha1.FleetNodeSpec{
 			NodeName: "worker-re-register",
 			Roles:    []string{"worker"},
 		},
@@ -851,11 +851,11 @@ func TestRegistrar_Run_ReRegistersWhenFleetNodeDeleted(t *testing.T) {
 	r := &Registrar{
 		Client:   kc,
 		NodeName: "worker-re-register",
-		Spec: foremanv1alpha1.FleetNodeSpec{
+		Spec: meithealv1alpha1.FleetNodeSpec{
 			NodeName: "worker-re-register",
 			Roles:    []string{"worker"},
 		},
-		Provider: &fixedCapability{cap: foremanv1alpha1.FleetNodeCapability{TotalRAMGB: 64}},
+		Provider: &fixedCapability{cap: meithealv1alpha1.FleetNodeCapability{TotalRAMGB: 64}},
 		Interval: 20 * time.Millisecond,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -891,11 +891,11 @@ func TestRegistrar_Run_ReRegistersWhenFleetNodeDeleted(t *testing.T) {
 	}
 
 	// Verify clean drain on shutdown.
-	var got foremanv1alpha1.FleetNode
+	var got meithealv1alpha1.FleetNode
 	if err := kc.Get(context.Background(), types.NamespacedName{Name: "worker-re-register"}, &got); err != nil {
 		t.Fatalf("Get after shutdown: %v", err)
 	}
-	if got.Status.Phase != foremanv1alpha1.FleetNodePhaseDraining {
+	if got.Status.Phase != meithealv1alpha1.FleetNodePhaseDraining {
 		t.Errorf("Phase after cancel = %v, want Draining", got.Status.Phase)
 	}
 }
@@ -908,12 +908,12 @@ func waitFleetNodeReady(t *testing.T, c client.Client, name string, timeout time
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for {
-		var fn foremanv1alpha1.FleetNode
+		var fn meithealv1alpha1.FleetNode
 		err := c.Get(context.Background(), types.NamespacedName{Name: name}, &fn)
 		if err != nil && !apierrors.IsNotFound(err) {
 			t.Fatalf("Get FleetNode %s: %v", name, err)
 		}
-		if err == nil && fn.Status.Phase == foremanv1alpha1.FleetNodePhaseReady && fn.Status.LastHeartbeatTime != nil {
+		if err == nil && fn.Status.Phase == meithealv1alpha1.FleetNodePhaseReady && fn.Status.LastHeartbeatTime != nil {
 			return true
 		}
 		if time.Now().After(deadline) {

@@ -4,7 +4,7 @@ import (
 	"path"
 	"strings"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // TestLayout describes a repository's test-layout convention: where test
@@ -30,7 +30,7 @@ type TestLayout struct {
 // testLayoutFrom converts the GateProfile's declared layout into the value the
 // path-folding helpers take. Kept as a conversion rather than using the CRD
 // type directly so the folding logic stays independent of the API shape.
-func testLayoutFrom(l foremanv1alpha1.TestLayout) TestLayout {
+func testLayoutFrom(l meithealv1alpha1.TestLayout) TestLayout {
 	return TestLayout{TestRoot: l.TestRoot, SourceRoot: l.SourceRoot}
 }
 

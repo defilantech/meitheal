@@ -29,8 +29,8 @@ import (
 
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
@@ -45,23 +45,23 @@ import (
 // stream. It deliberately reuses the same fake OAI + fake registry harness so a
 // change that breaks the loop's turn accounting fails here too.
 func streamWiringExecutor(
-	t *testing.T, root, bare, oaiURL string, stream *foremanagent.TurnStream,
-) *foremanagent.NativeAgentLoopExecutor {
+	t *testing.T, root, bare, oaiURL string, stream *meithealagent.TurnStream,
+) *meithealagent.NativeAgentLoopExecutor {
 	t.Helper()
 	agent, task := taskAndAgent("stream-wiring")
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(agent, task).Build()
 	reg := &seqEnvtestRegistry{verdicts: []string{"GO"}}
-	return &foremanagent.NativeAgentLoopExecutor{
+	return &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiURL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -76,7 +76,7 @@ func TestNativeExecutor_PublishesTurnsToStream(t *testing.T) {
 	root := t.TempDir()
 	bare := initBareWithSeed(t, root)
 	oaiSrv := scriptedOAI(t, []string{submitGoBody})
-	stream := foremanagent.NewTurnStream(16)
+	stream := meithealagent.NewTurnStream(16)
 
 	e := streamWiringExecutor(t, root, bare, oaiSrv.URL, stream)
 	_, task := taskAndAgent("stream-wiring")
@@ -90,7 +90,7 @@ func TestNativeExecutor_PublishesTurnsToStream(t *testing.T) {
 	ch, cancel := stream.Subscribe()
 	defer cancel()
 
-	var events []foremanagent.TurnEvent
+	var events []meithealagent.TurnEvent
 	for {
 		select {
 		case ev := <-ch:
@@ -149,7 +149,7 @@ func TestNativeExecutor_NilStreamDoesNotPanic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute with nil stream: %v", err)
 	}
-	if res.Verdict != foremanv1alpha1.AgenticTaskVerdictGo {
+	if res.Verdict != meithealv1alpha1.AgenticTaskVerdictGo {
 		t.Fatalf("verdict with nil stream: want GO got %s", res.Verdict)
 	}
 }
@@ -177,7 +177,7 @@ func TestNativeExecutor_ProgressBeforeCompletion(t *testing.T) {
 	defer upstream.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	stream := foremanagent.NewTurnStream(4)
+	stream := meithealagent.NewTurnStream(4)
 	server := httptest.NewServer(stream.Handler())
 	defer server.Close()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)

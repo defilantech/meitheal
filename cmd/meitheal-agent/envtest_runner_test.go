@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremantools "github.com/defilantech/meitheal/pkg/agent/tools"
+	meithealtools "github.com/defilantech/meitheal/pkg/agent/tools"
 )
 
 func TestMapGateVerdict(t *testing.T) {
@@ -33,7 +33,7 @@ func TestMapGateVerdict(t *testing.T) {
 
 // TestEnvtestJobRunnerStampsTaskName is the #893 regression: the post-push
 // envtest gate Job must carry the originating AgenticTask name in the
-// foreman.llmkube.dev/task-name label, not the "unknown"/"task" default the
+// meitheal.dev/task-name label, not the "unknown"/"task" default the
 // gate renderer falls back to when no taskRef is threaded through. The runner
 // submits the Job via a fake client; we read the created Job back out and
 // assert the label matches the task name the executor passed in.
@@ -45,15 +45,15 @@ func TestEnvtestJobRunnerStampsTaskName(t *testing.T) {
 	kc := fake.NewClientBuilder().WithScheme(s).Build()
 
 	const (
-		taskNS   = "foreman-system"
+		taskNS   = "meitheal-system"
 		taskName = "fix-issue-893"
-		jobName  = "foreman-gate-fix-issue-893-pinned"
+		jobName  = "meitheal-gate-fix-issue-893-pinned"
 	)
 
 	runner := &envtestJobRunnerImpl{
-		tool: &foremantools.RunGateJobTool{
+		tool: &meithealtools.RunGateJobTool{
 			Client: kc,
-			Cfg: foremantools.RunGateJobToolConfig{
+			Cfg: meithealtools.RunGateJobToolConfig{
 				Namespace:    taskNS,
 				PollInterval: time.Millisecond,
 				// Bound the poll so the test does not block: the fake client
@@ -72,7 +72,7 @@ func TestEnvtestJobRunnerStampsTaskName(t *testing.T) {
 	defer cancel()
 	_, _, _ = runner.Run(
 		ctx, taskNS, taskName,
-		"defilantech/LLMKube", "foreman/issue-893",
+		"defilantech/LLMKube", "meitheal/issue-893",
 		"https://github.com/Defilan/LLMKube.git",
 		"https://github.com/defilantech/LLMKube.git",
 	)
@@ -83,14 +83,14 @@ func TestEnvtestJobRunnerStampsTaskName(t *testing.T) {
 		t.Fatalf("gate Job %s was not created: %v", key, err)
 	}
 
-	if got := job.Labels["foreman.llmkube.dev/task-name"]; got != taskName {
+	if got := job.Labels["meitheal.dev/task-name"]; got != taskName {
 		t.Errorf("gate Job task-name label = %q, want %q", got, taskName)
 	}
-	if got := job.Labels["foreman.llmkube.dev/task-namespace"]; got != taskNS {
+	if got := job.Labels["meitheal.dev/task-namespace"]; got != taskNS {
 		t.Errorf("gate Job task-namespace label = %q, want %q", got, taskNS)
 	}
 	// Pod template labels must match so a pod can also be traced back.
-	if got := job.Spec.Template.Labels["foreman.llmkube.dev/task-name"]; got != taskName {
+	if got := job.Spec.Template.Labels["meitheal.dev/task-name"]; got != taskName {
 		t.Errorf("gate Job pod template task-name label = %q, want %q", got, taskName)
 	}
 }
@@ -113,16 +113,16 @@ func TestEnvtestJobRunnerPassesUpstreamURL(t *testing.T) {
 	kc := fake.NewClientBuilder().WithScheme(s).Build()
 
 	const (
-		taskNS      = "foreman-system"
+		taskNS      = "meitheal-system"
 		taskName    = "fix-issue-1731"
-		jobName     = "foreman-gate-fix-issue-1731-pinned"
+		jobName     = "meitheal-gate-fix-issue-1731-pinned"
 		upstreamURL = "https://github.com/defilantech/LLMKube.git"
 	)
 
 	runner := &envtestJobRunnerImpl{
-		tool: &foremantools.RunGateJobTool{
+		tool: &meithealtools.RunGateJobTool{
 			Client: kc,
-			Cfg: foremantools.RunGateJobToolConfig{
+			Cfg: meithealtools.RunGateJobToolConfig{
 				Namespace:    taskNS,
 				PollInterval: time.Millisecond,
 				PollTimeout:  5 * time.Millisecond,
@@ -135,7 +135,7 @@ func TestEnvtestJobRunnerPassesUpstreamURL(t *testing.T) {
 	defer cancel()
 	_, _, _ = runner.Run(
 		ctx, taskNS, taskName,
-		"defilantech/LLMKube", "foreman/issue-1731",
+		"defilantech/LLMKube", "meitheal/issue-1731",
 		"https://github.com/Defilan/LLMKube.git",
 		upstreamURL,
 	)

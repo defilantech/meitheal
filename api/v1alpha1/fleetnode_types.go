@@ -128,7 +128,7 @@ type FleetNodeSpec struct {
 }
 
 // FleetNodeAgentKind identifies which agent binary manages the FleetNode.
-// +kubebuilder:validation:Enum=foreman-agent;metal-agent
+// +kubebuilder:validation:Enum=meitheal-agent;metal-agent
 type FleetNodeAgentKind string
 
 // FleetNodeUpdateRequest is written by the AgentReleaseReconciler to
@@ -226,7 +226,7 @@ type FleetNodeStatus struct {
 	SupervisionCapacity *SupervisionCapacity `json:"supervisionCapacity,omitempty"`
 
 	// AgentVersion is the observed running version of the agent, reported
-	// on heartbeat. Set by the foreman-agent using the binary's build-time
+	// on heartbeat. Set by the meitheal-agent using the binary's build-time
 	// version string; empty for agents that predate this field.
 	// +optional
 	AgentVersion string `json:"agentVersion,omitempty"`
@@ -286,7 +286,7 @@ type FleetNodeStatus struct {
 // +kubebuilder:printcolumn:name="Heartbeat",type=date,JSONPath=`.status.lastHeartbeatTime`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// FleetNode is a worker the Foreman scheduler can dispatch tasks to. It is
+// FleetNode is a worker the Meitheal scheduler can dispatch tasks to. It is
 // cluster-scoped because nodes are global to the fleet; the resource is
 // owned and updated by the FleetAgent running on that node.
 type FleetNode struct {

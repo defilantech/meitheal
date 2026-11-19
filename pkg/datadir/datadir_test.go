@@ -23,10 +23,10 @@ import (
 
 func TestDirPerOS(t *testing.T) {
 	for _, tc := range []struct{ goos, xdg, want string }{
-		{"darwin", "/xdg", "/home/u/Library/Application Support/llmkube"},
-		{"linux", "", "/home/u/.local/share/llmkube"},
-		{"linux", "/xdg", "/xdg/llmkube"},
-		{"linux", "relative", "/home/u/.local/share/llmkube"},
+		{"darwin", "/xdg", "/home/u/Library/Application Support/meitheal"},
+		{"linux", "", "/home/u/.local/share/meitheal"},
+		{"linux", "/xdg", "/xdg/meitheal"},
+		{"linux", "relative", "/home/u/.local/share/meitheal"},
 	} {
 		if got := dir(tc.goos, "/home/u", tc.xdg); got != tc.want {
 			t.Errorf("dir(%s, XDG_DATA_HOME=%q) = %q, want %q", tc.goos, tc.xdg, got, tc.want)
@@ -36,9 +36,9 @@ func TestDirPerOS(t *testing.T) {
 
 func TestDirReadsXDGDataHome(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "/xdg")
-	want := "/xdg/llmkube"
+	want := "/xdg/meitheal"
 	if runtime.GOOS == "darwin" {
-		want = "/home/u/Library/Application Support/llmkube"
+		want = "/home/u/Library/Application Support/meitheal"
 	}
 	if got := Dir("/home/u"); got != want {
 		t.Errorf("Dir with XDG_DATA_HOME=/xdg on %s = %q, want %q", runtime.GOOS, got, want)

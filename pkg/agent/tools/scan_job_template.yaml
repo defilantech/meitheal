@@ -1,4 +1,4 @@
-# Foreman scan Job. The run_scan_job tool renders this template with Go
+# Meitheal scan Job. The run_scan_job tool renders this template with Go
 # text/template and submits the result via controller-runtime client. It
 # reproduces hack/scan-images.sh -- the release-image CVE gate -- in a
 # clean room: an initContainer builds each target binary the way
@@ -12,8 +12,8 @@
 # template's (GOMODCACHE/GOCACHE reuse, tool installs under /cache/bin).
 #
 # Template fields:
-#   .Name / .Namespace  -- Job identity (foreman-scan-<task>-<unix-ms> /
-#                      foreman-system in production)
+#   .Name / .Namespace  -- Job identity (meitheal-scan-<task>-<unix-ms> /
+#                      meitheal-system in production)
 #   .BuilderImage       -- initContainer image that runs the Go build
 #                      (default: golang:1.26)
 #   .RunnerImage        -- scan container image that runs buildah + trivy
@@ -55,10 +55,10 @@ metadata:
   name: {{ .Name }}
   namespace: {{ .Namespace }}
   labels:
-    app.kubernetes.io/name: foreman-scan
-    app.kubernetes.io/managed-by: foreman-agent
-    foreman.llmkube.dev/task-namespace: {{ .TaskNamespace }}
-    foreman.llmkube.dev/task-name: {{ .TaskName }}
+    app.kubernetes.io/name: meitheal-scan
+    app.kubernetes.io/managed-by: meitheal-agent
+    meitheal.dev/task-namespace: {{ .TaskNamespace }}
+    meitheal.dev/task-name: {{ .TaskName }}
 spec:
   backoffLimit: 0
   activeDeadlineSeconds: {{ .ActiveDeadlineSeconds }}
@@ -66,9 +66,9 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: foreman-scan
-        foreman.llmkube.dev/task-namespace: {{ .TaskNamespace }}
-        foreman.llmkube.dev/task-name: {{ .TaskName }}
+        app.kubernetes.io/name: meitheal-scan
+        meitheal.dev/task-namespace: {{ .TaskNamespace }}
+        meitheal.dev/task-name: {{ .TaskName }}
     spec:
       restartPolicy: Never
       # fsGroup makes the RWX cache PVC group-writable so the buildah/vfs
@@ -225,7 +225,7 @@ spec:
               echo "=== assemble {{ .ID }} ({{ .Image }}) ==="
               buildah build --storage-driver=vfs --isolation=chroot --platform linux/amd64 \
                 -f "/work/repo/{{ .Dockerfile }}" \
-                -t "{{ .Image }}:foreman-scan" \
+                -t "{{ .Image }}:meitheal-scan" \
                 --output "type=docker,dest=/work/{{ .ID }}.tar" \
                 "/work/{{ .ID }}" \
                 || { echo "SCAN FAIL: buildah {{ .ID }}"; rc=1; }

@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // TestExtractGateAdvisories covers the pure helper that reads
@@ -34,7 +34,7 @@ import (
 func TestExtractGateAdvisories(t *testing.T) {
 	makeResult := func(extra map[string]any) *runtime.RawExtension {
 		envelope := map[string]any{
-			"schemaVersion": "foreman.v1",
+			"schemaVersion": "meitheal.v1",
 			"kind":          "issue-fix",
 			"verdict":       "GO",
 			"summary":       "done",
@@ -45,10 +45,10 @@ func TestExtractGateAdvisories(t *testing.T) {
 	}
 
 	t.Run("returns advisories when present", func(t *testing.T) {
-		task := &foremanv1alpha1.AgenticTask{
-			Status: foremanv1alpha1.AgenticTaskStatus{
+		task := &meithealv1alpha1.AgenticTask{
+			Status: meithealv1alpha1.AgenticTaskStatus{
 				Result: makeResult(map[string]any{
-					"branch": "foreman/wl/issue-510",
+					"branch": "meitheal/wl/issue-510",
 					"gateAdvisories": []map[string]string{
 						{"check": "grounding-breadth", "detail": "cites dcgm_gpu_utilization (unknown)"},
 						{"check": "scope-overlap", "detail": "diff touches unrelated files"},
@@ -69,10 +69,10 @@ func TestExtractGateAdvisories(t *testing.T) {
 	})
 
 	t.Run("returns nil when gateAdvisories absent", func(t *testing.T) {
-		task := &foremanv1alpha1.AgenticTask{
-			Status: foremanv1alpha1.AgenticTaskStatus{
+		task := &meithealv1alpha1.AgenticTask{
+			Status: meithealv1alpha1.AgenticTaskStatus{
 				Result: makeResult(map[string]any{
-					"branch": "foreman/wl/issue-510",
+					"branch": "meitheal/wl/issue-510",
 				}),
 			},
 		}
@@ -82,8 +82,8 @@ func TestExtractGateAdvisories(t *testing.T) {
 	})
 
 	t.Run("returns nil when gateAdvisories is empty", func(t *testing.T) {
-		task := &foremanv1alpha1.AgenticTask{
-			Status: foremanv1alpha1.AgenticTaskStatus{
+		task := &meithealv1alpha1.AgenticTask{
+			Status: meithealv1alpha1.AgenticTaskStatus{
 				Result: makeResult(map[string]any{
 					"gateAdvisories": []map[string]string{},
 				}),
@@ -95,15 +95,15 @@ func TestExtractGateAdvisories(t *testing.T) {
 	})
 
 	t.Run("returns nil when status.result is nil", func(t *testing.T) {
-		task := &foremanv1alpha1.AgenticTask{}
+		task := &meithealv1alpha1.AgenticTask{}
 		if got := extractGateAdvisories(task); got != nil {
 			t.Errorf("want nil for nil result, got %+v", got)
 		}
 	})
 
 	t.Run("returns nil for malformed JSON", func(t *testing.T) {
-		task := &foremanv1alpha1.AgenticTask{
-			Status: foremanv1alpha1.AgenticTaskStatus{
+		task := &meithealv1alpha1.AgenticTask{
+			Status: meithealv1alpha1.AgenticTaskStatus{
 				Result: &runtime.RawExtension{Raw: []byte(`not-json`)},
 			},
 		}
@@ -115,17 +115,17 @@ func TestExtractGateAdvisories(t *testing.T) {
 
 // makeAdvisoryResult is a test helper that builds a coder-task result
 // RawExtension carrying the given advisories in extra["gateAdvisories"].
-func makeAdvisoryResult(advisories []foremanv1alpha1.GateAdvisory) *runtime.RawExtension {
+func makeAdvisoryResult(advisories []meithealv1alpha1.GateAdvisory) *runtime.RawExtension {
 	advMaps := make([]map[string]string, len(advisories))
 	for i, a := range advisories {
 		advMaps[i] = map[string]string{"check": a.Check, "detail": a.Detail}
 	}
-	extra := map[string]any{"branch": "foreman/advisory-wl/issue-42"}
+	extra := map[string]any{"branch": "meitheal/advisory-wl/issue-42"}
 	if len(advisories) > 0 {
 		extra["gateAdvisories"] = advMaps
 	}
 	envelope := map[string]any{
-		"schemaVersion": "foreman.v1",
+		"schemaVersion": "meitheal.v1",
 		"kind":          "issue-fix",
 		"verdict":       "GO",
 		"summary":       "done",
@@ -149,12 +149,12 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 	})
 
 	It("copies gateAdvisories from a completed coder task into its pending review tasks", func() {
-		wl := &foremanv1alpha1.Workload{
+		wl := &meithealv1alpha1.Workload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-integration",
 				Namespace: "default",
 			},
-			Spec: foremanv1alpha1.WorkloadSpec{
+			Spec: meithealv1alpha1.WorkloadSpec{
 				Repo:   "defilantech/LLMKube",
 				Intent: "advisory integration test",
 				Issues: []int32{42},
@@ -163,12 +163,12 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 		Expect(k8sClient.Create(ctx, wl)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, wl) })
 
-		advisories := []foremanv1alpha1.GateAdvisory{
+		advisories := []meithealv1alpha1.GateAdvisory{
 			{Check: "grounding-breadth", Detail: "cites dcgm_gpu_utilization (unknown)"},
 			{Check: "scope-overlap", Detail: "diff touches unrelated api file"},
 		}
 
-		codeTask := &foremanv1alpha1.AgenticTask{
+		codeTask := &meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-integration-code-42",
 				Namespace: "default",
@@ -177,9 +177,9 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 					labelStep:     "code-42",
 				},
 			},
-			Spec: foremanv1alpha1.AgenticTaskSpec{
-				Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+			Spec: meithealv1alpha1.AgenticTaskSpec{
+				Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:  "defilantech/LLMKube",
 					Issue: 42,
 				},
@@ -188,12 +188,12 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 		Expect(k8sClient.Create(ctx, codeTask)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, codeTask) })
 
-		codeTask.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		codeTask.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+		codeTask.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		codeTask.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 		codeTask.Status.Result = makeAdvisoryResult(advisories)
 		Expect(k8sClient.Status().Update(ctx, codeTask)).To(Succeed())
 
-		reviewTask := &foremanv1alpha1.AgenticTask{
+		reviewTask := &meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-integration-review-42-0",
 				Namespace: "default",
@@ -202,23 +202,23 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 					labelStep:     "review-42-0",
 				},
 			},
-			Spec: foremanv1alpha1.AgenticTaskSpec{
-				Kind:      foremanv1alpha1.AgenticTaskKindReview,
+			Spec: meithealv1alpha1.AgenticTaskSpec{
+				Kind:      meithealv1alpha1.AgenticTaskKindReview,
 				DependsOn: []string{"advisory-integration-verify-42"},
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:   "defilantech/LLMKube",
 					Issue:  42,
-					Branch: "foreman/advisory-integration/issue-42",
+					Branch: "meitheal/advisory-integration/issue-42",
 				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, reviewTask)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, reviewTask) })
 
-		children := []foremanv1alpha1.AgenticTask{*codeTask, *reviewTask}
+		children := []meithealv1alpha1.AgenticTask{*codeTask, *reviewTask}
 		r.patchReviewAdvisories(ctx, wl, children)
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(reviewTask), &fresh)).To(Succeed())
 		Expect(fresh.Spec.Payload.GateAdvisories).To(HaveLen(2))
 		Expect(fresh.Spec.Payload.GateAdvisories[0].Check).To(Equal("grounding-breadth"))
@@ -226,12 +226,12 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 	})
 
 	It("skips already-patched review tasks (idempotent)", func() {
-		wl := &foremanv1alpha1.Workload{
+		wl := &meithealv1alpha1.Workload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-idempotent",
 				Namespace: "default",
 			},
-			Spec: foremanv1alpha1.WorkloadSpec{
+			Spec: meithealv1alpha1.WorkloadSpec{
 				Repo:   "defilantech/LLMKube",
 				Intent: "idempotent test",
 				Issues: []int32{99},
@@ -240,10 +240,10 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 		Expect(k8sClient.Create(ctx, wl)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, wl) })
 
-		advisories := []foremanv1alpha1.GateAdvisory{
+		advisories := []meithealv1alpha1.GateAdvisory{
 			{Check: "grounding-breadth", Detail: "pre-populated"},
 		}
-		codeTask := &foremanv1alpha1.AgenticTask{
+		codeTask := &meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-idempotent-code-99",
 				Namespace: "default",
@@ -252,20 +252,20 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 					labelStep:     "code-99",
 				},
 			},
-			Spec: foremanv1alpha1.AgenticTaskSpec{
-				Kind:    foremanv1alpha1.AgenticTaskKindIssueFix,
-				Payload: foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 99},
+			Spec: meithealv1alpha1.AgenticTaskSpec{
+				Kind:    meithealv1alpha1.AgenticTaskKindIssueFix,
+				Payload: meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 99},
 			},
 		}
 		Expect(k8sClient.Create(ctx, codeTask)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, codeTask) })
-		codeTask.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		codeTask.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+		codeTask.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		codeTask.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 		codeTask.Status.Result = makeAdvisoryResult(advisories)
 		Expect(k8sClient.Status().Update(ctx, codeTask)).To(Succeed())
 
 		// Review task already has GateAdvisories set (previous reconcile).
-		reviewTask := &foremanv1alpha1.AgenticTask{
+		reviewTask := &meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-idempotent-review-99-0",
 				Namespace: "default",
@@ -274,23 +274,23 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 					labelStep:     "review-99-0",
 				},
 			},
-			Spec: foremanv1alpha1.AgenticTaskSpec{
-				Kind: foremanv1alpha1.AgenticTaskKindReview,
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+			Spec: meithealv1alpha1.AgenticTaskSpec{
+				Kind: meithealv1alpha1.AgenticTaskKindReview,
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:           "defilantech/LLMKube",
 					Issue:          99,
-					Branch:         "foreman/advisory-idempotent/issue-99",
-					GateAdvisories: []foremanv1alpha1.GateAdvisory{{Check: "already-here", Detail: "existing"}},
+					Branch:         "meitheal/advisory-idempotent/issue-99",
+					GateAdvisories: []meithealv1alpha1.GateAdvisory{{Check: "already-here", Detail: "existing"}},
 				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, reviewTask)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, reviewTask) })
 
-		children := []foremanv1alpha1.AgenticTask{*codeTask, *reviewTask}
+		children := []meithealv1alpha1.AgenticTask{*codeTask, *reviewTask}
 		r.patchReviewAdvisories(ctx, wl, children)
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(reviewTask), &fresh)).To(Succeed())
 		// Must stay as the original single advisory, not be replaced.
 		Expect(fresh.Spec.Payload.GateAdvisories).To(HaveLen(1))
@@ -301,12 +301,12 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 		// patchReviewAdvisories handles both review-N-* and escalate-N-*
 		// prefixes but only review-N-* was covered by existing tests. This
 		// spec exercises the escalate branch so the prefix guard stays tested.
-		wl := &foremanv1alpha1.Workload{
+		wl := &meithealv1alpha1.Workload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-escalate",
 				Namespace: "default",
 			},
-			Spec: foremanv1alpha1.WorkloadSpec{
+			Spec: meithealv1alpha1.WorkloadSpec{
 				Repo:   "defilantech/LLMKube",
 				Intent: "escalate advisory test",
 				Issues: []int32{42},
@@ -315,11 +315,11 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 		Expect(k8sClient.Create(ctx, wl)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, wl) })
 
-		advisories := []foremanv1alpha1.GateAdvisory{
+		advisories := []meithealv1alpha1.GateAdvisory{
 			{Check: "grounding-breadth", Detail: "cites dcgm_gpu_utilization (unknown)"},
 		}
 
-		codeTask := &foremanv1alpha1.AgenticTask{
+		codeTask := &meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-escalate-code-42",
 				Namespace: "default",
@@ -328,20 +328,20 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 					labelStep:     "code-42",
 				},
 			},
-			Spec: foremanv1alpha1.AgenticTaskSpec{
-				Kind:    foremanv1alpha1.AgenticTaskKindIssueFix,
-				Payload: foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 42},
+			Spec: meithealv1alpha1.AgenticTaskSpec{
+				Kind:    meithealv1alpha1.AgenticTaskKindIssueFix,
+				Payload: meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 42},
 			},
 		}
 		Expect(k8sClient.Create(ctx, codeTask)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, codeTask) })
-		codeTask.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		codeTask.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+		codeTask.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		codeTask.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 		codeTask.Status.Result = makeAdvisoryResult(advisories)
 		Expect(k8sClient.Status().Update(ctx, codeTask)).To(Succeed())
 
 		// Escalation task with step label "escalate-42-0".
-		escalateTask := &foremanv1alpha1.AgenticTask{
+		escalateTask := &meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-escalate-escalate-42-0",
 				Namespace: "default",
@@ -350,22 +350,22 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 					labelStep:     "escalate-42-0",
 				},
 			},
-			Spec: foremanv1alpha1.AgenticTaskSpec{
-				Kind: foremanv1alpha1.AgenticTaskKindReview,
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+			Spec: meithealv1alpha1.AgenticTaskSpec{
+				Kind: meithealv1alpha1.AgenticTaskKindReview,
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:   "defilantech/LLMKube",
 					Issue:  42,
-					Branch: "foreman/advisory-escalate/issue-42",
+					Branch: "meitheal/advisory-escalate/issue-42",
 				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, escalateTask)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, escalateTask) })
 
-		children := []foremanv1alpha1.AgenticTask{*codeTask, *escalateTask}
+		children := []meithealv1alpha1.AgenticTask{*codeTask, *escalateTask}
 		r.patchReviewAdvisories(ctx, wl, children)
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(escalateTask), &fresh)).To(Succeed())
 		Expect(fresh.Spec.Payload.GateAdvisories).To(HaveLen(1))
 		Expect(fresh.Spec.Payload.GateAdvisories[0].Check).To(Equal("grounding-breadth"))
@@ -375,12 +375,12 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 		// A review task that has already been claimed (phase=Running) must not
 		// have its spec mutated mid-flight. The phase guard in
 		// patchReviewAdvisories protects against this; this spec validates it.
-		wl := &foremanv1alpha1.Workload{
+		wl := &meithealv1alpha1.Workload{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-phase-guard",
 				Namespace: "default",
 			},
-			Spec: foremanv1alpha1.WorkloadSpec{
+			Spec: meithealv1alpha1.WorkloadSpec{
 				Repo:   "defilantech/LLMKube",
 				Intent: "phase guard test",
 				Issues: []int32{77},
@@ -389,11 +389,11 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 		Expect(k8sClient.Create(ctx, wl)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, wl) })
 
-		advisories := []foremanv1alpha1.GateAdvisory{
+		advisories := []meithealv1alpha1.GateAdvisory{
 			{Check: "scope-overlap", Detail: "diff touches unrelated files"},
 		}
 
-		codeTask := &foremanv1alpha1.AgenticTask{
+		codeTask := &meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-phase-guard-code-77",
 				Namespace: "default",
@@ -402,20 +402,20 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 					labelStep:     "code-77",
 				},
 			},
-			Spec: foremanv1alpha1.AgenticTaskSpec{
-				Kind:    foremanv1alpha1.AgenticTaskKindIssueFix,
-				Payload: foremanv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 77},
+			Spec: meithealv1alpha1.AgenticTaskSpec{
+				Kind:    meithealv1alpha1.AgenticTaskKindIssueFix,
+				Payload: meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/LLMKube", Issue: 77},
 			},
 		}
 		Expect(k8sClient.Create(ctx, codeTask)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, codeTask) })
-		codeTask.Status.Phase = foremanv1alpha1.AgenticTaskPhaseSucceeded
-		codeTask.Status.Verdict = foremanv1alpha1.AgenticTaskVerdictGo
+		codeTask.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
+		codeTask.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictGo
 		codeTask.Status.Result = makeAdvisoryResult(advisories)
 		Expect(k8sClient.Status().Update(ctx, codeTask)).To(Succeed())
 
 		// Review task is Running; GateAdvisories must stay nil after the call.
-		reviewTask := &foremanv1alpha1.AgenticTask{
+		reviewTask := &meithealv1alpha1.AgenticTask{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "advisory-phase-guard-review-77-0",
 				Namespace: "default",
@@ -424,12 +424,12 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 					labelStep:     "review-77-0",
 				},
 			},
-			Spec: foremanv1alpha1.AgenticTaskSpec{
-				Kind: foremanv1alpha1.AgenticTaskKindReview,
-				Payload: foremanv1alpha1.AgenticTaskPayload{
+			Spec: meithealv1alpha1.AgenticTaskSpec{
+				Kind: meithealv1alpha1.AgenticTaskKindReview,
+				Payload: meithealv1alpha1.AgenticTaskPayload{
 					Repo:   "defilantech/LLMKube",
 					Issue:  77,
-					Branch: "foreman/advisory-phase-guard/issue-77",
+					Branch: "meitheal/advisory-phase-guard/issue-77",
 				},
 			},
 		}
@@ -437,13 +437,13 @@ var _ = Describe("patchReviewAdvisories (envtest)", func() {
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, reviewTask) })
 
 		// Advance the review task to Running via status update.
-		reviewTask.Status.Phase = foremanv1alpha1.AgenticTaskPhaseRunning
+		reviewTask.Status.Phase = meithealv1alpha1.AgenticTaskPhaseRunning
 		Expect(k8sClient.Status().Update(ctx, reviewTask)).To(Succeed())
 
-		children := []foremanv1alpha1.AgenticTask{*codeTask, *reviewTask}
+		children := []meithealv1alpha1.AgenticTask{*codeTask, *reviewTask}
 		r.patchReviewAdvisories(ctx, wl, children)
 
-		var fresh foremanv1alpha1.AgenticTask
+		var fresh meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(reviewTask), &fresh)).To(Succeed())
 		// Phase guard: spec must be untouched; GateAdvisories stays nil.
 		Expect(fresh.Spec.Payload.GateAdvisories).To(BeNil())

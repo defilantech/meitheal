@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package repomap builds a token-budgeted summary of a cloned workspace
-// scored against an issue's text. The foreman-agent's executor calls
+// scored against an issue's text. The meitheal-agent's executor calls
 // Build after the workspace clone but before the model loop starts;
 // the summary is prepended to the coder Agent's user prompt so the
 // model knows where to look without having to grep + read_file its

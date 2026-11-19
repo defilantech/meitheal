@@ -23,7 +23,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // Pins the #573-shaped opt-in from #934: Workload.spec.allowOverwrite is
@@ -40,7 +40,7 @@ var _ = Describe("WorkloadReconciler allowOverwrite stamping", func() {
 		}
 	})
 
-	reconcile := func(wl *foremanv1alpha1.Workload) {
+	reconcile := func(wl *meithealv1alpha1.Workload) {
 		Expect(k8sClient.Create(ctx, wl)).To(Succeed())
 		DeferCleanup(func() {
 			cleanupChildren(wl)
@@ -50,14 +50,14 @@ var _ = Describe("WorkloadReconciler allowOverwrite stamping", func() {
 		Expect(err).NotTo(HaveOccurred())
 	}
 
-	codeTask := func(name string) foremanv1alpha1.AgenticTask {
-		var t foremanv1alpha1.AgenticTask
+	codeTask := func(name string) meithealv1alpha1.AgenticTask {
+		var t meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: name}, &t)).To(Succeed())
 		return t
 	}
 
 	It("stamps allowOverwrite=true onto the issue-fix payload when set", func() {
-		wl := newWorkload("overwrite-on", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("overwrite-on", meithealv1alpha1.WorkloadSpec{
 			Intent:           "retry",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{7},
@@ -71,7 +71,7 @@ var _ = Describe("WorkloadReconciler allowOverwrite stamping", func() {
 	})
 
 	It("defaults to false when unset", func() {
-		wl := newWorkload("overwrite-off", foremanv1alpha1.WorkloadSpec{
+		wl := newWorkload("overwrite-off", meithealv1alpha1.WorkloadSpec{
 			Intent:           "fresh",
 			Repo:             "defilantech/LLMKube",
 			Issues:           []int32{8},
@@ -97,14 +97,14 @@ var _ = Describe("WorkloadReconciler openPullRequest stamping", func() {
 		}
 	})
 
-	reviewTask := func(name string) foremanv1alpha1.AgenticTask {
-		var t foremanv1alpha1.AgenticTask
+	reviewTask := func(name string) meithealv1alpha1.AgenticTask {
+		var t meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: name}, &t)).To(Succeed())
 		return t
 	}
 
-	makeWL := func(name string, openPR *bool, issue int32) *foremanv1alpha1.Workload {
-		return newWorkload(name, foremanv1alpha1.WorkloadSpec{
+	makeWL := func(name string, openPR *bool, issue int32) *meithealv1alpha1.Workload {
+		return newWorkload(name, meithealv1alpha1.WorkloadSpec{
 			Intent:            "fix",
 			Repo:              "defilantech/LLMKube",
 			Issues:            []int32{issue},
@@ -115,7 +115,7 @@ var _ = Describe("WorkloadReconciler openPullRequest stamping", func() {
 		})
 	}
 
-	run := func(wl *foremanv1alpha1.Workload) {
+	run := func(wl *meithealv1alpha1.Workload) {
 		Expect(k8sClient.Create(ctx, wl)).To(Succeed())
 		DeferCleanup(func() {
 			cleanupChildren(wl)
@@ -138,7 +138,7 @@ var _ = Describe("WorkloadReconciler openPullRequest stamping", func() {
 
 	It("does not stamp code or verify payloads", func() {
 		run(makeWL("openpr-scope", nil, 23))
-		var t foremanv1alpha1.AgenticTask
+		var t meithealv1alpha1.AgenticTask
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: "openpr-scope-code-23"}, &t)).To(Succeed())
 		Expect(t.Spec.Payload.OpenPullRequest).To(BeFalse())
 	})

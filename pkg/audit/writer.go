@@ -18,27 +18,27 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 const (
 	// AuditLabel marks an audit-record ConfigMap; AuditTaskLabel carries the
-	// task name for filtered discovery (`-l foreman.llmkube.dev/audit=true`).
-	AuditLabel     = "foreman.llmkube.dev/audit"
-	AuditTaskLabel = "foreman.llmkube.dev/audit-task"
+	// task name for filtered discovery (`-l meitheal.dev/audit=true`).
+	AuditLabel     = "meitheal.dev/audit"
+	AuditTaskLabel = "meitheal.dev/audit-task"
 
 	// auditDataKey is the ConfigMap data key holding the JSON Record.
 	auditDataKey = "audit.json"
 
-	auditNamePrefix = "foreman-audit-"
+	auditNamePrefix = "meitheal-audit-"
 
 	// AuditedAnnotation guards against re-writing a record on every reconcile
 	// of an already-terminal task (which would emit duplicate audit lines).
-	AuditedAnnotation        = "foreman.llmkube.dev/audited"
-	AuditedAttemptAnnotation = "foreman.llmkube.dev/audited-attempt"
+	AuditedAnnotation        = "meitheal.dev/audited"
+	AuditedAttemptAnnotation = "meitheal.dev/audited-attempt"
 
 	// TranscriptLabel marks durable transcripts managed by the audit reaper.
-	TranscriptLabel = "foreman.llmkube.dev/retained-transcript"
+	TranscriptLabel = "meitheal.dev/retained-transcript"
 )
 
 // AuditConfigMapName returns the ConfigMap name for one execution record.
@@ -47,7 +47,7 @@ func AuditConfigMapName(rec Record) string {
 }
 
 // IsRecorded accepts the old boolean marker only for pre-counter executions.
-func IsRecorded(task *foremanv1alpha1.AgenticTask) bool {
+func IsRecorded(task *meithealv1alpha1.AgenticTask) bool {
 	if task.Annotations[AuditedAnnotation] != "true" {
 		return false
 	}
@@ -62,13 +62,13 @@ func IsRecorded(task *foremanv1alpha1.AgenticTask) bool {
 func ResolveAgent(
 	ctx context.Context,
 	c client.Client,
-	task *foremanv1alpha1.AgenticTask,
+	task *meithealv1alpha1.AgenticTask,
 	log logr.Logger,
-) *foremanv1alpha1.Agent {
+) *meithealv1alpha1.Agent {
 	if task.Spec.AgentRef == nil || task.Spec.AgentRef.Name == "" {
 		return nil
 	}
-	var a foremanv1alpha1.Agent
+	var a meithealv1alpha1.Agent
 	key := client.ObjectKey{Namespace: task.Namespace, Name: task.Spec.AgentRef.Name}
 	if err := c.Get(ctx, key, &a); err != nil {
 		log.Info("audit: agent not resolvable; recording without agent block",
@@ -95,7 +95,7 @@ func WriteRecord(ctx context.Context, c client.Client, namespace string, rec Rec
 			Labels: map[string]string{
 				AuditLabel:                  "true",
 				AuditTaskLabel:              rec.Task.Name,
-				"app.kubernetes.io/part-of": "foreman",
+				"app.kubernetes.io/part-of": "meitheal",
 			},
 			// No OwnerReferences: survives task GC by design.
 		},
@@ -121,7 +121,7 @@ func WriteRecord(ctx context.Context, c client.Client, namespace string, rec Rec
 
 	// Structured audit stream line for SIEM/Loki ingestion. The durable
 	// ConfigMap above is the primary record; this is the streaming copy.
-	log.Info("foreman.audit",
+	log.Info("meitheal.audit",
 		"task", rec.Task.Name, "namespace", rec.Task.Namespace,
 		"attempt", rec.Attempt, "taskUID", rec.Task.UID,
 		"verdict", rec.Verdict, "node", rec.AssignedNode,
@@ -138,7 +138,7 @@ func WriteRecord(ctx context.Context, c client.Client, namespace string, rec Rec
 func RecordTerminal(
 	ctx context.Context,
 	c client.Client,
-	task *foremanv1alpha1.AgenticTask,
+	task *meithealv1alpha1.AgenticTask,
 	auditNamespace string,
 	log logr.Logger,
 ) error {

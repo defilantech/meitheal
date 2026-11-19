@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // patchReviewAdvisories wires gate advisories from completed coder tasks into
@@ -40,7 +40,7 @@ import (
 //     round's coder ("code-N-r<k>"); an escalation review
 //     ("escalate-N-*") reads the LATEST coder iteration, since it
 //     judges the branch's final state.
-//  2. Unmarshal the JSON array into []foremanv1alpha1.GateAdvisory.
+//  2. Unmarshal the JSON array into []meithealv1alpha1.GateAdvisory.
 //  3. For every such child that is still Pending and has no
 //     GateAdvisories set, patch spec.payload.gateAdvisories.
 //
@@ -52,7 +52,7 @@ import (
 // "code-N" / "review-N-*" naming conventions, so we bail out early when
 // len(w.Spec.Pipeline) > 0.
 func (r *WorkloadReconciler) patchReviewAdvisories(
-	ctx context.Context, w *foremanv1alpha1.Workload, children []foremanv1alpha1.AgenticTask,
+	ctx context.Context, w *meithealv1alpha1.Workload, children []meithealv1alpha1.AgenticTask,
 ) {
 	if len(w.Spec.Pipeline) > 0 {
 		return
@@ -60,7 +60,7 @@ func (r *WorkloadReconciler) patchReviewAdvisories(
 	log := logf.FromContext(ctx).WithName("workload").WithValues("workload", client.ObjectKeyFromObject(w))
 
 	// Index children by step label for O(1) lookup.
-	byStep := make(map[string]*foremanv1alpha1.AgenticTask, len(children))
+	byStep := make(map[string]*meithealv1alpha1.AgenticTask, len(children))
 	for i := range children {
 		step := children[i].Labels[labelStep]
 		if step != "" {
@@ -99,7 +99,7 @@ func (r *WorkloadReconciler) patchReviewAdvisories(
 			}
 
 			reviewTask := &children[i]
-			if reviewTask.Status.Phase != foremanv1alpha1.AgenticTaskPhasePending &&
+			if reviewTask.Status.Phase != meithealv1alpha1.AgenticTaskPhasePending &&
 				reviewTask.Status.Phase != "" {
 				// Already claimed or running; do not mutate spec mid-flight.
 				continue
@@ -121,7 +121,7 @@ func (r *WorkloadReconciler) patchReviewAdvisories(
 // extractGateAdvisories unmarshals the gateAdvisories array from a coder
 // task's status.result. Returns nil when the task has no result, the result
 // is not valid JSON, or gateAdvisories is absent or empty.
-func extractGateAdvisories(task *foremanv1alpha1.AgenticTask) []foremanv1alpha1.GateAdvisory {
+func extractGateAdvisories(task *meithealv1alpha1.AgenticTask) []meithealv1alpha1.GateAdvisory {
 	if task.Status.Result == nil || len(task.Status.Result.Raw) == 0 {
 		return nil
 	}
@@ -138,7 +138,7 @@ func extractGateAdvisories(task *foremanv1alpha1.AgenticTask) []foremanv1alpha1.
 		return nil
 	}
 
-	var advisories []foremanv1alpha1.GateAdvisory
+	var advisories []meithealv1alpha1.GateAdvisory
 	if err := json.Unmarshal(raw, &advisories); err != nil {
 		return nil
 	}

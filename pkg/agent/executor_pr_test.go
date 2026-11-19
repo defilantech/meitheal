@@ -30,7 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/githubpr"
 )
 
@@ -94,18 +94,18 @@ func (f *fakePREnsurer) HeadCommitSubject(_ context.Context, owner, repo, ref, _
 
 // reviewTaskForPR builds the minimal review-kind AgenticTask that
 // maybeOpenPullRequest inspects.
-func reviewTaskForPR(kind foremanv1alpha1.AgenticTaskKind, openPR bool) *foremanv1alpha1.AgenticTask {
-	return &foremanv1alpha1.AgenticTask{
+func reviewTaskForPR(kind meithealv1alpha1.AgenticTaskKind, openPR bool) *meithealv1alpha1.AgenticTask {
+	return &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "review-pr", Namespace: "default",
-			Labels: map[string]string{"foreman.llmkube.dev/workload": "wl-x"},
+			Labels: map[string]string{"meitheal.dev/workload": "wl-x"},
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
 			Kind: kind,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:            "defilantech/LLMKube",
 				Issue:           7,
-				Branch:          "foreman/wl-x/issue-7",
+				Branch:          "meitheal/wl-x/issue-7",
 				OpenPullRequest: openPR,
 			},
 		},
@@ -118,19 +118,19 @@ func reviewTaskForPR(kind foremanv1alpha1.AgenticTaskKind, openPR bool) *foreman
 func TestMaybeOpenPullRequest_Gating(t *testing.T) {
 	cases := []struct {
 		name       string
-		verdict    foremanv1alpha1.AgenticTaskVerdict
-		kind       foremanv1alpha1.AgenticTaskKind
+		verdict    meithealv1alpha1.AgenticTaskVerdict
+		kind       meithealv1alpha1.AgenticTaskKind
 		openPR     bool
 		wantCalled bool
 	}{
-		{"go review flag on opens", foremanv1alpha1.AgenticTaskVerdictGo,
-			foremanv1alpha1.AgenticTaskKindReview, true, true},
-		{"no-go review never opens", foremanv1alpha1.AgenticTaskVerdictNoGo,
-			foremanv1alpha1.AgenticTaskKindReview, true, false},
-		{"go review flag off never opens", foremanv1alpha1.AgenticTaskVerdictGo,
-			foremanv1alpha1.AgenticTaskKindReview, false, false},
-		{"go non-review never opens", foremanv1alpha1.AgenticTaskVerdictGo,
-			foremanv1alpha1.AgenticTaskKindIssueFix, true, false},
+		{"go review flag on opens", meithealv1alpha1.AgenticTaskVerdictGo,
+			meithealv1alpha1.AgenticTaskKindReview, true, true},
+		{"no-go review never opens", meithealv1alpha1.AgenticTaskVerdictNoGo,
+			meithealv1alpha1.AgenticTaskKindReview, true, false},
+		{"go review flag off never opens", meithealv1alpha1.AgenticTaskVerdictGo,
+			meithealv1alpha1.AgenticTaskKindReview, false, false},
+		{"go non-review never opens", meithealv1alpha1.AgenticTaskVerdictGo,
+			meithealv1alpha1.AgenticTaskKindIssueFix, true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -155,10 +155,10 @@ func TestMaybeOpenPullRequest_Gating(t *testing.T) {
 // PR opening entirely (cmd wiring may leave it unset) without panicking.
 func TestMaybeOpenPullRequest_NilEnsurerIsDisabled(t *testing.T) {
 	e := &NativeAgentLoopExecutor{}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	r := &Result{Extra: map[string]any{}}
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 	if len(r.Extra) != 0 {
 		t.Fatalf("nil ensurer must be a no-op; extra=%+v", r.Extra)
 	}
@@ -170,14 +170,14 @@ func TestMaybeOpenPullRequest_NilEnsurerIsDisabled(t *testing.T) {
 func TestMaybeOpenPullRequest_BodyCarriesReviewSummary(t *testing.T) {
 	fe := &fakePREnsurer{subject: "fix: the thing", url: "https://example/pr/1"}
 	e := &NativeAgentLoopExecutor{PREnsurer: fe}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	r := &Result{
 		Summary: "Adds provider details to the SSO error path so failures are diagnosable.",
 		Extra:   map[string]any{},
 	}
 
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 
 	if len(fe.ensures) != 1 {
 		t.Fatalf("want 1 EnsurePR call, got %+v", fe.ensures)
@@ -201,8 +201,8 @@ func TestMaybeOpenPullRequest_BodyCarriesReviewSummary(t *testing.T) {
 func prTestScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
-	if err := foremanv1alpha1.AddToScheme(s); err != nil {
-		t.Fatalf("foreman: %v", err)
+	if err := meithealv1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("meitheal: %v", err)
 	}
 	return s
 }
@@ -213,7 +213,7 @@ func prTestScheme(t *testing.T) *runtime.Scheme {
 // submit_result persists and the controller's inertDemotion decodes.
 // When prBody is "" the result carries no prBody key at all, so callers can
 // also stand in for a coder that only set a summary.
-func codeTaskForPR(name, branch, created, prBody string) *foremanv1alpha1.AgenticTask {
+func codeTaskForPR(name, branch, created, prBody string) *meithealv1alpha1.AgenticTask {
 	extra := map[string]any{"summary": "Implemented the change."}
 	if prBody != "" {
 		extra["prBody"] = prBody
@@ -226,22 +226,22 @@ func codeTaskForPR(name, branch, created, prBody string) *foremanv1alpha1.Agenti
 	if err := ts.UnmarshalQueryParameter(created); err != nil {
 		panic(err)
 	}
-	return &foremanv1alpha1.AgenticTask{
+	return &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
 			Namespace:         "default",
 			CreationTimestamp: *ts,
-			Labels:            map[string]string{"foreman.llmkube.dev/workload": "wl-x"},
+			Labels:            map[string]string{"meitheal.dev/workload": "wl-x"},
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  7,
 				Branch: branch,
 			},
 		},
-		Status: foremanv1alpha1.AgenticTaskStatus{
+		Status: meithealv1alpha1.AgenticTaskStatus{
 			Result: &runtime.RawExtension{Raw: raw},
 		},
 	}
@@ -250,8 +250,8 @@ func codeTaskForPR(name, branch, created, prBody string) *foremanv1alpha1.Agenti
 // codeTaskOnBranch is the single-branch convenience wrapper: the code task
 // wl-x-code-1 on the review branch. Tests that need a second task on the
 // same branch call codeTaskForPR directly with their own name and time.
-func codeTaskOnBranch(prBody string) *foremanv1alpha1.AgenticTask {
-	return codeTaskForPR("wl-x-code-1", "foreman/wl-x/issue-7", "2026-09-07T10:00:00Z", prBody)
+func codeTaskOnBranch(prBody string) *meithealv1alpha1.AgenticTask {
+	return codeTaskForPR("wl-x-code-1", "meitheal/wl-x/issue-7", "2026-09-07T10:00:00Z", prBody)
 }
 
 const coderPRDescription = "## What\n\nResume a truncated model download from the " +
@@ -273,14 +273,14 @@ func TestMaybeOpenPullRequest_CoderPRBodyPreferred(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(prTestScheme(t)).
 		WithObjects(codeTask).Build()
 	e := &NativeAgentLoopExecutor{PREnsurer: fe, Client: c}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	r := &Result{
 		Summary: "APPROVE: the resume logic is minimal and well covered.",
 		Extra:   map[string]any{},
 	}
 
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 
 	if len(fe.ensures) != 1 {
 		t.Fatalf("want 1 EnsurePR call, got %+v", fe.ensures)
@@ -298,7 +298,7 @@ func TestMaybeOpenPullRequest_CoderPRBodyPreferred(t *testing.T) {
 	if n := strings.Count(body, "#7"); n != 1 {
 		t.Errorf("the coder's single Refs #7 must be the only issue link, saw %d; body=%q", n, body)
 	}
-	if !strings.Contains(body, "_Opened by foreman on review GO") {
+	if !strings.Contains(body, "_Opened by meitheal on review GO") {
 		t.Errorf("body must keep the provenance line; got %q", body)
 	}
 	if src := r.Extra["prBodySource"]; src != "coder" {
@@ -318,15 +318,15 @@ func TestMaybeOpenPullRequest_CoderPRBodyPreferred(t *testing.T) {
 // borrowed for this PR — the grounded summary path stands.
 func TestMaybeOpenPullRequest_CoderPRBodyBranchMismatch(t *testing.T) {
 	fe := &fakePREnsurer{subject: "fix: the thing", url: "https://example/pr/1768"}
-	other := codeTaskForPR("wl-x-code-1", "foreman/wl-x/issue-9",
+	other := codeTaskForPR("wl-x-code-1", "meitheal/wl-x/issue-9",
 		"2026-09-07T10:00:00Z", coderPRDescription)
 	c := fake.NewClientBuilder().WithScheme(prTestScheme(t)).WithObjects(other).Build()
 	e := &NativeAgentLoopExecutor{PREnsurer: fe, Client: c}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	r := &Result{Summary: "APPROVE: reviewed the branch diff.", Extra: map[string]any{}}
 
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 
 	if len(fe.ensures) != 1 {
 		t.Fatalf("want 1 EnsurePR call, got %+v", fe.ensures)
@@ -345,11 +345,11 @@ func TestMaybeOpenPullRequest_CoderPRBodyBranchMismatch(t *testing.T) {
 func TestMaybeOpenPullRequest_NilClientKeepsSummaryPath(t *testing.T) {
 	fe := &fakePREnsurer{subject: "fix: the thing", url: "https://example/pr/1768"}
 	e := &NativeAgentLoopExecutor{PREnsurer: fe}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	r := &Result{Summary: "APPROVE: no API reader here.", Extra: map[string]any{}}
 
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 
 	if len(fe.ensures) != 1 {
 		t.Fatalf("want 1 EnsurePR call, got %+v", fe.ensures)
@@ -370,14 +370,14 @@ func TestMaybeOpenPullRequest_ReviewerPRBodyPreferredWhenNoCoderTask(t *testing.
 	reviewerBody := "## What\n\nThe reviewer's own structured description of the branch."
 	c := fake.NewClientBuilder().WithScheme(prTestScheme(t)).Build()
 	e := &NativeAgentLoopExecutor{PREnsurer: fe, Client: c}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	r := &Result{
 		Summary: "APPROVE: summary line.",
 		Extra:   map[string]any{"prBody": reviewerBody},
 	}
 
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 
 	if len(fe.ensures) != 1 {
 		t.Fatalf("want 1 EnsurePR call, got %+v", fe.ensures)
@@ -400,16 +400,16 @@ func TestMaybeOpenPullRequest_ReviewerPRBodyPreferredWhenNoCoderTask(t *testing.
 func TestMaybeOpenPullRequest_NewestCoderTaskWinsWhenBranchRerun(t *testing.T) {
 	fe := &fakePREnsurer{subject: "fix: the thing", url: "https://example/pr/1768"}
 	stale := codeTaskOnBranch("## What\n\nStale first-attempt description.")
-	fresh := codeTaskForPR("wl-x-code-2", "foreman/wl-x/issue-7",
+	fresh := codeTaskForPR("wl-x-code-2", "meitheal/wl-x/issue-7",
 		"2026-09-07T12:00:00Z", coderPRDescription)
 	c := fake.NewClientBuilder().WithScheme(prTestScheme(t)).
 		WithObjects(stale, fresh).Build()
 	e := &NativeAgentLoopExecutor{PREnsurer: fe, Client: c}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	r := &Result{Summary: "APPROVE: reviewed the amended branch.", Extra: map[string]any{}}
 
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 
 	if len(fe.ensures) != 1 {
 		t.Fatalf("want 1 EnsurePR call, got %+v", fe.ensures)
@@ -436,11 +436,11 @@ func TestMaybeOpenPullRequest_CoderTaskWithoutPRBodyFallsBack(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(prTestScheme(t)).
 		WithObjects(codeTask).Build()
 	e := &NativeAgentLoopExecutor{PREnsurer: fe, Client: c}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	r := &Result{Summary: "APPROVE: reviewed the branch diff.", Extra: map[string]any{}}
 
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 
 	if len(fe.ensures) != 1 {
 		t.Fatalf("want 1 EnsurePR call, got %+v", fe.ensures)
@@ -463,11 +463,11 @@ func TestMaybeOpenPullRequest_CoderTaskMalformedResultFallsBack(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(prTestScheme(t)).
 		WithObjects(codeTask).Build()
 	e := &NativeAgentLoopExecutor{PREnsurer: fe, Client: c}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	r := &Result{Summary: "APPROVE: reviewed the branch diff.", Extra: map[string]any{}}
 
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 
 	if len(fe.ensures) != 1 {
 		t.Fatalf("want 1 EnsurePR call, got %+v", fe.ensures)
@@ -500,7 +500,7 @@ func TestOpenPullRequest_PrBodySkipsRepoTemplate(t *testing.T) {
 
 	fe := &fakePREnsurer{subject: "fix: the thing", url: "https://example/pr/1768"}
 	e := &NativeAgentLoopExecutor{PREnsurer: fe}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	if _, err := e.openPullRequest(context.Background(), task, nil, workspace,
 		"APPROVE: reviewer summary.", map[string]any{"prBody": coderPRDescription},
 		true, ""); err != nil {
@@ -538,11 +538,11 @@ func TestMaybeOpenPullRequest_ForkRemoteQualifiesHead(t *testing.T) {
 		PREnsurer:    fe,
 		GitRemoteURL: "https://github.com/Defilan/LLMKube.git",
 	}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	r := &Result{Extra: map[string]any{}}
 
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 
 	if len(fe.ensures) != 1 {
 		t.Fatalf("want 1 EnsurePR call, got %+v", fe.ensures)
@@ -551,7 +551,7 @@ func TestMaybeOpenPullRequest_ForkRemoteQualifiesHead(t *testing.T) {
 	got.body = "" // body content is covered by TestMaybeOpenPullRequest_BodyCarriesReviewSummary
 	want := prEnsureCall{
 		owner: "defilantech", repo: "LLMKube",
-		head: "Defilan:foreman/wl-x/issue-7", base: "main", title: "fix: the thing",
+		head: "Defilan:meitheal/wl-x/issue-7", base: "main", title: "fix: the thing",
 		draft: true,
 	}
 	if got != want {
@@ -560,7 +560,7 @@ func TestMaybeOpenPullRequest_ForkRemoteQualifiesHead(t *testing.T) {
 	if len(fe.subjects) != 1 {
 		t.Fatalf("want 1 HeadCommitSubject call, got %+v", fe.subjects)
 	}
-	if s := fe.subjects[0]; s.owner != "Defilan" || s.repo != "LLMKube" || s.ref != "foreman/wl-x/issue-7" {
+	if s := fe.subjects[0]; s.owner != "Defilan" || s.repo != "LLMKube" || s.ref != "meitheal/wl-x/issue-7" {
 		t.Errorf("HeadCommitSubject must read from the fork; got %+v", s)
 	}
 	if r.Extra["pullRequestURL"] != fe.url {
@@ -581,16 +581,16 @@ func TestMaybeOpenPullRequest_SameRepoRemoteKeepsBareHead(t *testing.T) {
 	} {
 		fe := &fakePREnsurer{subject: "fix: same repo", url: "https://github.com/defilantech/LLMKube/pull/3"}
 		e := &NativeAgentLoopExecutor{PREnsurer: fe, GitRemoteURL: remote}
-		task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+		task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 		r := &Result{Extra: map[string]any{}}
 
 		e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-			foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+			meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 
 		if len(fe.ensures) != 1 {
 			t.Fatalf("remote %q: want 1 EnsurePR call, got %+v", remote, fe.ensures)
 		}
-		if got := fe.ensures[0].head; got != "foreman/wl-x/issue-7" {
+		if got := fe.ensures[0].head; got != "meitheal/wl-x/issue-7" {
 			t.Errorf("remote %q: head got %q, want bare branch", remote, got)
 		}
 		if s := fe.subjects[0]; s.owner != "defilantech" || s.repo != "LLMKube" {
@@ -648,12 +648,12 @@ func TestMaybeOpenPullRequest_BodyFlagsUngroundedClaim(t *testing.T) {
 
 	fe := &fakePREnsurer{subject: "feat: structured logging", url: "https://example/pr/9"}
 	e := &NativeAgentLoopExecutor{PREnsurer: fe}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	summary := "Replaces bare `print()` calls with `logger.info()` and adds a `/health` endpoint."
 	r := &Result{Summary: summary, Extra: map[string]any{}}
 
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, t.TempDir(), "main", []string{"bridge/app.py"}, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, t.TempDir(), "main", []string{"bridge/app.py"}, "")
 
 	if len(fe.ensures) != 1 {
 		t.Fatalf("want 1 EnsurePR call, got %+v", fe.ensures)
@@ -690,12 +690,12 @@ func TestMaybeOpenPullRequest_GroundedSummaryUntouched(t *testing.T) {
 
 	fe := &fakePREnsurer{subject: "feat: structured logging", url: "https://example/pr/10"}
 	e := &NativeAgentLoopExecutor{PREnsurer: fe}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	summary := "Replaces bare `print()` calls in `bridge/app.py` with `logger.info()`."
 	r := &Result{Summary: summary, Extra: map[string]any{}}
 
 	e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-		foremanv1alpha1.AgenticTaskVerdictGo, r, t.TempDir(), "main", []string{"bridge/app.py"}, "")
+		meithealv1alpha1.AgenticTaskVerdictGo, r, t.TempDir(), "main", []string{"bridge/app.py"}, "")
 
 	body := fe.ensures[0].body
 	if strings.Contains(body, "Unverified claims") {
@@ -725,12 +725,12 @@ func TestMaybeOpenPullRequest_NoDiffSkipsGrounding(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fe := &fakePREnsurer{subject: "feat: x", url: "https://example/pr/11"}
 			e := &NativeAgentLoopExecutor{PREnsurer: fe}
-			task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+			task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 			summary := "Adds a `/health` endpoint."
 			r := &Result{Summary: summary, Extra: map[string]any{}}
 
 			e.maybeOpenPullRequest(context.Background(), logr.Discard(), nil, task, nil,
-				foremanv1alpha1.AgenticTaskVerdictGo, r, tc.workspace, tc.base, nil, "")
+				meithealv1alpha1.AgenticTaskVerdictGo, r, tc.workspace, tc.base, nil, "")
 
 			if body := fe.ensures[0].body; strings.Contains(body, "Unverified claims") {
 				t.Errorf("no ground truth must mean no note; got %q", body)
@@ -782,7 +782,7 @@ func TestOpenPullRequest_PrBodyPreferred(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fe := &fakePREnsurer{subject: "fix: the thing", url: "https://example/pr/1568"}
 			e := &NativeAgentLoopExecutor{PREnsurer: fe}
-			task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+			task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 			got, err := e.openPullRequest(context.Background(), task, nil, "", summary, tc.extra, true, "")
 			if err != nil {
 				t.Fatalf("openPullRequest() error = %v", err)
@@ -821,7 +821,7 @@ func TestOpenPullRequest_PrBodyLongSurvivesIntact(t *testing.T) {
 
 	fe := &fakePREnsurer{subject: "fix: long body", url: "https://example/pr/1568"}
 	e := &NativeAgentLoopExecutor{PREnsurer: fe}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 	if _, err := e.openPullRequest(context.Background(), task, nil, "", "short",
 		map[string]any{"prBody": longBody}, true, ""); err != nil {
 		t.Fatalf("openPullRequest() error = %v", err)
@@ -855,11 +855,11 @@ func TestMaybeRefreshPRBody_UpdatesExistingPRWithGroundedBody(t *testing.T) {
 
 	fe := &fakePREnsurer{subject: "fix: the thing", url: "https://example/pr/1"}
 	e := &NativeAgentLoopExecutor{PREnsurer: fe}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindIssueFix, false)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindIssueFix, false)
 	workspace := t.TempDir()
 
 	e.maybeRefreshPRBody(context.Background(), logr.Discard(), task, nil,
-		"foreman/wl-x/issue-7", &Result{Summary: "Revised summary of the amendment."},
+		"meitheal/wl-x/issue-7", &Result{Summary: "Revised summary of the amendment."},
 		workspace, "main", nil, "")
 
 	if len(fe.updates) != 1 {
@@ -867,7 +867,7 @@ func TestMaybeRefreshPRBody_UpdatesExistingPRWithGroundedBody(t *testing.T) {
 	}
 	got := fe.updates[0]
 	if got.owner != "defilantech" || got.repo != "LLMKube" ||
-		got.head != "foreman/wl-x/issue-7" || got.body != "Revised summary of the amendment." {
+		got.head != "meitheal/wl-x/issue-7" || got.body != "Revised summary of the amendment." {
 		t.Errorf("UpdatePR args wrong: %+v", got)
 	}
 }
@@ -879,14 +879,14 @@ func TestMaybeRefreshPRBody_UpdatesExistingPRWithGroundedBody(t *testing.T) {
 func TestMaybeRefreshPRBody_PrefersCoderPRBody(t *testing.T) {
 	fe := &fakePREnsurer{subject: "fix: the thing", url: "https://example/pr/1"}
 	e := &NativeAgentLoopExecutor{PREnsurer: fe}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindIssueFix, false)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindIssueFix, false)
 	r := &Result{
 		Summary: "APPROVE: the resume logic is minimal and well covered.",
 		Extra:   map[string]any{"modelExtra": map[string]any{"prBody": coderPRDescription}},
 	}
 
 	e.maybeRefreshPRBody(context.Background(), logr.Discard(), task, nil,
-		"foreman/wl-x/issue-7", r, t.TempDir(), "main", nil, "")
+		"meitheal/wl-x/issue-7", r, t.TempDir(), "main", nil, "")
 
 	if len(fe.updates) != 1 {
 		t.Fatalf("want 1 UpdatePR call, got %+v", fe.updates)
@@ -907,11 +907,11 @@ func TestMaybeRefreshPRBody_PrefersCoderPRBody(t *testing.T) {
 func TestMaybeRefreshPRBody_RefreshesOnCoderBodyWithEmptySummary(t *testing.T) {
 	fe := &fakePREnsurer{subject: "fix: the thing", url: "https://example/pr/1"}
 	e := &NativeAgentLoopExecutor{PREnsurer: fe}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindIssueFix, false)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindIssueFix, false)
 	r := &Result{Extra: map[string]any{"modelExtra": map[string]any{"prBody": coderPRDescription}}}
 
 	e.maybeRefreshPRBody(context.Background(), logr.Discard(), task, nil,
-		"foreman/wl-x/issue-7", r, t.TempDir(), "main", nil, "")
+		"meitheal/wl-x/issue-7", r, t.TempDir(), "main", nil, "")
 
 	if len(fe.updates) != 1 {
 		t.Fatalf("a coder body must refresh even when the summary is empty; got %+v", fe.updates)
@@ -938,11 +938,11 @@ func TestMaybeRefreshPRBody_NoPRIssuesNoUpdate(t *testing.T) {
 	// A fake that reports no open PR for the head: UpdatePR returns ("", nil).
 	fe := &fakePREnsurer{subject: "fix: the thing", url: "", noPR: true}
 	e := &NativeAgentLoopExecutor{PREnsurer: fe}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindIssueFix, false)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindIssueFix, false)
 	workspace := t.TempDir()
 
 	e.maybeRefreshPRBody(context.Background(), logr.Discard(), task, nil,
-		"foreman/wl-x/issue-7", &Result{Summary: "Revised summary of the amendment."},
+		"meitheal/wl-x/issue-7", &Result{Summary: "Revised summary of the amendment."},
 		workspace, "main", nil, "")
 
 	if len(fe.updates) != 0 {
@@ -955,10 +955,10 @@ func TestMaybeRefreshPRBody_NoPRIssuesNoUpdate(t *testing.T) {
 func TestMaybeRefreshPRBody_SkipsEmptySummary(t *testing.T) {
 	fe := &fakePREnsurer{subject: "fix: the thing", url: "https://example/pr/1"}
 	e := &NativeAgentLoopExecutor{PREnsurer: fe}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindIssueFix, false)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindIssueFix, false)
 
 	e.maybeRefreshPRBody(context.Background(), logr.Discard(), task, nil,
-		"foreman/wl-x/issue-7", &Result{Summary: "   "}, t.TempDir(), "main", nil, "")
+		"meitheal/wl-x/issue-7", &Result{Summary: "   "}, t.TempDir(), "main", nil, "")
 
 	if len(fe.updates) != 0 {
 		t.Fatalf("empty summary must not PATCH the PR; got %+v", fe.updates)
@@ -969,9 +969,9 @@ func TestMaybeRefreshPRBody_SkipsEmptySummary(t *testing.T) {
 // a no-op, so a run that never configured PR access does not error.
 func TestMaybeRefreshPRBody_DisabledWhenNoCodeHost(t *testing.T) {
 	e := &NativeAgentLoopExecutor{}
-	task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindIssueFix, false)
+	task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindIssueFix, false)
 	e.maybeRefreshPRBody(context.Background(), logr.Discard(), task, nil,
-		"foreman/wl-x/issue-7", &Result{Summary: "Revised summary."}, "", "", nil, "")
+		"meitheal/wl-x/issue-7", &Result{Summary: "Revised summary."}, "", "", nil, "")
 }
 
 // TestMaybeOpenPullRequest_DraftFollowsAgent asserts the Agent's
@@ -985,28 +985,28 @@ func TestMaybeOpenPullRequest_DraftFollowsAgent(t *testing.T) {
 	boolp := func(b bool) *bool { return &b }
 	cases := []struct {
 		name  string
-		agent *foremanv1alpha1.Agent
+		agent *meithealv1alpha1.Agent
 		want  bool
 	}{
 		{name: "nil agent stays draft", agent: nil, want: true},
 		{
 			name:  "unset field stays draft",
-			agent: &foremanv1alpha1.Agent{},
+			agent: &meithealv1alpha1.Agent{},
 			want:  true,
 		},
 		{
 			// The reported case: an unattended loop whose reviewer workflow
 			// skips drafts needs the PR opened ready for review.
 			name: "false opens ready for review",
-			agent: &foremanv1alpha1.Agent{
-				Spec: foremanv1alpha1.AgentSpec{OpenPullRequestsAsDraft: boolp(false)},
+			agent: &meithealv1alpha1.Agent{
+				Spec: meithealv1alpha1.AgentSpec{OpenPullRequestsAsDraft: boolp(false)},
 			},
 			want: false,
 		},
 		{
 			name: "true opens a draft",
-			agent: &foremanv1alpha1.Agent{
-				Spec: foremanv1alpha1.AgentSpec{OpenPullRequestsAsDraft: boolp(true)},
+			agent: &meithealv1alpha1.Agent{
+				Spec: meithealv1alpha1.AgentSpec{OpenPullRequestsAsDraft: boolp(true)},
 			},
 			want: true,
 		},
@@ -1015,11 +1015,11 @@ func TestMaybeOpenPullRequest_DraftFollowsAgent(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fe := &fakePREnsurer{subject: "fix: the thing", url: "https://example/pr/1"}
 			e := &NativeAgentLoopExecutor{PREnsurer: fe}
-			task := reviewTaskForPR(foremanv1alpha1.AgenticTaskKindReview, true)
+			task := reviewTaskForPR(meithealv1alpha1.AgenticTaskKindReview, true)
 			r := &Result{Summary: "a change", Extra: map[string]any{}}
 
 			e.maybeOpenPullRequest(context.Background(), logr.Discard(), tc.agent, task, nil,
-				foremanv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
+				meithealv1alpha1.AgenticTaskVerdictGo, r, "", "", nil, "")
 
 			if len(fe.ensures) != 1 {
 				t.Fatalf("want 1 EnsurePR call, got %+v", fe.ensures)

@@ -3,34 +3,34 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "foreman.coder.serviceAccountName" . }}
-  namespace: {{ include "foreman.namespace" . }}
+  name: {{ include "meitheal.coder.serviceAccountName" . }}
+  namespace: {{ include "meitheal.namespace" . }}
   labels:
-    {{- include "foreman.coder.labels" . | nindent 4 }}
+    {{- include "meitheal.coder.labels" . | nindent 4 }}
 ---
 {{- end }}
 # Least-privilege Role for the coder Job pods. A Job-mode coder runs
-# `foreman-agent run-task`, which:
+# `meitheal-agent run-task`, which:
 #   - READS the AgenticTask, the referenced Agent, and the Agent's
 #     InferenceService from the API to resolve the executor's base URL.
 #   - For cloud-proxy providers, READS the Secret referenced by
 #     `providerConfig.apiKeySecretRef` to resolve the API key.
-#   - WRITES a per-attempt transcript ConfigMap (foreman-transcript-<task>-<uid>-attempt-<n>)
+#   - WRITES a per-attempt transcript ConfigMap (meitheal-transcript-<task>-<uid>-attempt-<n>)
 #     during the run so failing runs can be diagnosed post-hoc; without
 #     this the turn-by-turn transcript is lost and only the summary
 #     audit ConfigMap survives.
-# The foreman-agent watcher (separate process) patches AgenticTask
+# The meitheal-agent watcher (separate process) patches AgenticTask
 # status — the in-Job run-task never writes task status itself. The
 # Role is namespaced to where the chart (and the tasks) live.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "foreman.fullname" . }}-coder
-  namespace: {{ include "foreman.namespace" . }}
+  name: {{ include "meitheal.fullname" . }}-coder
+  namespace: {{ include "meitheal.namespace" . }}
   labels:
-    {{- include "foreman.coder.labels" . | nindent 4 }}
+    {{- include "meitheal.coder.labels" . | nindent 4 }}
 rules:
-  - apiGroups: ["foreman.llmkube.dev"]
+  - apiGroups: ["meitheal.dev"]
     resources: ["agentictasks", "agents"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["inference.llmkube.dev"]
@@ -51,16 +51,16 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ include "foreman.fullname" . }}-coder
-  namespace: {{ include "foreman.namespace" . }}
+  name: {{ include "meitheal.fullname" . }}-coder
+  namespace: {{ include "meitheal.namespace" . }}
   labels:
-    {{- include "foreman.coder.labels" . | nindent 4 }}
+    {{- include "meitheal.coder.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ include "foreman.fullname" . }}-coder
+  name: {{ include "meitheal.fullname" . }}-coder
 subjects:
   - kind: ServiceAccount
-    name: {{ include "foreman.coder.serviceAccountName" . }}
-    namespace: {{ include "foreman.namespace" . }}
+    name: {{ include "meitheal.coder.serviceAccountName" . }}
+    namespace: {{ include "meitheal.namespace" . }}
 {{- end }}

@@ -30,8 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
-	foremanagent "github.com/defilantech/meitheal/pkg/agent"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealagent "github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/repo"
 )
 
@@ -82,16 +82,16 @@ func TestCrossStageContradiction_WiredIntoRunLLMPath(t *testing.T) {
 	gitOrSkip(t)
 	root := t.TempDir()
 	bare := initBareWithSeed(t, root)
-	const branch = "foreman/review-1"
+	const branch = "meitheal/review-1"
 	csPushNonEmptyBranch(t, root, bare, branch)
 	oaiSrv := scriptedOAI(t, []string{submitGoBody}) // triggers the submit_result tool call
 
 	// Reviewer-role agent: read-only, so the non-GO path (no commit/push) is
 	// taken and the reviewer rails -- including the cross-stage check -- run.
-	agent := &foremanv1alpha1.Agent{
+	agent := &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "reviewer-cs", Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:                foremanv1alpha1.AgentRoleReviewer,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:                meithealv1alpha1.AgentRoleReviewer,
 			Model:               "test-model",
 			InferenceServiceRef: corev1.LocalObjectReference{Name: "test-svc"},
 			SystemPrompt:        "you are a test reviewer",
@@ -100,13 +100,13 @@ func TestCrossStageContradiction_WiredIntoRunLLMPath(t *testing.T) {
 		},
 	}
 	// Review task that ADOPTS the non-empty branch under review.
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "review-cs", Namespace: "default", UID: types.UID("review-cs-uid"),
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindReview,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindReview,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  1549,
 				Branch: branch,
@@ -123,7 +123,7 @@ func TestCrossStageContradiction_WiredIntoRunLLMPath(t *testing.T) {
 	// may remap the verdict, but the cross-stage contradiction is independent
 	// and must be recorded either way.
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true,
 				Verdict:  "NO-GO",
@@ -133,17 +133,17 @@ func TestCrossStageContradiction_WiredIntoRunLLMPath(t *testing.T) {
 		},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},
@@ -262,10 +262,10 @@ func TestCrossStageContradiction_CoderClaimsEditsOnEmptyBranch(t *testing.T) {
 
 	// Coder-role agent: read-only tool set, no touch, so the no-change path
 	// (no commit, no push) is taken and the cross-stage check runs.
-	agent := &foremanv1alpha1.Agent{
+	agent := &meithealv1alpha1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "coder-cs", Namespace: "default"},
-		Spec: foremanv1alpha1.AgentSpec{
-			Role:                foremanv1alpha1.AgentRoleCoder,
+		Spec: meithealv1alpha1.AgentSpec{
+			Role:                meithealv1alpha1.AgentRoleCoder,
 			Model:               "test-model",
 			InferenceServiceRef: corev1.LocalObjectReference{Name: "test-svc"},
 			SystemPrompt:        "you are a test coder",
@@ -274,13 +274,13 @@ func TestCrossStageContradiction_CoderClaimsEditsOnEmptyBranch(t *testing.T) {
 		},
 	}
 	// Coder task that CUTS a fresh branch from main (empty, zero commits ahead).
-	task := &foremanv1alpha1.AgenticTask{
+	task := &meithealv1alpha1.AgenticTask{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "coder-cs", Namespace: "default", UID: types.UID("coder-cs-uid"),
 		},
-		Spec: foremanv1alpha1.AgenticTaskSpec{
-			Kind: foremanv1alpha1.AgenticTaskKindIssueFix,
-			Payload: foremanv1alpha1.AgenticTaskPayload{
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind: meithealv1alpha1.AgenticTaskKindIssueFix,
+			Payload: meithealv1alpha1.AgenticTaskPayload{
 				Repo:   "defilantech/LLMKube",
 				Issue:  1674,
 				Prompt: "fix the bug",
@@ -295,7 +295,7 @@ func TestCrossStageContradiction_CoderClaimsEditsOnEmptyBranch(t *testing.T) {
 	// The coder's terminal claims a specific edit but touches no files, so the
 	// commit path produces nothing and the NO-CHANGES path runs.
 	reg := &fakeRegistry{
-		results: map[string]*foremanagent.ToolResult{
+		results: map[string]*meithealagent.ToolResult{
 			"submit_result": {
 				Terminal: true,
 				Verdict:  "GO",
@@ -305,17 +305,17 @@ func TestCrossStageContradiction_CoderClaimsEditsOnEmptyBranch(t *testing.T) {
 		},
 	}
 
-	e := &foremanagent.NativeAgentLoopExecutor{
+	e := &meithealagent.NativeAgentLoopExecutor{
 		Client:                   c,
 		WorkspaceRoot:            filepath.Join(root, "ws"),
 		GitRemoteURL:             bare,
 		UpstreamURLForRepo:       func(string) string { return bare },
 		InferenceBaseURLOverride: oaiSrv.URL + "/v1",
-		CommitAuthor:             repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
-		CommitCommitter:          repo.Identity{Name: "Foreman Bot", Email: "bot@foreman.test"},
+		CommitAuthor:             repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
+		CommitCommitter:          repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"},
 		RegistryFactory: func(
-			_ context.Context, ws string, _ *foremanv1alpha1.Agent, _ bool,
-		) (foremanagent.ToolRegistry, error) {
+			_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+		) (meithealagent.ToolRegistry, error) {
 			reg.workspace = ws
 			return reg, nil
 		},

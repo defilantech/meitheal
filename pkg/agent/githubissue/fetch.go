@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package githubissue fetches a single GitHub issue's title + body so the
-// Foreman executor can include it in the user prompt sent to a coder
+// Meitheal executor can include it in the user prompt sent to a coder
 // Agent. The model needs to know WHAT it is fixing; reading the issue
 // body is the obvious way to learn that, and the harness reading it
 // for the model keeps the model's tool budget free for the actual fix.

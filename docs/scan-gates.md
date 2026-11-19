@@ -1,8 +1,8 @@
 # Reproducing release scan gates locally
 
-Foreman can make a coder branch prove itself against the release CVE gate,
+Meitheal can make a coder branch prove itself against the release CVE gate,
 not just the source gate. When a task declares a `scanGate`, after every push
-Foreman re-runs the `hack/scan-images.sh` gate in a clean-room Kubernetes Job:
+Meitheal re-runs the `hack/scan-images.sh` gate in a clean-room Kubernetes Job:
 it builds the release images the way GoReleaser does and Trivy-scans them.
 Findings are fed back to the coder as a retry prompt, up to the Agent's
 `maxScanIterations` bound; a branch that exhausts the bound settles
@@ -10,7 +10,7 @@ Findings are fed back to the coder as a retry prompt, up to the Agent's
 
 The verify stage keeps its word honest: on a scan-declared branch, a
 deterministic `GATE-PASS` triggers one more scan re-run, and only a clean
-scan lets the `GATE-PASS` stand. `scripts/foreman-finalize.sh` reads that
+scan lets the `GATE-PASS` stand. `scripts/finalize.sh` reads that
 verdict, so it refuses to finalize a scan-declared branch that never scanned
 clean.
 
@@ -26,20 +26,20 @@ defaults, exactly like the `images` row of the table below promises; only
 omitting the key entirely means "no gate".
 
 Worked example — an issue-batch Workload whose tasks must keep the
-foreman-agent release image free of fixable CRITICAL/HIGH CVEs:
+meitheal-agent release image free of fixable CRITICAL/HIGH CVEs:
 
 ```yaml
-apiVersion: foreman.llmkube.dev/v1alpha1
+apiVersion: meitheal.dev/v1alpha1
 kind: Workload
 metadata:
-  name: harden-foreman-agent
+  name: harden-meitheal-agent
 spec:
   repo: defilantech/LLMKube
   issues: [1812]
   coderAgentRef: { name: coder }
   verifierAgentRef: { name: gate }
   scanGate:
-    images: ["foreman-agent"]   # built-in target id; empty means all four
+    images: ["meitheal-agent"]   # built-in target id; empty means all four
     severity: ["CRITICAL", "HIGH"]
 ```
 
@@ -52,7 +52,7 @@ over the CI-aligned defaults:
 
 | Field           | Default                                        |
 |-----------------|------------------------------------------------|
-| `images`        | empty = all built-in targets: `controller`, `foreman-operator`, `foreman-agent`, `router-proxy` |
+| `images`        | empty = all built-in targets: `controller`, `meitheal-operator`, `meitheal-agent`, `router-proxy` |
 | `severity`      | `CRITICAL,HIGH`                                |
 | `ignoreUnfixed` | `true` (only findings with an available fix block the gate) |
 | `builderImage`  | `golang:1.26`                                  |

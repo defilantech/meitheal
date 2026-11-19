@@ -6,18 +6,18 @@ you may not use this file except in compliance with the License.
 */
 
 // Package audit builds and persists durable, structured records of every
-// terminal Foreman run for compliance/audit export. See GitHub issue #837.
+// terminal Meitheal run for compliance/audit export. See GitHub issue #837.
 package audit
 
 import (
 	"encoding/json"
 	"time"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // SchemaVersion identifies the on-disk shape of an audit Record.
-const SchemaVersion = "foreman.audit.v1"
+const SchemaVersion = "meitheal.audit.v1"
 
 // Record is one terminal run's audit entry. Optional blocks are nil when
 // the run did not produce them (e.g. a coder run has no reviewer block).
@@ -97,7 +97,7 @@ type ReviewerOutcome struct {
 	Outcome string `json:"outcome,omitempty"`
 }
 
-// resultPayload is the subset of the foreman.v1 Result JSON we read.
+// resultPayload is the subset of the meitheal.v1 Result JSON we read.
 type resultPayload struct {
 	ElapsedSec float64 `json:"elapsedSec"`
 	Extra      struct {
@@ -122,7 +122,7 @@ type resultPayload struct {
 // may be nil) to an audit Record. It reads typed status fields plus the
 // opaque status.Result JSON. Missing optional data yields nil blocks, never
 // fabricated values. RecordedAt is the run's FinishedAt (deterministic).
-func BuildRecord(task *foremanv1alpha1.AgenticTask, agent *foremanv1alpha1.Agent) Record {
+func BuildRecord(task *meithealv1alpha1.AgenticTask, agent *meithealv1alpha1.Agent) Record {
 	rec := Record{
 		Attempt:       task.Status.Attempt,
 		SchemaVersion: SchemaVersion,

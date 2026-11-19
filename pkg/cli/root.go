@@ -20,13 +20,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewRootCommand creates the root command for the meitheal CLI. The commands
-// that were `llmkube foreman <command>` and `llmkube audit` sit directly under
-// it: there is no extra group level.
+// NewRootCommand creates the root command for the meitheal CLI: operate the
+// Meitheal agentic-coding harness. The commands that were `llmkube foreman
+// <command>` and `llmkube audit` in LLMKube sit directly under it, with no
+// group level in between.
 func NewRootCommand() *cobra.Command {
-	cmd := NewForemanCommand()
-	cmd.Use = "meitheal"
-	cmd.SilenceUsage = true
+	cmd := &cobra.Command{
+		Use:   "meitheal",
+		Short: "Operate the Meitheal agentic-coding harness",
+		Long: `Operate the Meitheal agentic-coding harness.
+
+Meitheal runs coder and reviewer agents as AgenticTasks against a fleet of
+heterogeneous executors. These subcommands create and watch those tasks.`,
+		SilenceUsage: true,
+	}
+	cmd.AddCommand(newDispatchCommand())
+	cmd.AddCommand(newSliceCommand())
+	cmd.AddCommand(newRunCommand())
+	cmd.AddCommand(newDecisionsCommand())
 	cmd.AddCommand(NewAuditCommand())
 	cmd.AddCommand(newVersionCommand())
 	return cmd

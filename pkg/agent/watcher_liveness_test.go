@@ -26,7 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	foremanv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // #1136: the per-run liveness watchdog must cancel the executor's context when
@@ -68,7 +68,7 @@ func TestWatchTaskLiveness_CancelsOnDelete(t *testing.T) {
 // must also cancel the run (the task is on its way out).
 func TestWatchTaskLiveness_CancelsOnDeletionTimestamp(t *testing.T) {
 	task := runningTask("live-term", "m5max-coder")
-	task.Finalizers = []string{"llmkube.dev/test-hold"}
+	task.Finalizers = []string{"meitheal.dev/test-hold"}
 	c := newRecoveryClient(t, task)
 	w := &AgenticTaskWatcher{
 		Client:               c,
@@ -101,7 +101,7 @@ func TestWatchTaskLiveness_FailsOpenOnTransientErrors(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(newTestScheme(t)).
 		WithObjects(task).
-		WithStatusSubresource(&foremanv1alpha1.AgenticTask{}).
+		WithStatusSubresource(&meithealv1alpha1.AgenticTask{}).
 		WithInterceptorFuncs(interceptor.Funcs{
 			Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
 				return errors.New("apiserver unavailable")

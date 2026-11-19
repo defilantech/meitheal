@@ -40,19 +40,19 @@ func gitRefSafe(s string) bool {
 		!strings.Contains(s, "..") && gitRefAllowed.MatchString(s)
 }
 
-// BranchPrefix is the namespace under which foreman branches live.
+// BranchPrefix is the namespace under which meitheal branches live.
 // Keeping it consistent makes it trivial to write a fork-side cleanup
-// job that prunes abandoned foreman branches.
-const BranchPrefix = "foreman"
+// job that prunes abandoned meitheal branches.
+const BranchPrefix = "meitheal"
 
 // maxSlugLen caps the issue-title slug inside the branch name so the
 // branch fits comfortably in dashboards + git refs.
 const maxSlugLen = 32
 
-// BranchNameForIssue returns "foreman/issue-<N>-<slug>" where slug is
+// BranchNameForIssue returns "meitheal/issue-<N>-<slug>" where slug is
 // the lowercase kebab-cased issue title, truncated to 32 chars and
 // stripped of trailing dashes. The shape mirrors the autofix pipeline's
-// convention so reviewers recognize foreman-authored branches at a
+// convention so reviewers recognize meitheal-authored branches at a
 // glance.
 func BranchNameForIssue(issueNumber int, issueTitle string) string {
 	slug := slugify(issueTitle, maxSlugLen)
@@ -317,11 +317,11 @@ func RebaseOntoBase(ctx context.Context, opts RebaseOntoBaseOptions) error {
 	}
 	// git rebase re-commits the replayed commits, so it needs a committer
 	// identity even though each commit's original author is preserved. Supply a
-	// stable foreman identity so the rebase never fails on a freshly-cloned
+	// stable meitheal identity so the rebase never fails on a freshly-cloned
 	// workspace with no user.name/email configured.
 	rebaseEnv := append(baseEnv(),
-		"GIT_COMMITTER_NAME=foreman",
-		"GIT_COMMITTER_EMAIL=foreman@llmkube.dev",
+		"GIT_COMMITTER_NAME=meitheal",
+		"GIT_COMMITTER_EMAIL=meitheal@meitheal.dev",
 	)
 	if _, err := runGit(ctx, opts.Workspace, rebaseEnv, "rebase", "FETCH_HEAD"); err != nil {
 		if opts.LeaveConflicts {

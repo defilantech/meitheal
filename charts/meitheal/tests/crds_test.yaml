@@ -1,0 +1,40 @@
+suite: CRDs keep on uninstall
+templates:
+  - templates/crds/agentictasks.yaml
+  - templates/crds/agentreleases.yaml
+  - templates/crds/agents.yaml
+  - templates/crds/fleetnodes.yaml
+  - templates/crds/modelprofiles.yaml
+  - templates/crds/workloads.yaml
+
+tests:
+  # helm uninstall deletes a CRD it installed unless the CRD carries
+  # helm.sh/resource-policy: keep, and deleting a CRD deletes every custom
+  # resource of that kind with it.
+  - it: every CRD carries helm.sh/resource-policy keep by default
+    asserts:
+      - isKind:
+          of: CustomResourceDefinition
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+
+  - it: crds.keep false leaves the annotation out
+    set:
+      crds.keep: false
+    asserts:
+      - notExists:
+          path: metadata.annotations["helm.sh/resource-policy"]
+
+  - it: crds.install false renders no CRDs
+    set:
+      crds.install: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: every CRD is in the meitheal.dev group
+    asserts:
+      - equal:
+          path: spec.group
+          value: meitheal.dev

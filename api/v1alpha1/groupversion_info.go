@@ -14,14 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1alpha1 contains API Schema definitions for the foreman v1alpha1
-// API group. Foreman is an opt-in add-on layered on top of LLMKube: it
-// schedules agentic workloads (Workload, AgenticTask) across a fleet of
-// machines that advertise themselves as FleetNodes. Installing LLMKube alone
-// does not install or require any of these types.
+// Package v1alpha1 contains API Schema definitions for the meitheal v1alpha1
+// API group. Meitheal schedules agentic workloads (Workload, AgenticTask)
+// across a fleet of machines that advertise themselves as FleetNodes. Agents
+// reach their models through LLMKube InferenceServices or any
+// OpenAI-compatible endpoint.
 //
 // +kubebuilder:object:generate=true
-// +groupName=foreman.llmkube.dev
+// +groupName=meitheal.dev
 package v1alpha1
 
 import (
@@ -31,7 +31,7 @@ import (
 
 var (
 	// GroupVersion is group version used to register these objects.
-	GroupVersion = schema.GroupVersion{Group: "foreman.llmkube.dev", Version: "v1alpha1"}
+	GroupVersion = schema.GroupVersion{Group: "meitheal.dev", Version: "v1alpha1"}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.
 	// scheme.Builder was deprecated in controller-runtime v0.24 (the rationale
