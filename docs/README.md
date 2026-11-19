@@ -16,7 +16,7 @@ Meitheal lives in its own API group (`meitheal.dev`) and its own Helm
 chart. Agents use models served by LLMKube InferenceServices or by any
 OpenAI-compatible endpoint. Meitheal started as Foreman inside LLMKube
 and moved to this repository with its history; the
-[migration steps](../README.md#migrating-from-foreman) cover an
+[migration guide](migrating-from-foreman.md) covers an
 existing Foreman install.
 
 This page is the entry point. Deep references are linked at the
