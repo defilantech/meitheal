@@ -105,7 +105,14 @@ helm upgrade foreman oci://ghcr.io/defilantech/charts/foreman \
 
 If you installed from the LLMKube Helm repository, `llmkube/foreman` works in
 place of the OCI reference: what matters is the same chart at the same
-version. Every published `foreman` chart has the `crds.install` value.
+version.
+
+This step needs foreman chart 0.9.1 or later, the first version that
+templates its CRDs behind `crds.install`. Charts 0.7.11 to 0.9.0 template them
+unconditionally, so `--set crds.install=false` changes nothing there, and the
+check below prints 6 instead of 0. On an older chart, upgrade the release to a
+current foreman chart (0.10.19 is the last one) the way you normally upgrade
+it, then run this step.
 
 Confirm that the release no longer owns a CRD, that all six CRDs are still
 there, and that every resource in them survived:
