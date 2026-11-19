@@ -142,12 +142,32 @@ Start from the values the Foreman release uses:
 helm get values foreman --namespace foreman-system -o yaml > meitheal-values.yaml
 ```
 
-In `meitheal-values.yaml`, rename a top-level `foreman:` block to `meitheal:`,
-drop any `operator.image` or `agent.image` override that points at an
-`llmkube-foreman-*` image, so the chart's own Meitheal images apply, and
-remove a `namespace:` value if you set one. Every other value keeps its
-name. The file also carries the `crds.install: false`
-that step 2 set; the install command below turns it back on.
+`helm get values` returns only the values you set, so edit those in
+`meitheal-values.yaml`:
+
+- Rename a top-level `foreman:` block to `meitheal:`.
+- Rename `agent.foremanNamespace` to `agent.meithealNamespace`.
+- Drop any `operator.image` or `agent.image` override that points at an
+  `llmkube-foreman-*` image, so the chart's own Meitheal images apply.
+- Remove a `namespace:` value if you set one.
+- If you set any of these to its old default, drop it so the new default
+  applies: `foreman.crs.configMapKey` (`foreman-crs.yaml`, now
+  `meitheal-crs.yaml`), `foreman.archive.dir` (`/var/lib/foreman/archive`, now
+  `/var/lib/meitheal/archive`) and `coder.gitCredentialsSecret`
+  (`foreman-git-credentials`, now `meitheal-git-credentials`).
+- Leave `crds.keep` unset or `true`. It is what keeps the new CRDs, and
+  every Agent with them, when the `meitheal` release is uninstalled.
+
+The other keys keep their names. Helm ignores a key the new chart does not
+define rather than failing, so check that nothing Foreman-named is left
+before you install:
+
+```bash
+grep -n -i foreman meitheal-values.yaml
+```
+
+The file also carries the `crds.install: false` that step 2 set; the install
+command below turns it back on.
 
 Secrets do not follow a release into a new namespace. Create the namespace
 and copy across the Secrets the Foreman release reads: the GitHub token named
@@ -278,8 +298,20 @@ for crd in agents agentictasks agentreleases fleetnodes modelprofiles workloads;
 done
 ```
 
-The copied Secrets now live in `meitheal-system`. Delete the
-`foreman-system` namespace once nothing else uses it.
+The copied Secrets now live in `meitheal-system`. Before you delete the
+`foreman-system` namespace, check what is still in it. Agents are namespaced,
+and step 4 copied each one into the namespace it came from, so a `meitheal.dev`
+Agent you created in `foreman-system` is still there, and deleting the
+namespace deletes it:
+
+```bash
+kubectl get agents.meitheal.dev --namespace foreman-system
+```
+
+If that lists anything, export those Agents, change `metadata.namespace` to
+the namespace you want them in, apply them there, and delete the copies in
+`foreman-system`. Delete the namespace only when the command lists nothing
+and no other workload uses it.
 
 ## Reinstall native agents
 
