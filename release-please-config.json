@@ -1,0 +1,54 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "go",
+  "signoff": "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+  "bootstrap-sha": "f6fd6164cc4184e2cc43c260c5dbf92809641758",
+  "packages": {
+    ".": {
+      "component": "",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "release-as": "0.1.0",
+      "draft": false,
+      "prerelease": false,
+      "include-component-in-tag": false,
+      "extra-files": [
+        {
+          "type": "yaml",
+          "path": "charts/meitheal/Chart.yaml",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "yaml",
+          "path": "charts/meitheal/Chart.yaml",
+          "jsonpath": "$.appVersion"
+        },
+        {
+          "type": "generic",
+          "path": "pkg/cli/version.go",
+          "glob": "pkg/cli/version.go"
+        }
+      ]
+    }
+  },
+  "versioning": "default",
+  "include-v-in-tag": true,
+  "include-component-in-tag": false,
+  "tag-separator": "",
+  "pull-request-title-pattern": "chore: release ${version}",
+  "pull-request-header": ":rocket: Release ${version}",
+  "changelog-sections": [
+    {"type": "feat", "section": "Features", "hidden": false},
+    {"type": "fix", "section": "Bug Fixes", "hidden": false},
+    {"type": "perf", "section": "Performance Improvements", "hidden": false},
+    {"type": "revert", "section": "Reverts", "hidden": false},
+    {"type": "docs", "section": "Documentation", "hidden": false},
+    {"type": "chore", "section": "Miscellaneous", "hidden": true},
+    {"type": "ci", "section": "CI/CD", "hidden": true},
+    {"type": "test", "section": "Tests", "hidden": true},
+    {"type": "refactor", "section": "Code Refactoring", "hidden": true},
+    {"type": "style", "section": "Styles", "hidden": true},
+    {"type": "build", "section": "Build System", "hidden": true}
+  ]
+}

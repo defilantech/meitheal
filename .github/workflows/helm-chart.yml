@@ -1,0 +1,257 @@
+name: Helm Chart CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'charts/**'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'api/**'
+      - 'pkg/**'
+      - 'config/**'
+      - 'scripts/sync-crds.sh'
+      - 'hack/go-mod-download.sh'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/helm-chart.yml'
+      - '.release-please-manifest.json'
+      - 'release-please-config.json'
+      - 'Makefile'
+  pull_request:
+    paths:
+      - 'charts/**'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'api/**'
+      - 'pkg/**'
+      - 'config/**'
+      - 'scripts/sync-crds.sh'
+      - 'hack/go-mod-download.sh'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/helm-chart.yml'
+      - '.release-please-manifest.json'
+      - 'release-please-config.json'
+      - 'Makefile'
+
+permissions:
+  contents: read
+
+jobs:
+  chart:
+    name: Chart Lint, Unit Tests and Template
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Helm
+        uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: v3.22.1
+
+      - name: Verify Chart Version
+        run: |
+          CHART_VERSION=$(grep '^version:' charts/meitheal/Chart.yaml | awk '{print $2}')
+          APP_VERSION=$(grep '^appVersion:' charts/meitheal/Chart.yaml | awk '{print $2}' | tr -d '"')
+          echo "Chart Version: $CHART_VERSION"
+          echo "App Version: $APP_VERSION"
+
+          # Verify versions are set
+          if [ -z "$CHART_VERSION" ] || [ -z "$APP_VERSION" ]; then
+            echo "Version not set properly"
+            exit 1
+          fi
+
+          # Cross-check: Chart version must equal appVersion
+          if [ "$CHART_VERSION" != "$APP_VERSION" ]; then
+            echo "Chart version ($CHART_VERSION) != appVersion ($APP_VERSION)"
+            exit 1
+          fi
+
+          # Cross-check: release-please manifest
+          MANIFEST_VERSION=$(jq -r '.["."]' .release-please-manifest.json)
+          if [ "$CHART_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "Chart version ($CHART_VERSION) != manifest version ($MANIFEST_VERSION)"
+            exit 1
+          fi
+
+          # Cross-check: version.go
+          GO_VERSION=$(grep 'x-release-please-version' pkg/cli/version.go | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          if [ "$CHART_VERSION" != "$GO_VERSION" ]; then
+            echo "Chart version ($CHART_VERSION) != version.go ($GO_VERSION)"
+            exit 1
+          fi
+
+          # Cross-check: release-please-config.json tracks the chart's
+          # Chart.yaml, or release-please never bumps it.
+          for chart_path in charts/*/Chart.yaml; do
+            for field in version appVersion; do
+              if ! jq -e --arg p "$chart_path" --arg f "\$.${field}" \
+                '.packages."."."extra-files"[] | select(.path == $p and .jsonpath == $f)' \
+                release-please-config.json > /dev/null; then
+                echo "release-please-config.json is missing tracking for $chart_path field \$.${field}"
+                echo "Add it to .packages.\".\".\"extra-files\" or release-please will not bump this chart."
+                exit 1
+              fi
+            done
+          done
+          echo "All version files consistent at $CHART_VERSION"
+
+      - name: Lint chart
+        run: helm lint charts/meitheal
+
+      - name: Install helm-unittest
+        # Pull the v1.1.1 plugin tarball directly and unpack it into
+        # $(helm env HELM_PLUGINS) instead of `helm plugin install`, which
+        # verifies the upstream release signature and the runner has no
+        # GPG keyring for it. The `platformHooks` strip below dates from
+        # Helm 3.13, whose plugin loader rejected that key; 3.22 accepts
+        # it, and the strip is kept so the step works on either.
+        run: |
+          set -euo pipefail
+          HELM_PLUGINS_DIR="$(helm env HELM_PLUGINS)"
+          PLUGIN_DIR="${HELM_PLUGINS_DIR}/unittest"
+          rm -rf "${PLUGIN_DIR}"
+          mkdir -p "${PLUGIN_DIR}"
+          curl -fsSL \
+            https://github.com/helm-unittest/helm-unittest/releases/download/v1.1.1/unittest-1.1.1.tgz \
+            | tar -xz -C "${PLUGIN_DIR}" --strip-components=1
+          chmod +x "${PLUGIN_DIR}"/untt-*
+          awk '
+            /^platformHooks:/  { skip = 1; next }
+            skip && /^[^ ]/     { skip = 0 }
+            skip                { next }
+            { print }
+          ' "${PLUGIN_DIR}/plugin.yaml" > "${PLUGIN_DIR}/plugin.yaml.tmp"
+          mv "${PLUGIN_DIR}/plugin.yaml.tmp" "${PLUGIN_DIR}/plugin.yaml"
+          # Trigger Helm's plugin discovery by listing once; HELM_PLUGINS
+          # is read on every invocation, so this picks the plugin up.
+          helm plugin list > /dev/null
+          helm unittest --help > /dev/null
+
+      - name: Run chart lint and unit tests
+        run: make test-chart
+
+      - name: Template with defaults
+        run: |
+          helm template meitheal charts/meitheal \
+            --namespace meitheal-system \
+            > meitheal-default.yaml
+
+          for kind in "Deployment" "ClusterRole" "ClusterRoleBinding" "ServiceAccount" "PersistentVolumeClaim" "CustomResourceDefinition"; do
+            if ! grep -q "^kind: ${kind}$" meitheal-default.yaml; then
+              echo "default render missing ${kind}"
+              exit 1
+            fi
+          done
+
+      - name: Template with verifier-node overrides
+        # Smoke-test the canonical "gate node" install: native mode,
+        # worker+verifier roles, a gateCache PVC, and a GitHub token
+        # mounted from a pre-created Secret.
+        run: |
+          helm template meitheal charts/meitheal \
+            --namespace meitheal-system \
+            --set agent.mode=native \
+            --set 'agent.roles={worker,verifier}' \
+            --set agent.githubToken.secretName=meitheal-github \
+            > meitheal-verifier.yaml
+
+          if ! grep -q -- "--agent-mode=native" meitheal-verifier.yaml; then
+            echo "agent mode override did not propagate"
+            exit 1
+          fi
+          if ! grep -q -- "--roles=worker,verifier" meitheal-verifier.yaml; then
+            echo "agent roles override did not propagate"
+            exit 1
+          fi
+          if ! grep -q "name: GITHUB_TOKEN" meitheal-verifier.yaml; then
+            echo "GitHub token env var missing"
+            exit 1
+          fi
+
+      - name: Template multi-pool with a --set numeric override
+        # helm unittest cannot catch this class of bug. Its `set:` block
+        # round-trips values through YAML, so every number reaches the
+        # template as a float64. A real `--set k=60` goes through Helm's
+        # strvals parser and arrives as an int64, and agent-deployment.yaml
+        # deep-copies .Values.agent into each pool WITHOUT a YAML round
+        # trip. Only a real `helm template --set` bites, so run one here.
+        run: |
+          set -euo pipefail
+          helm template meitheal charts/meitheal \
+            --namespace meitheal-system \
+            -f charts/meitheal/tests/values-multi.yaml \
+            --set agent.terminationGracePeriodSeconds=45 \
+            --set agent.strategy.type=RollingUpdate \
+            --set agent.strategy.rollingUpdate.maxSurge=1 \
+            > meitheal-multi-set.yaml
+
+          if ! grep -q "terminationGracePeriodSeconds: 45" meitheal-multi-set.yaml; then
+            echo "--set grace period did not survive the multi-pool merge"
+            exit 1
+          fi
+          if ! grep -q "maxSurge: 1$" meitheal-multi-set.yaml; then
+            echo "--set maxSurge did not survive the multi-pool merge"
+            exit 1
+          fi
+
+      - name: Cache kubeconform schemas
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/kubeconform
+          key: kubeconform-schemas-v1
+
+      - name: Validate Kubernetes Manifests
+        # Cache fetched schemas and retry with backoff so a transient
+        # raw.githubusercontent.com rate limit does not hard-fail a render
+        # whose templates are valid.
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.cache/kubeconform"
+          n=0
+          until [ "$n" -ge 3 ]; do
+            docker run --rm \
+              -v "$GITHUB_WORKSPACE:/github/workspace" \
+              ghcr.io/yannh/kubeconform:v0.7.0 \
+              -summary -output json \
+              -ignore-missing-schemas -skip CustomResourceDefinition \
+              -cache /github/workspace/.cache/kubeconform \
+              /github/workspace/meitheal-default.yaml && exit 0
+            n=$((n + 1))
+            echo "::warning::kubeconform schema fetch failed (attempt ${n}/3); backing off"
+            sleep $((n * 20))
+          done
+          echo "::error::kubeconform failed after 3 attempts (schema download)"
+          exit 1
+
+  crd-sync-check:
+    name: CRD Sync Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Download Go modules
+        # Once, before any step builds; retried on network errors only.
+        run: hack/go-mod-download.sh
+
+      - name: Regenerate all codegen
+        run: make generate manifests chart-crds
+
+      - name: Verify committed codegen is in sync
+        run: |
+          git diff --exit-code -- \
+            'api/**/zz_generated.deepcopy.go' \
+            config/crd/bases/ \
+            config/rbac/ \
+            config/webhook/ \
+            charts/meitheal/templates/crds/ || \
+            { echo "Committed codegen is stale. Run 'make generate manifests chart-crds' locally and commit the result."; exit 1; }

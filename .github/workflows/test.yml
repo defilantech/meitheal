@@ -1,0 +1,68 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  # The merge queue runs the required checks on the merged result before it
+  # lands. GitHub ignores paths filters for merge_group, which is why the
+  # path-filtered workflows are not required checks and have no trigger.
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Unique across workflows: a required status check is matched by job name
+    # alone.
+    name: Unit and envtest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Download Go modules
+        # Once, before any step builds; retried on network errors only.
+        run: hack/go-mod-download.sh
+
+      - name: Verify go.mod and go.sum are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      # Shell regression suites go test never runs.
+      - name: Shell script tests
+        run: make test-scripts
+
+      - name: Running Tests (seed 11)
+        run: make test GINKGO_SEED=11
+
+      # Spec-order pollution only shows under some seeds, so CI runs the
+      # envtest suites a second time under a second fixed seed. `make test`
+      # and the gate stay single-pass.
+      - name: Envtest suites (seed 22)
+        run: make test-envtest GINKGO_SEED=22
+
+      - name: Upload coverage to Codecov
+        # make test writes cover.out via `go test -coverprofile`.
+        # Do not fail CI if Codecov is unreachable or the token is unset.
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: ./cover.out
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      # The agent ships darwin builds; the darwin-only files compile only
+      # under GOOS=darwin.
+      - name: Build the agent and CLI for darwin (compile check)
+        run: |
+          GOOS=darwin GOARCH=arm64 go build -o /dev/null ./cmd/meitheal-agent
+          GOOS=darwin GOARCH=arm64 go build -o /dev/null ./cmd/meitheal

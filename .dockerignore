@@ -1,0 +1,23 @@
+# More info: https://docs.docker.com/engine/reference/builder/#dockerignore-file
+# Ignore everything by default and re-include only needed files
+**
+
+# Re-include Go source files (but not *_test.go)
+!**/*.go
+**/*_test.go
+
+# Re-include Go module files
+!go.mod
+!go.sum
+
+# Re-include the Job YAML templates the meitheal-agent embeds via //go:embed
+# in pkg/agent/tools (run_gate_job.go, run_coder_job.go, run_scan_job.go).
+# Only the Docker build context honors this file, so envtest never catches a
+# missing entry: the go-build step in the image build fails instead.
+!pkg/agent/tools/gate_job_template.yaml
+!pkg/agent/tools/coder_job_template.yaml
+!pkg/agent/tools/scan_job_template.yaml
+
+# Re-include the retried module download the builder stages run before
+# `go build`. Without it the COPY fails and so does every image build.
+!hack/go-mod-download.sh

@@ -1,0 +1,113 @@
+version: "2"
+run:
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - copyloopvar
+    - dupl
+    - errcheck
+    - ginkgolinter
+    - goconst
+    - gocyclo
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - prealloc
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+  settings:
+    revive:
+      rules:
+        - name: comment-spacings
+        - name: import-shadowing
+    goconst:
+      # v2.12 lowered the default occurrence threshold and started scanning
+      # test files. Restore a more useful signal:
+      # - test fixtures repeat the same string for readability, not because
+      #   they need a const (e.g. "verifier", "/first/llama-server")
+      # - production code: 15 is high enough to clear pre-existing repeated
+      #   strings (`app`, `inference.llmkube.dev/service`, `/health`) until
+      #   a focused follow-up extracts them into proper constants. SA1019
+      #   et al. still surface real correctness issues at any occurrence.
+      ignore-tests: true
+      min-occurrences: 15
+    staticcheck:
+      # Keep the SA* correctness checks. Disable QF* (quickfix style
+      # suggestions added in staticcheck v0.6+) and ST* (stylistic checks
+      # like package-comment-required, naming conventions) as project
+      # style. The previously-pinned golangci-lint v2.4.0 effectively had
+      # those off; bumping to v2.12 turned them on. Out of scope for the
+      # Go 1.26 + K8s 0.36 bump; revisit in a dedicated lint-cleanup PR.
+      checks:
+        - "all"
+        - "-QF*"
+        - "-ST*"
+    gosec:
+      # Rules disabled for being fundamentally noisy for an operator/CLI
+      # that intentionally runs user-provided binaries, fetches user-provided
+      # URLs, and reads/writes user-provided paths. Enforcing these would
+      # require tagging essentially every subprocess, HTTP, and file-open
+      # call-site with #nosec annotations and deliver no real security value.
+      # The remaining gosec rules (weak crypto, hardcoded creds, overflow
+      # conversions, etc.) remain enabled and do catch genuine bugs.
+      excludes:
+        - G107  # variable URL in HTTP request (design intent: model download)
+        - G204  # subprocess with variable args (design intent: exec runtimes)
+        - G301  # dir permissions ≤0750 (0755 is correct for shared caches)
+        - G304  # file inclusion via variable (design intent: read user files)
+        - G306  # file permissions ≤0600 (0644 is correct for cache/reports)
+        - G703  # path traversal via taint (taint-analysis sibling of G304; the
+        #         coder gate reads/writes git-reported files in its own workspace)
+        - G122  # WalkDir file read (taint sibling of G304/G703; scanners read trusted repo dirs)
+  exclusions:
+    generated: lax
+    rules:
+      # SA5011 in tests: staticcheck does not treat t.Fatal as terminal in CI's
+      # environment, so the standard
+      #     if x == nil { t.Fatal(...) }
+      #     ... x.Field ...
+      # guard is reported as a possible nil dereference. The code is correct --
+      # t.Fatal calls runtime.Goexit, so the deref is unreachable.
+      #
+      # This does not reproduce locally (same golangci-lint 2.12.2, same config,
+      # clean on darwin/arm64 and under GOOS=linux GOARCH=amd64), which is why it
+      # reached main green in the first place. Adding an explicit `return` does
+      # silence each site, but max-same-issues caps the report at 3 so they
+      # surface a few at a time across dozens of files -- a config-level
+      # exclusion is the scalable answer to a false-positive class.
+      #
+      # Scoped to _test.go deliberately: SA5011 stays enabled for production
+      # code, where there is no t.Fatal and the finding would be real.
+      - linters:
+          - staticcheck
+        text: "SA5011"
+        path: _test\.go
+      - linters:
+          - lll
+        path: api/*
+      - linters:
+          - dupl
+          - lll
+        path: internal/*
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

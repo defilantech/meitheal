@@ -1,0 +1,52 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  # The merge queue runs the required checks on the merged result before it
+  # lands. GitHub ignores paths filters for merge_group, which is why the
+  # path-filtered workflows are not required checks and have no trigger.
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    # Unique across workflows: a required status check is matched by job name
+    # alone.
+    name: Lint and static checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Download Go modules
+        # Once, before any step builds; retried on network errors only.
+        run: hack/go-mod-download.sh
+
+      - name: Run linter
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+
+      # The agent has darwin-only files (the Metal capability probe) that a
+      # linux run never type-checks, so lint them under GOOS=darwin too, as
+      # `make lint-all` does locally.
+      - name: Run linter (GOOS=darwin)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        env:
+          GOOS: darwin
+        with:
+          version: v2.15.0
+
+      - name: Check reviewer prompt sync
+        run: make check-reviewer-prompts

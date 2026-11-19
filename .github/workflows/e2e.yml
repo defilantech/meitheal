@@ -5,8 +5,8 @@ name: Meitheal E2E (kind)
 # meitheal-agent registers a Ready FleetNode, and a stub-mode freeform
 # AgenticTask flows Pending -> Scheduled -> Running -> Succeeded.
 #
-# Scoped to PRs that touch the Meitheal chart or Go packages so the
-# default test-e2e + helm-chart gates stay fast for unrelated changes.
+# Scoped to PRs that touch the chart, the Go code or the image builds, so
+# docs-only changes stay fast.
 on:
   push:
     branches:
@@ -74,8 +74,8 @@ jobs:
       # their MEITHEAL_*_IMG overrides.
       - name: Build meitheal-operator and meitheal-agent images
         run: |
-          make docker-build-meitheal-operator MEITHEAL_OPERATOR_IMG="${MEITHEAL_OPERATOR_IMG}"
-          make docker-build-meitheal-agent MEITHEAL_AGENT_IMG="${MEITHEAL_AGENT_IMG}"
+          make docker-build-operator MEITHEAL_OPERATOR_IMG="${MEITHEAL_OPERATOR_IMG}"
+          make docker-build-agent MEITHEAL_AGENT_IMG="${MEITHEAL_AGENT_IMG}"
 
       - name: Load images into kind
         run: |
@@ -83,9 +83,9 @@ jobs:
           kind load docker-image "${MEITHEAL_AGENT_IMG}" --name meitheal-e2e
 
       # Install ONLY the meitheal chart. It ships its own CRDs and has no
-      # Helm dependency on the llmkube chart; the stub executor never
-      # contacts an InferenceService, so nothing from the llmkube chart
-      # is required for a stub task to flow.
+      # Helm dependency on LLMKube's chart; the stub executor never
+      # contacts an InferenceService, so nothing from LLMKube is required
+      # for a stub task to flow.
       #
       # Stub mode is the chart default (agent.mode=stub); it is set
       # explicitly here so the intent is visible in the failure dump.

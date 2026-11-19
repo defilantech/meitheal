@@ -40,21 +40,6 @@ const workflowGlob = "*.y*ml"
 // a formality: an unexplained omission is how a gate quietly stops
 // meaning what its name says (#1637).
 var gateExemptCIChecks = map[string]string{
-	"validate-samples": "hard-exits when the third-party python3 modules jsonschema and pyyaml are " +
-		"absent; python3 itself IS in the gate image, but it is a plain golang image with no pip3 " +
-		"to add them, so adding this target would fail every gate run",
-	"check-helm-rbac": "scripts/check-helm-rbac.sh exits 2 unless `python3 -c 'import yaml'` " +
-		"succeeds; the gate image is a plain golang image that ships python3 but neither PyYAML " +
-		"nor pip3, so adding this target would fail every gate run. CI clears it only because " +
-		"helm-chart.yml installs PyYAML in a step of its own beforehand",
-	"check-helm-webhook-cert": "scripts/check-helm-webhook-cert.sh has the same dependency profile as " +
-		"check-helm-rbac: it exits 2 unless `python3 -c 'import yaml'` succeeds, and it also needs " +
-		"openssl on PATH, so the same plain golang gate image would fail every gate run. CI clears it " +
-		"only because helm-chart.yml installs PyYAML in a step of its own beforehand",
-	"check-docs-links": "scripts/check-docs-links.py imports PyYAML to read docs/site/_meta/nav.yaml; " +
-		"the gate image is a plain golang image that ships python3 but neither PyYAML nor pip3, so " +
-		"adding this target would fail every gate run. CI clears it only because test.yml installs " +
-		"PyYAML in a step of its own beforehand",
 	"test-envtest": "the CI-only second-seed envtest pass (#1693); the gate deliberately runs " +
 		"`make test` single-pass, so gating this target would double the ordering coverage the " +
 		"gate was decided not to pay for (see the DefaultGateChecks comment)",
@@ -62,15 +47,8 @@ var gateExemptCIChecks = map[string]string{
 		"step, which no pull request runs; the tree derives from go.mod, so it carries no per-branch " +
 		"signal, and gating it would make every gate run install go-licenses and walk three GOOS " +
 		"module graphs",
-	"setup-test-e2e":                 "provisions an e2e cluster; lifecycle, not a branch check",
-	"cleanup-test-e2e":               "tears down an e2e cluster; lifecycle, not a branch check",
-	"test-e2e":                       "needs a live cluster the gate Job does not own",
-	"test-e2e-rbac":                  "creates a kind cluster (Docker) the gate Job neither has nor owns",
-	"test-e2e-apisix":                "creates a kind cluster (Docker) and installs APISIX; the gate Job has neither",
-	"test-e2e-multinode":             "creates a two-worker kind cluster (Docker); the gate Job has neither",
-	"docker-build":                   "image build, not a branch check",
-	"docker-build-meitheal-agent":    "image build, not a branch check",
-	"docker-build-meitheal-operator": "image build, not a branch check",
+	"docker-build-agent":    "image build, not a branch check",
+	"docker-build-operator": "image build, not a branch check",
 }
 
 // golangciConfigTargets maps a golangci-lint --config= value used by a
@@ -78,12 +56,10 @@ var gateExemptCIChecks = map[string]string{
 // GitHub-Action-invoked lint is compared against the gate like any other.
 //
 // Only a config some workflow actually names with --config= belongs
-// here. lint.yml's plain lint step passes no args at all, so an entry
-// for .golangci.yml would translate nothing and could never be caught
-// being wrong. TestGolangciConfigTargetsAreLive holds that line.
-var golangciConfigTargets = map[string]string{
-	".golangci-deadcode.yml": "lint-deadcode",
-}
+// here. lint.yml's lint steps pass no --config at all, so the map is
+// empty: an entry for .golangci.yml would translate nothing and could never
+// be caught being wrong. TestGolangciConfigTargetsAreLive holds that line.
+var golangciConfigTargets = map[string]string{}
 
 var (
 	// A make invocation is either `run: make ...` on one line, or a bare
@@ -223,11 +199,11 @@ func TestDefaultGateChecksCoverCI(t *testing.T) {
 // CI steps it excuses. A stale entry silently widens the next real gap.
 //
 // It is load-bearing for a second reason that is easy to destroy while
-// tidying up. docker-build, docker-build-meitheal-agent,
-// docker-build-meitheal-operator, test-e2e and setup-test-e2e appear in
-// the workflows ONLY as bare lines inside a `run: |` block, so they are
-// reachable only through makeLineRe's optional `run:` prefix. Drop that
-// half of the pattern and ciBlockingChecks returns a smaller CI:
+// tidying up. docker-build-agent, docker-build-operator and
+// third-party-licenses appear in the workflows ONLY as bare lines inside a
+// `run: |` block, so they are reachable only through makeLineRe's optional
+// `run:` prefix. Drop that half of the pattern and ciBlockingChecks returns
+// a smaller CI:
 // TestDefaultGateChecksCoverCI would still pass, on a gate that had
 // quietly stopped looking. This test fails loudly instead. Keep the
 // block form when simplifying the matcher.

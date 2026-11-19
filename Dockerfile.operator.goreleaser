@@ -5,7 +5,7 @@ FROM gcr.io/distroless/static:nonroot
 ARG TARGETPLATFORM
 WORKDIR /
 COPY $TARGETPLATFORM/meitheal-operator /meitheal-operator
-# Third-party license and NOTICE files (#2564).
+# Third-party license and NOTICE files.
 COPY LICENSE /licenses/LICENSE
 COPY third_party_licenses /licenses/third_party_licenses
 USER 65532:65532

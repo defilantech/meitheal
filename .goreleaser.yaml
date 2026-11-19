@@ -1,0 +1,292 @@
+# GoReleaser configuration for Meitheal
+# https://goreleaser.com/customization/
+
+version: 2
+
+project_name: meitheal
+
+before:
+  hooks:
+    # Ensure dependencies are tidy
+    - go mod tidy
+    # Note: Tests run in separate CI workflow (test.yml) before release is triggered
+    # Built once for the host so each darwin post hook below can embed its
+    # Info.plist without compiling the tool per binary. Not in dist/: the
+    # dist directory must still be empty when the before hooks finish.
+    - go build -o ./bin/machoplist ./cmd/machoplist
+    # Generates third_party_licenses/, shipped by every archive and image
+    # below.
+    - make third-party-licenses
+
+builds:
+  - id: meitheal-cli
+    main: ./cmd/meitheal
+    binary: meitheal
+
+    # Set version information at build time
+    ldflags:
+      - -s -w
+      - -X github.com/defilantech/meitheal/pkg/cli.Version={{.Version}}
+      - -X github.com/defilantech/meitheal/pkg/cli.GitCommit={{.FullCommit}}
+      - -X github.com/defilantech/meitheal/pkg/cli.BuildDate={{.Date}}
+
+    # Build for multiple platforms
+    goos:
+      - linux
+      - darwin
+      - windows
+
+    goarch:
+      - amd64
+      - arm64
+
+    # Ignore certain combinations
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+    env:
+      - CGO_ENABLED=0
+
+    # darwin binaries: embed the Info.plist (if any), then sign with
+    # rcodesign: Developer ID and notarization when the MACOS_* secrets are
+    # set, ad-hoc otherwise. Non-darwin targets are a no-op. See
+    # hack/macos-sign.sh and docs/contributing/macos-signing.md.
+    hooks:
+      post:
+        - cmd: ./hack/macos-sign.sh {{ .Os }} {{ .Path }} {{ .Version }} dev.meitheal.cli
+          env:
+            - MACHOPLIST=./bin/machoplist
+          output: true
+
+  - id: meitheal-operator
+    main: ./cmd/meitheal-operator
+    binary: meitheal-operator
+
+    # Linux containers only (the operator runs in-cluster).
+    goos:
+      - linux
+
+    goarch:
+      - amd64
+      - arm64
+
+    env:
+      - CGO_ENABLED=0
+
+  - id: meitheal-agent
+    main: ./cmd/meitheal-agent
+    binary: meitheal-agent
+
+    # Set version information at build time.
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.GitCommit={{.FullCommit}}
+      - -X main.BuildDate={{.Date}}
+
+    # linux: the in-cluster agent Pod (consumed by the docker image below)
+    # and Linux hosts. darwin: native Mac agents, shipped as a release
+    # archive so installs and AgentRelease self-update artifacts can be
+    # download-based instead of build-from-source.
+    goos:
+      - linux
+      - darwin
+
+    goarch:
+      - amd64
+      - arm64
+
+    env:
+      - CGO_ENABLED=0
+
+    # Embed the Info.plist and sign (see the meitheal-cli hook above).
+    hooks:
+      post:
+        - cmd: ./hack/macos-sign.sh {{ .Os }} {{ .Path }} {{ .Version }} dev.meitheal.agent deployment/macos/meitheal-agent.Info.plist.tmpl
+          env:
+            - MACHOPLIST=./bin/machoplist
+          output: true
+
+archives:
+  - id: meitheal-cli
+    ids:
+      - meitheal-cli
+
+    # Archive name template
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+    # Files to include in archive
+    files:
+      - LICENSE
+      - third_party_licenses/**
+      - README.md
+
+    # Format by OS
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+  - id: meitheal-agent
+    ids:
+      - meitheal-agent
+
+    # Produces darwin (Mac native agents) and linux archives; the in-cluster
+    # agent Pod ships as a ghcr image via the dockers_v2 section below.
+    name_template: "{{ .ProjectName }}-agent_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+    # Files to include. deployment/macos minus the *.Info.plist.tmpl files,
+    # which only the build hook uses
+    # (internal/machoplist/release_identity_test.go).
+    files:
+      - LICENSE
+      - third_party_licenses/**
+      - README.md
+      - deployment/macos/*.plist
+      - deployment/linux/*
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# dockers_v2 builds one multi-arch manifest per image natively (buildx). The
+# binaries are staged per platform under $TARGETPLATFORM in the build
+# context, so the Dockerfiles COPY from "$TARGETPLATFORM/<binary>".
+dockers_v2:
+  - id: operator
+    ids:
+      - meitheal-operator
+    images:
+      - "ghcr.io/defilantech/meitheal-operator"
+    tags:
+      - "{{ .Version }}"
+    dockerfile: Dockerfile.operator.goreleaser
+    extra_files:
+      - LICENSE
+      - third_party_licenses
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.title: "meitheal-operator"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+
+  - id: agent
+    ids:
+      - meitheal-agent
+    images:
+      - "ghcr.io/defilantech/meitheal-agent"
+    tags:
+      - "{{ .Version }}"
+    dockerfile: Dockerfile.agent.goreleaser
+    extra_files:
+      - LICENSE
+      - third_party_licenses
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.title: "meitheal-agent"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+
+  groups:
+    - title: "New Features"
+      regexp: "^feat:"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^fix:"
+      order: 1
+    - title: "Performance Improvements"
+      regexp: "^perf:"
+      order: 2
+    - title: "Other Changes"
+      order: 999
+
+release:
+  github:
+    owner: defilantech
+    name: meitheal
+
+  # Release name template
+  name_template: "v{{.Version}}"
+
+  # Draft release first (can be published manually)
+  draft: false
+
+  # Create release even if tag already exists
+  replace_existing_draft: true
+
+  # Keep Release Please's changelog, just add assets
+  mode: keep-existing
+
+  # Footer with installation instructions (Release Please provides the changelog)
+  footer: |
+    ---
+
+    ## Installation
+
+    ### Helm chart
+    ```bash
+    helm install meitheal oci://ghcr.io/defilantech/charts/meitheal \
+      --version {{ .Version }} --namespace meitheal-system --create-namespace
+    ```
+
+    ### CLI
+
+    **macOS**
+    ```bash
+    # ARM64 (Apple Silicon)
+    curl -L https://github.com/defilantech/meitheal/releases/download/v{{ .Version }}/meitheal_{{ .Version }}_darwin_arm64.tar.gz | tar xz
+    sudo mv meitheal /usr/local/bin/
+    ```
+
+    **Linux**
+    ```bash
+    # AMD64
+    curl -L https://github.com/defilantech/meitheal/releases/download/v{{ .Version }}/meitheal_{{ .Version }}_linux_amd64.tar.gz | tar xz
+    sudo mv meitheal /usr/local/bin/
+    ```
+
+    **Windows**: Download the `.zip` file and add `meitheal.exe` to your PATH.
+
+    ### Agent
+
+    The `meitheal-agent_{{ .Version }}_<os>_<arch>.tar.gz` archives carry the
+    agent binary for macOS and Linux hosts with its launchd plist and systemd
+    unit. The in-cluster agent runs from `ghcr.io/defilantech/meitheal-agent:{{ .Version }}`.
+
+    ### Verify Installation
+    ```bash
+    meitheal version
+    ```
+
+    **Full Changelog**: [CHANGELOG.md](https://github.com/defilantech/meitheal/blob/main/CHANGELOG.md)
+
+# Metadata
+metadata:
+  mod_timestamp: "{{ .CommitTimestamp }}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sync-crds.sh — Wrap the generated CRDs for the Helm chart.
+# sync-crds.sh: wrap the generated CRDs for the Helm chart.
 # Usage: make chart-crds  (which runs this script after make manifests)
 
 set -euo pipefail
