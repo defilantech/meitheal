@@ -1,7 +1,7 @@
 # Meitheal
 
 <p align="center">
-  <img src="../images/meitheal-logo-icon.svg" alt="Meitheal" width="128" height="128" />
+  <img src="images/meitheal-logo-icon.svg" alt="Meitheal" width="128" height="128" />
 </p>
 
 Meitheal is a Kubernetes-native control plane for agentic workloads.
@@ -351,7 +351,7 @@ progress while keeping `source.onmessage` for completed turns.
 
 ## Where to file issues
 
-- **Repository:** [github.com/defilantech/LLMKube](https://github.com/defilantech/LLMKube)
+- **Repository:** [github.com/defilantech/meitheal](https://github.com/defilantech/meitheal/issues)
 - **Discord:** [discord.gg/Ktz85RFHDv](https://discord.gg/Ktz85RFHDv)
 - **Issue templates:** `[BUG]` or `[FEATURE]` prefix; the
   templates under `.github/ISSUE_TEMPLATE/` are mandatory for
