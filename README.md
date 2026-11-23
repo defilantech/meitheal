@@ -1,7 +1,10 @@
 # Meitheal
 
 <p align="center">
-  <img src="docs/images/meitheal-logo-icon.svg" alt="Meitheal" width="128" height="128" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/meitheal-logo-dark.svg" />
+    <img src="docs/images/meitheal-logo-light.svg" alt="Meitheal" width="440" />
+  </picture>
 </p>
 
 Meitheal is a Kubernetes-native harness for agentic coding. It dispatches
