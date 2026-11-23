@@ -49,3 +49,6 @@ CLAUDE.md
 .superpowers/
 /docs/superpowers/plans/
 /docs/superpowers/specs/
+
+# hack/brand/generate.py writes this; the committed card is meitheal-social.png
+docs/images/meitheal-social.svg

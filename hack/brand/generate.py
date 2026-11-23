@@ -38,7 +38,10 @@ def poly(pts, closed=False):
 def knot_points(cx, cy, scale, n=480, p=3, q=4, r0=2.0, amp=1.0):
     pts = []
     for i in range(n):
-        t = 2 * math.pi * i / n
+        # Half-step offset: by symmetry the crossings fall on whole-step
+        # parameters, and a crossing exactly on a sample point makes the
+        # intersection test, and so the over/under pattern, depend on rounding.
+        t = 2 * math.pi * (i + 0.5) / n
         r = r0 + amp * math.cos(q * t)
         a = p * t - math.pi / 2
         pts.append((cx + scale * r * math.cos(a), cy + scale * r * math.sin(a)))
@@ -117,12 +120,16 @@ def knot(cx, cy, scale, ribbon, edge, gap, fill, outline, uid):
     is clipped to a disc around its crossing, so it can never touch a third
     strand."""
     pts = knot_points(cx, cy, scale)
-    # Start the path in the middle of an over-crossing, so the join where the
-    # path closes sits under a redrawn piece and can never show as a seam.
-    s = int(round(crossings_over(pts)[0][0]))
+    n = len(pts)
+    # Decide over and under once, on the curve as sampled, then start the path
+    # in the middle of an over-crossing, so the join where the path closes sits
+    # under a redrawn piece and can never show as a seam. Every size and
+    # variant therefore has the same weave.
+    found = crossings_over(pts)
+    s = int(round(found[0][0]))
     pts = pts[s:] + pts[:s]
+    overs = [((pos - s) % n, x, sin) for pos, x, sin in found]
     base = poly(pts, closed=True)
-    overs = crossings_over(pts)
     outer = ribbon + 2 * edge
     clips, cuts = [], []
     for k, (pos, x, sin) in enumerate(overs):
@@ -172,7 +179,7 @@ def wordmark(font, text, x, baseline, size, colour):
 # ------------------------------------------------------------------ Ogham
 OGHAM = {"B": ("b", 1), "L": ("b", 2), "F": ("b", 3), "S": ("b", 4), "N": ("b", 5),
          "H": ("h", 1), "D": ("h", 2), "T": ("h", 3), "C": ("h", 4), "Q": ("h", 5),
-         "M": ("m", 1), "G": ("m", 2), "R": ("m", 5),
+         "M": ("m", 1), "G": ("m", 2), "NG": ("m", 3), "Z": ("m", 4), "R": ("m", 5),
          "A": ("v", 1), "O": ("v", 2), "U": ("v", 3), "E": ("v", 4), "I": ("v", 5)}
 
 

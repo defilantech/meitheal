@@ -42,9 +42,11 @@ knot's gaps are cut out, not painted, so the icon works on any background.
 ```sh
 python3 -m venv /tmp/meitheal-brand && /tmp/meitheal-brand/bin/pip install fonttools
 curl -fsSLo /tmp/UncialAntiqua-Regular.ttf \
-  https://github.com/google/fonts/raw/main/ofl/uncialantiqua/UncialAntiqua-Regular.ttf
+  https://github.com/google/fonts/raw/90abd17b4f97671435798b6147b698aa9087612f/ofl/uncialantiqua/UncialAntiqua-Regular.ttf
 /tmp/meitheal-brand/bin/python hack/brand/generate.py /tmp/UncialAntiqua-Regular.ttf docs/images
 ```
 
-`generate.py` also writes `meitheal-social.svg`. Render it at exactly
-1280 x 640 in a browser to make `meitheal-social.png`, then delete the SVG.
+The font URL is pinned to a google/fonts commit, so the outlines come out the
+same every time. `generate.py` also writes `meitheal-social.svg` (ignored by
+git): render it at exactly 1280 x 640 in a browser to make
+`meitheal-social.png`.
