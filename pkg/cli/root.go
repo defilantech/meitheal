@@ -36,6 +36,7 @@ heterogeneous executors. These subcommands create and watch those tasks.`,
 	}
 	cmd.AddCommand(newDispatchCommand())
 	cmd.AddCommand(newSliceCommand())
+	cmd.AddCommand(newIntentsCommand())
 	cmd.AddCommand(newRunCommand())
 	cmd.AddCommand(newDecisionsCommand())
 	cmd.AddCommand(NewAuditCommand())
