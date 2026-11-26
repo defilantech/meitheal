@@ -16,6 +16,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	corev1 "k8s.io/api/core/v1"
+)
+
 // GateLanguage identifies the programming language for which the gate
 // profile provides commands.
 // +kubebuilder:validation:Enum=go;python;rust;node;generic
@@ -88,6 +92,49 @@ type GateProfile struct {
 	// replace the preset; empty fields keep the preset value.
 	// +optional
 	Commands GateCommands `json:"commands,omitempty"`
+
+	// Placement controls where the gate Job runs and what it is given:
+	// node selector, tolerations, extra resources (for example a GPU),
+	// priority class, environment, and volumes. Unset keeps the default
+	// Job spec unchanged.
+	// +optional
+	Placement *GatePlacement `json:"placement,omitempty"`
+}
+
+// GatePlacement places a gate Job on specific nodes and adds the resources,
+// environment, and volumes the gate needs there (for example a GPU node
+// that carries a taint). Every field is optional; the zero value changes
+// nothing about the rendered Job.
+type GatePlacement struct {
+	// NodeSelector constrains the gate pod to nodes with these labels.
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Tolerations lets the gate pod schedule onto tainted nodes.
+	// +optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// Resources are merged by resource name over the gate container's
+	// default CPU and memory requests and limits. A name set here replaces
+	// the default for that name; other defaults stay.
+	// +optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// PriorityClassName sets the gate pod's priority class.
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
+
+	// Env is appended to the gate container's environment.
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// Volumes is appended to the gate pod's volumes.
+	// +optional
+	Volumes []corev1.Volume `json:"volumes,omitempty"`
+
+	// VolumeMounts is appended to the gate container's volume mounts.
+	// +optional
+	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
 }
 
 // TestLayout declares a repository's parallel test-tree convention: the
@@ -145,6 +192,10 @@ type ResolvedGate struct {
 	// CodegenCheck is the command that verifies generated files are
 	// in sync with their sources.
 	CodegenCheck string `json:"codegenCheck"`
+
+	// Placement is the profile's gate Job placement, passed through as
+	// declared (never merged with a preset). Nil means default placement.
+	Placement *GatePlacement `json:"placement,omitempty"`
 }
 
 // builtInPresets maps GateLanguage to its default GateProfile.
@@ -228,6 +279,8 @@ func (p *GateProfile) Resolve() ResolvedGate {
 	if p == nil {
 		return resolved
 	}
+
+	resolved.Placement = p.Placement
 
 	// Overlay explicit overrides from the profile.
 	if p.Image != "" {

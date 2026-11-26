@@ -2199,6 +2199,13 @@ func buildDeterministicArgs(task *meithealv1alpha1.AgenticTask, branch, cloneURL
 		args["commands"] = cmds
 	}
 
+	// A GateProfile placement (node, tolerations, GPU, env, volumes) rides
+	// along only when declared, so a profile without one leaves the args
+	// byte-identical.
+	if resolved.Placement != nil {
+		args["placement"] = resolved.Placement
+	}
+
 	// Sliced-workload steps (#1033) carry the slice plan for the integrate /
 	// reconcile tools: the slices to union or check, the upstream source of the
 	// base, and (for reconcile) the pinned identifiers + contract. Added only

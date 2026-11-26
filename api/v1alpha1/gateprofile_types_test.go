@@ -19,6 +19,9 @@ package v1alpha1
 import (
 	"reflect"
 	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 func TestGateProfileResolve(t *testing.T) {
@@ -211,5 +214,32 @@ func TestGateProfileResolve(t *testing.T) {
 				t.Errorf("Resolve() = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestResolveGateProfile_PlacementPassThrough(t *testing.T) {
+	placement := &GatePlacement{
+		NodeSelector: map[string]string{"kubernetes.io/hostname": "afi-spark-003"},
+		Tolerations: []corev1.Toleration{
+			{Key: "nvidia.com/gpu", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
+		},
+		Resources: &corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1")},
+		},
+		PriorityClassName: "batch",
+	}
+	p := &GateProfile{Language: GateLanguageRust, Placement: placement}
+	got := p.Resolve()
+	if !reflect.DeepEqual(got.Placement, placement) {
+		t.Errorf("Placement = %+v, want %+v", got.Placement, placement)
+	}
+	if got.Image != "rust:1" {
+		t.Errorf("preset image lost: %q", got.Image)
+	}
+	if (&GateProfile{Language: GateLanguageRust}).Resolve().Placement != nil {
+		t.Error("nil placement must resolve to nil")
+	}
+	if (*GateProfile)(nil).Resolve().Placement != nil {
+		t.Error("nil profile must resolve to nil placement")
 	}
 }

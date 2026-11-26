@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 
@@ -293,7 +294,10 @@ type runGateJobArgs struct {
 	// order; each is a check and a non-zero exit fails the gate. Ignored
 	// unless Generic is true.
 	Commands []string `json:"commands,omitempty"`
-	TaskRef  struct {
+	// Placement puts the gate Job on specific nodes and adds resources, env
+	// and volumes (for example a GPU node). Nil keeps the default Job spec.
+	Placement *meithealv1alpha1.GatePlacement `json:"placement,omitempty"`
+	TaskRef   struct {
 		Namespace string `json:"namespace"`
 		Name      string `json:"name"`
 	} `json:"taskRef"`
@@ -392,6 +396,7 @@ func (t *RunGateJobTool) Execute(ctx context.Context, args json.RawMessage) (*ag
 		HunkCheck:               a.HunkCheck,
 		Generic:                 a.Generic,
 		Commands:                a.Commands,
+		Placement:               a.Placement,
 		PVCName:                 cfg.PVCName,
 		ActiveDeadlineSeconds:   cfg.ActiveDeadlineSeconds,
 		TTLSecondsAfterFinished: cfg.TTLSecondsAfterFinished,
@@ -612,11 +617,14 @@ type rendererInput struct {
 	HelmUnittestVersion string
 	// JQVersion is non-empty only when a check that needs jq was requested;
 	// the template installs a pinned jq when it is set.
-	JQVersion               string
-	BiteCheck               bool
-	HunkCheck               bool
-	Generic                 bool
-	Commands                []string
+	JQVersion string
+	BiteCheck bool
+	HunkCheck bool
+	Generic   bool
+	Commands  []string
+	// Placement, when non-nil, is applied to the rendered Job after the
+	// default pod spec is built. Nil leaves the Job untouched.
+	Placement               *meithealv1alpha1.GatePlacement
 	PVCName                 string
 	ActiveDeadlineSeconds   int32
 	TTLSecondsAfterFinished int32
@@ -661,7 +669,55 @@ func renderGateJob(in rendererInput) (*batchv1.Job, error) {
 	if err := yaml.Unmarshal(buf.Bytes(), &job); err != nil {
 		return nil, fmt.Errorf("unmarshal job: %w", err)
 	}
+	applyGatePlacement(&job, in.Placement)
 	return &job, nil
+}
+
+// applyGatePlacement layers a GatePlacement over the default gate pod spec.
+// NodeSelector, tolerations and priority class are set on the pod; resources
+// are merged by resource name over the container defaults; env, volumes and
+// mounts are appended. A nil placement is a no-op.
+func applyGatePlacement(job *batchv1.Job, p *meithealv1alpha1.GatePlacement) {
+	if p == nil || len(job.Spec.Template.Spec.Containers) == 0 {
+		return
+	}
+	pod := &job.Spec.Template.Spec
+	c := &pod.Containers[0]
+
+	if len(p.NodeSelector) > 0 {
+		pod.NodeSelector = make(map[string]string, len(p.NodeSelector))
+		for k, v := range p.NodeSelector {
+			pod.NodeSelector[k] = v
+		}
+	}
+	if len(p.Tolerations) > 0 {
+		pod.Tolerations = append(pod.Tolerations, p.Tolerations...)
+	}
+	if p.PriorityClassName != "" {
+		pod.PriorityClassName = p.PriorityClassName
+	}
+	if p.Resources != nil {
+		c.Resources.Requests = mergeResourceList(c.Resources.Requests, p.Resources.Requests)
+		c.Resources.Limits = mergeResourceList(c.Resources.Limits, p.Resources.Limits)
+	}
+	c.Env = append(c.Env, p.Env...)
+	pod.Volumes = append(pod.Volumes, p.Volumes...)
+	c.VolumeMounts = append(c.VolumeMounts, p.VolumeMounts...)
+}
+
+// mergeResourceList returns base with every entry of over applied on top.
+func mergeResourceList(base, over corev1.ResourceList) corev1.ResourceList {
+	if len(over) == 0 {
+		return base
+	}
+	out := make(corev1.ResourceList, len(base)+len(over))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range over {
+		out[k] = v.DeepCopy()
+	}
+	return out
 }
 
 // applyConfigDefaults fills in every empty field with the documented

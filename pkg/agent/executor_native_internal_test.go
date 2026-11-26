@@ -4042,3 +4042,39 @@ func TestPromoteTerminalOutcome_AlreadyResolvedResolvedByValidation(t *testing.T
 		})
 	}
 }
+
+// TestBuildDeterministicArgs_Placement pins that a GateProfile placement
+// reaches the run_gate_job args and that its absence leaves no "placement" key.
+func TestBuildDeterministicArgs_Placement(t *testing.T) {
+	task := &meithealv1alpha1.AgenticTask{
+		ObjectMeta: metav1.ObjectMeta{Name: "gate-1", Namespace: "default"},
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind:    meithealv1alpha1.AgenticTaskKindVerify,
+			Payload: meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/dluth"},
+		},
+	}
+	decode := func() map[string]any {
+		var got map[string]any
+		if err := json.Unmarshal(buildDeterministicArgs(task, "b", "", ""), &got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return got
+	}
+	if _, ok := decode()["placement"]; ok {
+		t.Error("placement key present without a placement")
+	}
+	task.Spec.GateProfile = &meithealv1alpha1.GateProfile{
+		Language: meithealv1alpha1.GateLanguageRust,
+		Placement: &meithealv1alpha1.GatePlacement{
+			NodeSelector: map[string]string{"kubernetes.io/hostname": "afi-spark-003"},
+		},
+	}
+	p, ok := decode()["placement"].(map[string]any)
+	if !ok {
+		t.Fatalf("placement missing: %v", decode())
+	}
+	ns, _ := p["nodeSelector"].(map[string]any)
+	if ns["kubernetes.io/hostname"] != "afi-spark-003" {
+		t.Errorf("nodeSelector: %v", p)
+	}
+}

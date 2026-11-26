@@ -19,6 +19,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -26,11 +27,14 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
 // gateScheme is the scheme the fake controller-runtime client uses for
@@ -1506,5 +1510,176 @@ func TestGateJobCacheVolumeUsesGivenPVCName(t *testing.T) {
 	}
 	if !found {
 		t.Error("a set PVCName must render the /cache volumeMount")
+	}
+}
+
+func placementTestInput() rendererInput {
+	return rendererInput{
+		Name:                    "meitheal-gate-x",
+		Namespace:               "meitheal-system",
+		Image:                   "golang:1.26",
+		Repo:                    "defilantech/LLMKube",
+		Branch:                  "meitheal/issue-503",
+		Checks:                  []string{"fmt", "vet", "test"},
+		PVCName:                 "meitheal-gate-cache",
+		ActiveDeadlineSeconds:   1800,
+		TTLSecondsAfterFinished: 86400,
+		CPURequest:              "2",
+		CPULimit:                "4",
+		MemRequest:              "4Gi",
+		MemLimit:                "8Gi",
+		CloneURLBase:            "https://github.com",
+		TaskNamespace:           "default",
+		TaskName:                "gate-503",
+	}
+}
+
+// TestRenderGateJob_NilPlacement_Unchanged compares the rendered Job against a
+// golden captured from the renderer before Placement existed, proving a nil
+// placement leaves the Job byte for byte as it was.
+func TestRenderGateJob_NilPlacement_Unchanged(t *testing.T) {
+	in := placementTestInput()
+	in.Placement = nil
+	job, err := renderGateJob(in)
+	if err != nil {
+		t.Fatalf("renderGateJob: %v", err)
+	}
+	got, err := json.MarshalIndent(job, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	want, err := os.ReadFile("testdata/gate_job_nil_placement.golden.json")
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if strings.TrimSpace(string(got)) != strings.TrimSpace(string(want)) {
+		t.Errorf("nil-placement Job differs from golden.\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func gpuPlacement() *meithealv1alpha1.GatePlacement {
+	return &meithealv1alpha1.GatePlacement{
+		NodeSelector: map[string]string{"kubernetes.io/hostname": "afi-spark-003"},
+		Tolerations: []corev1.Toleration{
+			{Key: "nvidia.com/gpu", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
+		},
+		Resources: &corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1")},
+		},
+		PriorityClassName: "batch",
+		Env:               []corev1.EnvVar{{Name: "DLUTH_INKLING2_MINI", Value: "/models/inkling2-mini"}},
+		Volumes: []corev1.Volume{{
+			Name:         "models",
+			VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/srv/models"}},
+		}},
+		VolumeMounts: []corev1.VolumeMount{{Name: "models", MountPath: "/models", ReadOnly: true}},
+	}
+}
+
+func TestRenderGateJob_PlacementApplied(t *testing.T) {
+	in := placementTestInput()
+	in.Placement = gpuPlacement()
+	job, err := renderGateJob(in)
+	if err != nil {
+		t.Fatalf("renderGateJob: %v", err)
+	}
+	pod := job.Spec.Template.Spec
+	c := pod.Containers[0]
+
+	if pod.NodeSelector["kubernetes.io/hostname"] != "afi-spark-003" {
+		t.Errorf("nodeSelector: %v", pod.NodeSelector)
+	}
+	if len(pod.Tolerations) != 1 || pod.Tolerations[0].Key != "nvidia.com/gpu" ||
+		pod.Tolerations[0].Operator != corev1.TolerationOpExists ||
+		pod.Tolerations[0].Effect != corev1.TaintEffectNoSchedule {
+		t.Errorf("tolerations: %+v", pod.Tolerations)
+	}
+	if pod.PriorityClassName != "batch" {
+		t.Errorf("priorityClassName: %q", pod.PriorityClassName)
+	}
+	if gpu := c.Resources.Limits["nvidia.com/gpu"]; gpu.String() != "1" {
+		t.Errorf("gpu limit: %v", c.Resources.Limits)
+	}
+	assertQuantities(t, "limit", c.Resources.Limits, map[corev1.ResourceName]string{"cpu": "4", "memory": "8Gi"})
+	assertQuantities(t, "request", c.Resources.Requests, map[corev1.ResourceName]string{"cpu": "2", "memory": "4Gi"})
+	var envOK bool
+	for _, e := range c.Env {
+		if e.Name == "DLUTH_INKLING2_MINI" && e.Value == "/models/inkling2-mini" {
+			envOK = true
+		}
+	}
+	if !envOK {
+		t.Errorf("env missing: %+v", c.Env)
+	}
+	var modelsVol, cacheVol bool
+	for _, v := range pod.Volumes {
+		if v.Name == "models" && v.HostPath != nil {
+			modelsVol = true
+		}
+		if v.Name == "cache" && v.PersistentVolumeClaim != nil {
+			cacheVol = true
+		}
+	}
+	if !modelsVol || !cacheVol {
+		t.Errorf("volumes: models=%v cache=%v (%+v)", modelsVol, cacheVol, pod.Volumes)
+	}
+	var modelsMount, cacheMount bool
+	for _, m := range c.VolumeMounts {
+		if m.Name == "models" && m.MountPath == "/models" && m.ReadOnly {
+			modelsMount = true
+		}
+		if m.Name == "cache" && m.MountPath == "/cache" {
+			cacheMount = true
+		}
+	}
+	if !modelsMount || !cacheMount {
+		t.Errorf("mounts: models=%v cache=%v (%+v)", modelsMount, cacheMount, c.VolumeMounts)
+	}
+}
+
+func TestRenderGateJob_PlacementResourcesOverrideByName(t *testing.T) {
+	in := placementTestInput()
+	in.Placement = &meithealv1alpha1.GatePlacement{
+		Resources: &corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{"memory": resource.MustParse("32Gi")},
+		},
+	}
+	job, err := renderGateJob(in)
+	if err != nil {
+		t.Fatalf("renderGateJob: %v", err)
+	}
+	r := job.Spec.Template.Spec.Containers[0].Resources
+	if got := r.Limits["memory"]; got.String() != "32Gi" {
+		t.Errorf("memory limit: %q", got.String())
+	}
+	if got := r.Limits["cpu"]; got.String() != "4" {
+		t.Errorf("cpu limit: %q", got.String())
+	}
+	if got := r.Requests["memory"]; got.String() != "4Gi" {
+		t.Errorf("memory request: %q", got.String())
+	}
+	if got := r.Requests["cpu"]; got.String() != "2" {
+		t.Errorf("cpu request: %q", got.String())
+	}
+}
+
+func TestRunGateJobArgs_PlacementJSON(t *testing.T) {
+	var a runGateJobArgs
+	raw := `{"repo":"r","branch":"b","placement":{"nodeSelector":{"k":"v"},"priorityClassName":"batch"}}`
+	if err := json.Unmarshal([]byte(raw), &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.Placement == nil || a.Placement.NodeSelector["k"] != "v" || a.Placement.PriorityClassName != "batch" {
+		t.Errorf("placement not decoded: %+v", a.Placement)
+	}
+}
+
+func assertQuantities(t *testing.T, kind string, got corev1.ResourceList, want map[corev1.ResourceName]string) {
+	t.Helper()
+	for name, w := range want {
+		q := got[name]
+		if q.String() != w {
+			t.Errorf("default %s %s: got %q want %q", name, kind, q.String(), w)
+		}
 	}
 }
