@@ -27,8 +27,8 @@ items:
 - `lane` is `cpu` (the default) or `gpu`. A gpu item also passes the GPU
   gate from the template.
 - `after` lists issues that must **finish** first. An item waits while its
-  dependency is parked, and starts once that dependency is finalized,
-  dropped or hand-fixed. The run refuses a queue that lists an issue twice
+  dependency is parked, or was skipped at preflight, and starts once that
+  dependency is finalized, dropped or hand-fixed. The run refuses a queue that lists an issue twice
   or whose `after` lists form a cycle.
 - One run works in one repository: answers are read from that
   repository's issues.
@@ -105,8 +105,8 @@ Comment on the issue, from the login given as `--answerer`, with one line:
 
 | Command | What the loop does |
 |---|---|
-| `/meitheal requeue` | Removes the decision and drives the item again from preflight. A Workload still in the cluster is resumed, with its attempt count. A planner park is planned again. |
-| `/meitheal decide <text>` | Plans the issue again with your text given to the planner as a settled maintainer decision. A planned issue is driven; one the planner parks again is announced as a new park. |
+| `/meitheal requeue` | Starts a new round with the item's intent. A planner park is planned again first. |
+| `/meitheal decide <text>` | Plans the issue again with your text given to the planner as a settled maintainer decision, then starts a new round with the new intent. One the planner parks again is announced as a new park. |
 | `/meitheal drop` | Comments "Meitheal dropped this issue at the maintainer's request." once and stops working on the issue. The branch, the PR and the decision file stay. |
 
 Only the first valid command from `--answerer` after the park counts;
@@ -124,9 +124,16 @@ re-plan writes the intent under `--out` and rewrites the run's queue file
 (the `--queue` file, or `--out/queue.yaml` with `--plan`) so a restart
 drives the new intent.
 
-Requeue and decide resume a Workload that is still in the cluster rather
-than create a new one. To start an issue over with a new intent, delete
-its Workload (and the branch) before answering.
+### Rounds
+
+A round is one Workload's worth of work on an issue: the first attempt and
+at most one feedback pass. Only a maintainer's `requeue` or `decide` starts
+a new round. It deletes the issue's Workload if one is still there (the
+branch and the draft PR stay), creates it again as attempt 1, revising the
+branch when one was pushed so the coder continues the same draft PR, and
+drives it. The new round skips preflight: the open draft PR is the loop's
+own. The answered decision is removed once the new Workload exists, so a
+restart in between acts on the answer again.
 
 ## The ledger
 
@@ -137,7 +144,10 @@ in `--ledger` (default `.meitheal/ledger.jsonl`):
 {"issue":52,"lane":"cpu","workload":"wl-52","attempts":1,"finalStage":"done","parkKind":"","reason":"finalized","prURL":"https://github.com/example/widgets/pull/60","started":"...","ended":"..."}
 ```
 
-`finalStage` is `done`, `parked`, `dropped` or `error`.
+`finalStage` is `done` (finalized or hand-fixed), `skipped` (preflight
+found an open PR or a pushed branch; the reason says which), `parked`,
+`dropped` or `error`. A last line cut short by a crash is ignored, and
+dropped by the next append.
 
 ## Restarts and signals
 
@@ -149,7 +159,8 @@ and the queue file, so it can be stopped and started at any point:
 - An item with a decision file stays parked until it is answered.
 - An item whose Workload is already in the cluster resumes it at watch;
   nothing is dispatched twice.
-- An item that stopped on an `error` is tried again.
+- An item that stopped on an `error`, or was `skipped`, goes through
+  preflight again.
 
 SIGINT or SIGTERM stops the loop: in-flight items stop at their next poll,
 nothing is parked, no Workload is deleted, and the next start resumes them.

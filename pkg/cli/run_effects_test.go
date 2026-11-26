@@ -1415,3 +1415,31 @@ func TestFinalize_IsIdempotent(t *testing.T) {
 		t.Fatalf("comments = %d, want the new PR announced", len(f.comments))
 	}
 }
+
+// --- Restart ---------------------------------------------------------------
+
+func TestRestart_NoBranchStartsFreshAndForeignWorkloadIsRefused(t *testing.T) {
+	c := newEffectsClient(t, nil)
+	e := NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, fastOpts())
+	name, attempt, err := e.Restart(context.Background(), effItem("cpu"), "new intent")
+	if err != nil || attempt != 1 {
+		t.Fatalf("Restart = %s, %d, %v", name, attempt, err)
+	}
+	w := getWorkload(t, c, name)
+	if w.Spec.ReviseExistingBranch || w.Annotations[runAttemptAnnotation] != "1" || w.Spec.Intent != "new intent" {
+		t.Fatalf("Workload = %+v / %v, want a fresh attempt 1 with no branch to revise", w.Spec, w.Annotations)
+	}
+
+	other := &meithealv1alpha1.Workload{
+		ObjectMeta: metav1.ObjectMeta{Name: plannedWorkloadName(effIssue), Namespace: effNS},
+		Spec:       meithealv1alpha1.WorkloadSpec{Intent: "manual", Issues: []int32{7}},
+	}
+	c = newEffectsClient(t, nil, other)
+	e = NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, fastOpts())
+	if _, _, err := e.Restart(context.Background(), effItem("cpu"), "x"); err == nil {
+		t.Fatal("Restart over another run's Workload must be refused")
+	}
+	if got := getWorkload(t, c, plannedWorkloadName(effIssue)).Spec.Intent; got != "manual" {
+		t.Fatalf("other run's Workload changed: %q", got)
+	}
+}

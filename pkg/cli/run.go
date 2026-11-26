@@ -102,13 +102,14 @@ Every park is announced: a one-line comment on the issue, a label on the
 draft PR, and a POST of the full decision to --notify-url (or $%s).
 A park is answered by a comment from --answerer, one line:
 
-  /meitheal requeue        drive it again from preflight
-  /meitheal decide <text>  plan it again with your decision
+  /meitheal requeue        start a new round with the same intent
+  /meitheal decide <text>  plan it again with your decision, then a new round
   /meitheal drop           comment once and stop working on it
 
-or with 'meitheal decisions answer', which also takes hand-fix. A decide
-answer asks the planner again, so it needs --repo-dir and --planner-url,
-with or without --plan.
+or with 'meitheal decisions answer', which also takes hand-fix. A new round
+recreates the issue's Workload at attempt 1 on the same branch and draft
+PR. A decide answer asks the planner again, so it needs --repo-dir and
+--planner-url, with or without --plan.
 
 Each drive's end is appended to --ledger (JSONL). On a restart, an item the
 ledger shows done or dropped is not driven again, an item with a decision

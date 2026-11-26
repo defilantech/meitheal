@@ -192,14 +192,22 @@ func TestRunLanes_FailedDependencyHoldsItsDependents(t *testing.T) {
 	}
 }
 
-// A dependency outside the batch is the caller's to have settled: RunLanes
-// does not wait for something it was never given.
-func TestRunLanes_DependencyOutsideTheBatchIsSettled(t *testing.T) {
-	items := []QueueItem{{Issue: 53, Lane: "cpu", After: []int32{52}}}
-	got := runLanesWithin(t, context.Background(), items, map[string]int{"cpu": 1},
-		func(context.Context, QueueItem) (Stage, error) { return StageDone, nil })
-	if got[53] != StageDone {
-		t.Fatalf("RunLanes = %v, want 53 done", got)
+// RunLanes checks its input itself: a queue CheckQueueOrder refuses drives
+// nothing.
+func TestRunLanes_RefusesAQueueItCannotSchedule(t *testing.T) {
+	for name, items := range map[string][]QueueItem{
+		"unknown dependency": {{Issue: 53, Lane: "cpu", After: []int32{52}}},
+		"cycle":              {{Issue: 1, After: []int32{2}}, {Issue: 2, After: []int32{1}}},
+		"duplicate":          {{Issue: 1}, {Issue: 1}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var calls int
+			got := runLanesWithin(t, context.Background(), items, map[string]int{"cpu": 1},
+				func(context.Context, QueueItem) (Stage, error) { calls++; return StageDone, nil })
+			if calls != 0 || len(got) != 0 {
+				t.Fatalf("drives = %d, result %v; want nothing driven", calls, got)
+			}
+		})
 	}
 }
 

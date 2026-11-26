@@ -21,6 +21,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -29,8 +31,12 @@ import (
 
 // The finalStage values a ledger record carries.
 const (
-	// ledgerDone: finalized, skipped at preflight, or hand-fixed.
+	// ledgerDone: finalized, or hand-fixed.
 	ledgerDone = "done"
+	// ledgerSkipped: preflight found the work in flight elsewhere (an open
+	// PR, a pushed branch). Not finished: a restart runs preflight again,
+	// and what runs after the item keeps waiting.
+	ledgerSkipped = "skipped"
 	// ledgerParked: a decision was parked for a human.
 	ledgerParked = "parked"
 	// ledgerDropped: the maintainer answered drop.
@@ -73,7 +79,9 @@ func NewLedger(path string) *Ledger { return &Ledger{path: path} }
 
 // Append writes r as one line. The line goes out in a single write on a file
 // opened for appending, so a reader never sees half a record from a
-// healthy write.
+// healthy write. A crashed append leaves a last line with no newline; that
+// partial record never finished, so it is cut off before the next one is
+// written rather than left to make the line after it unreadable.
 func (l *Ledger) Append(r LedgerRecord) error {
 	b, err := json.Marshal(r)
 	if err != nil {
@@ -86,8 +94,12 @@ func (l *Ledger) Append(r LedgerRecord) error {
 		return fmt.Errorf("ledger: %w", err)
 	}
 	//nolint:gosec // G304: operator-supplied path
-	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
+		return fmt.Errorf("ledger: %w", err)
+	}
+	if err := cutTornTail(f); err != nil {
+		_ = f.Close()
 		return fmt.Errorf("ledger: %w", err)
 	}
 	if _, err := f.Write(b); err != nil {
@@ -101,11 +113,38 @@ func (l *Ledger) Append(r LedgerRecord) error {
 	return f.Close()
 }
 
+// cutTornTail truncates the file after its last newline when its last byte
+// is not one: what follows is an append that did not finish.
+func cutTornTail(f *os.File) error {
+	fi, err := f.Stat()
+	if err != nil || fi.Size() == 0 {
+		return err
+	}
+	last := make([]byte, 1)
+	if _, err := f.ReadAt(last, fi.Size()-1); err != nil && err != io.EOF {
+		return err
+	}
+	if last[0] == '\n' {
+		return nil
+	}
+	b := make([]byte, fi.Size())
+	if _, err := f.ReadAt(b, 0); err != nil && err != io.EOF {
+		return err
+	}
+	return f.Truncate(int64(bytes.LastIndexByte(b, '\n') + 1))
+}
+
 // ReadLedger returns each issue's last record. A missing file is an empty
 // ledger. A line that does not parse is an error naming it: the ledger is
 // what keeps a finished item from being driven again, and guessing past a
-// damaged line could re-run a finalize.
+// damaged line could re-run a finalize. The one exception is a last line
+// with no newline, which is what a crash in the middle of an append leaves:
+// it is ignored and logged.
 func ReadLedger(path string) (map[int32]LedgerRecord, error) {
+	return readLedger(path, log.Printf)
+}
+
+func readLedger(path string, logf func(string, ...any)) (map[int32]LedgerRecord, error) {
 	out := map[int32]LedgerRecord{}
 	b, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied path
 	if os.IsNotExist(err) {
@@ -116,6 +155,11 @@ func ReadLedger(path string) (map[int32]LedgerRecord, error) {
 	}
 	sc := bufio.NewScanner(bytes.NewReader(b))
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	torn := len(b) > 0 && b[len(b)-1] != '\n'
+	lines := bytes.Count(b, []byte{'\n'})
+	if torn {
+		lines++
+	}
 	for n := 1; sc.Scan(); n++ {
 		line := bytes.TrimSpace(sc.Bytes())
 		if len(line) == 0 {
@@ -123,6 +167,10 @@ func ReadLedger(path string) (map[int32]LedgerRecord, error) {
 		}
 		var r LedgerRecord
 		if err := json.Unmarshal(line, &r); err != nil {
+			if torn && n == lines {
+				logf("ledger %s: ignoring line %d, an append that did not finish", path, n)
+				continue
+			}
 			return nil, fmt.Errorf("ledger %s line %d does not parse: %w", path, n, err)
 		}
 		out[r.Issue] = r

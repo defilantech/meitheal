@@ -206,14 +206,16 @@ func (s *laneScheduler) finish(r laneResult) {
 
 // RunLanes drives items with at most limits[lane] of each lane at once, in
 // queue order within a lane, and returns the stage each driven item ended at.
+// It checks items with CheckQueueOrder first and drives nothing, returning
+// an empty result, when they cannot be scheduled; call CheckQueueOrder to
+// learn why.
 //
 // An item starts only once every item it runs After has ended StageDone
 // without an error. A dependency that parked or failed holds its dependents:
 // they are never started and are absent from the result, because stopping
-// is not finishing. A dependency that is not among items is the caller's to
-// have settled and does not hold anything. RunLanes returns when nothing is
+// is not finishing. RunLanes returns when nothing is
 // running and nothing more can start, so it cannot deadlock, cycle or not
-// (CheckQueueOrder refuses cycles before a run begins).
+// (and CheckQueueOrder refuses cycles before anything starts).
 //
 // A cancelled context starts nothing more; RunLanes waits for the drives
 // already running, which see the same context, to return.
@@ -221,6 +223,9 @@ func RunLanes(
 	ctx context.Context, items []QueueItem, limits map[string]int,
 	drive func(context.Context, QueueItem) (Stage, error),
 ) map[int32]Stage {
+	if CheckQueueOrder(items) != nil {
+		return map[int32]Stage{}
+	}
 	inBatch := map[int32]bool{}
 	for _, it := range items {
 		inBatch[it.Issue] = true

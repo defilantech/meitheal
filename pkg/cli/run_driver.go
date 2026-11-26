@@ -61,6 +61,12 @@ type Effects interface {
 	// attempt is read back from the cluster on a resume, so the one-pass cap
 	// survives a loop restart.
 	Dispatch(ctx context.Context, item QueueItem, intent string) (workload string, attempt int, err error)
+	// Restart begins a new round for an item a maintainer answered with
+	// requeue or decide: the live Workload (if any) is deleted and waited
+	// out, its branch and draft PR kept, and the Workload is created again
+	// as attempt 1, revising the branch when one was pushed. The attempt cap
+	// is per round, and only a maintainer's answer starts a round.
+	Restart(ctx context.Context, item QueueItem, intent string) (workload string, attempt int, err error)
 	Watch(ctx context.Context, workload string, baseline time.Duration, factor float64) (WatchResult, error)
 	Kill(ctx context.Context, workload string) error
 	Verify(ctx context.Context, workload, branch string) (clean bool, evidence string, err error)
@@ -149,7 +155,22 @@ func DriveItem(
 	baseline time.Duration,
 	factor float64,
 ) (Stage, error) {
-	return driveLoop(ctx, e, item, intent, decisionsDir, baseline, factor, NextStage)
+	return driveLoop(ctx, e, item, intent, decisionsDir, baseline, factor, NextStage, false)
+}
+
+// RestartItem is DriveItem for a new round a maintainer's answer started.
+// It skips preflight (the open draft PR and the branch are this loop's own,
+// and preflight would read them as work already in flight) and starts from
+// Effects.Restart instead of Dispatch. Everything after is DriveItem's.
+func RestartItem(
+	ctx context.Context,
+	e Effects,
+	item QueueItem,
+	intent, decisionsDir string,
+	baseline time.Duration,
+	factor float64,
+) (Stage, error) {
+	return driveLoop(ctx, e, item, intent, decisionsDir, baseline, factor, NextStage, true)
 }
 
 // driveLoop is DriveItem's body with the stage machine as a parameter.
@@ -165,6 +186,7 @@ func driveLoop(
 	baseline time.Duration,
 	factor float64,
 	next func(Stage, Facts) Transition,
+	restart bool,
 ) (Stage, error) {
 	// Preflight has no Workload to name yet; every stage after dispatch uses
 	// the name Dispatch reported.
@@ -173,13 +195,17 @@ func driveLoop(
 	// attempts drives NextStage's one-pass rule: a dirty verify at attempts 1
 	// goes to feedback, at maxAttempts it escalates. case StageDispatch SETS
 	// it to the attempt Dispatch reports (2 when a restarted loop resumes a
-	// Workload that is already the feedback pass), and case StageFeedback
+	// Workload that is already the feedback pass) or Restart reports (always
+	// 1: a maintainer's answer starts a new round), and case StageFeedback
 	// increments it; nothing else touches it. A feedback case that did not
 	// increment would spin watch -> verify -> feedback -> watch with Attempts
 	// frozen, maxAttempts would never fire, and only maxStageTransitions would
 	// stop it.
 	attempts := 0
 	stage := StagePreflight
+	if restart {
+		stage = StageDispatch
+	}
 
 	for i := 0; ; i++ {
 		if i >= maxStageTransitions {
@@ -197,7 +223,11 @@ func driveLoop(
 			}
 			facts.SkipReason = skip
 		case StageDispatch:
-			w, attempt, err := e.Dispatch(ctx, item, intent)
+			dispatch := e.Dispatch
+			if restart {
+				dispatch = e.Restart
+			}
+			w, attempt, err := dispatch(ctx, item, intent)
 			if err != nil {
 				return stage, err
 			}

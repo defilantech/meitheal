@@ -44,19 +44,21 @@ const (
 // --- fakes -----------------------------------------------------------------
 
 // scriptEffects plays one scripted outcome per drive of an issue: "done"
-// (a clean verify, then finalize), "park" (a stall), "block" (watch waits
-// for the context) or "error" (watch fails). The last outcome repeats; no
-// script means "done". Safe for the lanes' goroutines.
+// (a clean verify, then finalize), "park" (a stall), "skip" (preflight finds
+// an open PR), "block" (watch waits for the context) or "error" (watch
+// fails). The last outcome repeats; no script means "done". A drive starts at
+// Preflight, or at Restart for a new round. Safe for the lanes' goroutines.
 type scriptEffects struct {
-	mu       sync.Mutex
-	outcomes map[int32][]string
-	drives   map[int32]int
-	current  map[string]string // workload -> outcome of this drive
-	order    []int32
-	intents  map[int32][]string
-	notified []Decision
-	kills    int
-	blocked  chan int32
+	mu        sync.Mutex
+	outcomes  map[int32][]string
+	drives    map[int32]int
+	current   map[string]string // workload -> outcome of this drive
+	order     []int32
+	restarted []int32
+	intents   map[int32][]string
+	notified  []Decision
+	kills     int
+	blocked   chan int32
 }
 
 func newScriptEffects() *scriptEffects {
@@ -78,23 +80,43 @@ func (s *scriptEffects) notifications() []Decision {
 	return append([]Decision(nil), s.notified...)
 }
 
+func (s *scriptEffects) restarts() []int32 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]int32(nil), s.restarted...)
+}
+
+func (s *scriptEffects) outcome(issue int32) string {
+	if o := s.outcomes[issue]; len(o) > 0 {
+		return o[min(s.drives[issue]-1, len(o)-1)]
+	}
+	return "done"
+}
+
 func (s *scriptEffects) Preflight(_ context.Context, item QueueItem, _ string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.order = append(s.order, item.Issue)
 	s.drives[item.Issue]++
+	if s.outcome(item.Issue) == "skip" {
+		return "an open PR already references it: https://example.test/pr/other", nil
+	}
 	return "", nil
+}
+
+func (s *scriptEffects) Restart(ctx context.Context, item QueueItem, intent string) (string, int, error) {
+	s.mu.Lock()
+	s.restarted = append(s.restarted, item.Issue)
+	s.drives[item.Issue]++
+	s.mu.Unlock()
+	return s.Dispatch(ctx, item, intent)
 }
 
 func (s *scriptEffects) Dispatch(_ context.Context, item QueueItem, intent string) (string, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	w := plannedWorkloadName(item.Issue)
-	out := "done"
-	if o := s.outcomes[item.Issue]; len(o) > 0 {
-		out = o[min(s.drives[item.Issue]-1, len(o)-1)]
-	}
-	s.current[w] = out
+	s.current[w] = s.outcome(item.Issue)
 	s.intents[item.Issue] = append(s.intents[item.Issue], intent)
 	return w, 1, nil
 }
@@ -462,8 +484,11 @@ func TestRun_AnswerRequeueRedrives(t *testing.T) {
 
 	env.run(t, items)
 
-	if got := env.effects.preflighted(); !reflect.DeepEqual(got, []int32{52, 53}) {
-		t.Fatalf("driven = %v, want 52 again from preflight, then 53 which runs after it", got)
+	if got := env.effects.restarts(); !reflect.DeepEqual(got, []int32{52}) {
+		t.Fatalf("restarted = %v, want 52 in a new round", got)
+	}
+	if got := env.effects.preflighted(); !reflect.DeepEqual(got, []int32{53}) {
+		t.Fatalf("preflighted = %v, want only 53 (which runs after 52): a new round skips preflight", got)
 	}
 	if _, ok := env.decision(t, 52, ParkEscalate); ok {
 		t.Fatal("the requeued decision file is still there")
@@ -881,5 +906,178 @@ func TestRunLoopDoc_TemplateLoads(t *testing.T) {
 	}
 	if tpl.GPUGate == nil || tpl.GPUNode == "" || len(tpl.Spec.ReviewerAgentRefs) != 1 {
 		t.Fatalf("template = %+v", tpl)
+	}
+}
+
+// roundEnv is a parked escalate for 53 whose round is spent: an attempt-2
+// Workload that failed, a pushed branch and an open draft PR. Its Effects
+// are the real cluster ones.
+type roundEnv struct {
+	*loopEnv
+	c      client.WithWatch
+	forge  *fakeRunForge
+	gate   *fakeGateRunner
+	branch string
+}
+
+func newRoundEnv(t *testing.T) *roundEnv {
+	t.Helper()
+	env := newLoopEnv(t)
+	name := plannedWorkloadName(53)
+	old := &meithealv1alpha1.Workload{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name, Namespace: effNS, Annotations: map[string]string{runAttemptAnnotation: "2"},
+		},
+		Spec: meithealv1alpha1.WorkloadSpec{
+			Intent: "the feedback pass", Repo: loopRepo, Issues: []int32{53}, ReviseExistingBranch: true,
+		},
+		Status: meithealv1alpha1.WorkloadStatus{Phase: meithealv1alpha1.WorkloadPhaseFailed},
+	}
+	c := newEffectsClient(t, nil, old)
+	forge := newFakeRunForge()
+	branch := taskBranch(name, 53)
+	forge.branches[branch] = true
+	forge.prs[branch] = "https://example.test/pr/53"
+	// Preflight would skip on this: the draft PR is the loop's own.
+	forge.openPR = "https://example.test/pr/53"
+	gate := &fakeGateRunner{}
+	env.cfg.Effects = NewClusterEffects(c, effNS, forge, neutralTemplate(), gate, fastOpts())
+	return &roundEnv{loopEnv: env, c: c, forge: forge, gate: gate, branch: branch}
+}
+
+// completeNewRound marks the recreated Workload Completed once it exists, as
+// the controller would when its pipeline finishes.
+func (r *roundEnv) completeNewRound(t *testing.T) {
+	t.Helper()
+	go func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			var w meithealv1alpha1.Workload
+			err := r.c.Get(context.Background(), client.ObjectKey{Namespace: effNS, Name: plannedWorkloadName(53)}, &w)
+			if err == nil && w.Annotations[runAttemptAnnotation] == "1" && w.DeletionTimestamp == nil {
+				w.Status.Phase = meithealv1alpha1.WorkloadPhaseCompleted
+				_ = r.c.Status().Update(context.Background(), &w)
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+}
+
+func (r *roundEnv) assertNewRound(t *testing.T, intent string) {
+	t.Helper()
+	w := getWorkload(t, r.c, plannedWorkloadName(53))
+	if w.Annotations[runAttemptAnnotation] != "1" || !w.Spec.ReviseExistingBranch || w.Spec.Intent != intent {
+		t.Fatalf("Workload = annotations %v, revise %v, intent %q; want attempt 1 revising the branch with %q",
+			w.Annotations, w.Spec.ReviseExistingBranch, w.Spec.Intent, intent)
+	}
+	if len(r.gate.calls) != 1 || r.gate.calls[0].branch != r.branch {
+		t.Fatalf("gate calls = %+v, want the new round verified on %s", r.gate.calls, r.branch)
+	}
+	led := r.ledger(t)[53]
+	if len(led) != 1 || led[0].FinalStage != ledgerDone {
+		t.Fatalf("ledger for 53 = %+v, want one done record", led)
+	}
+	if _, ok := r.decision(t, 53, ParkEscalate); ok {
+		t.Fatal("the answered decision is still there")
+	}
+	if left, _ := filepath.Glob(filepath.Join(r.cfg.DecisionsDir, "*"+replanSuffix)); len(left) != 0 {
+		t.Fatalf("left behind: %v", left)
+	}
+}
+
+// A1: decide on a spent round deletes the attempt-2 Workload and recreates it
+// at attempt 1 with the re-planned intent, revising the pushed branch, and
+// drives it without a preflight that would mistake our own PR for others'.
+func TestRun_AnswerDecideStartsANewRound(t *testing.T) {
+	r := newRoundEnv(t)
+	opened := r.park(t, 53, ParkEscalate, string(StageVerify), true)
+	r.loopEnv.forge.answer(53, "/meitheal decide keep the old wire format", opened.Add(time.Minute))
+	stub := replanEnv(t, r.loopEnv, plannedAnswer("cpu", "src/lib.rs"))
+	items := r.queue(t, QueueItem{Issue: 53})
+	r.completeNewRound(t)
+
+	r.run(t, items)
+
+	if !strings.Contains(stub.prompts[53], "keep the old wire format") {
+		t.Fatal("the planner did not get the decision")
+	}
+	r.assertNewRound(t, "## Intent\n\nChange the thing. Mirror `src/lib.rs`.")
+}
+
+func TestRun_AnswerRequeueStartsANewRoundWithTheOldIntent(t *testing.T) {
+	r := newRoundEnv(t)
+	opened := r.park(t, 53, ParkEscalate, string(StageVerify), true)
+	r.loopEnv.forge.answer(53, "/meitheal requeue", opened.Add(time.Minute))
+	items := r.queue(t, QueueItem{Issue: 53})
+	r.completeNewRound(t)
+
+	r.run(t, items)
+
+	r.assertNewRound(t, "intent for 53")
+}
+
+// A preflight skip is not done: it is ledgered as skipped with its reason,
+// and what runs after it waits, with one log line saying why.
+func TestRun_PreflightSkipIsNotDone(t *testing.T) {
+	env := newLoopEnv(t)
+	env.effects.outcomes = map[int32][]string{52: {"skip"}}
+	items := env.queue(t, QueueItem{Issue: 52}, QueueItem{Issue: 53, After: []int32{52}})
+	env.run(t, items)
+	led := env.ledger(t)
+	if len(led[52]) != 1 || led[52][0].FinalStage != ledgerSkipped ||
+		!strings.Contains(led[52][0].Reason, "an open PR already references it") {
+		t.Fatalf("ledger for 52 = %+v, want skipped with the reason", led[52])
+	}
+	if got := env.effects.preflighted(); !reflect.DeepEqual(got, []int32{52}) {
+		t.Fatalf("driven = %v, want 53 held by the skipped 52", got)
+	}
+	if n := env.logs.count("issue 53 waits on issue 52"); n != 1 {
+		t.Fatalf("wait logged %d times, want once:\n%s", n, env.logs)
+	}
+	// Not finished: a restart runs preflight again.
+	env.run(t, items)
+	if got := env.effects.preflighted(); !reflect.DeepEqual(got, []int32{52, 52}) {
+		t.Fatalf("driven after a restart = %v, want 52's preflight again", got)
+	}
+}
+
+func TestReadLedger_IgnoresATornLastLine(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "ledger.jsonl")
+	body := `{"issue":52,"finalStage":"done"}` + "\n" + `{"issue":53,"finalSt`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	logs := &logSink{}
+	last, err := readLedger(p, logs.logf)
+	if err != nil || last[52].FinalStage != ledgerDone || len(last) != 1 {
+		t.Fatalf("readLedger = %v, %v; want 52 and the torn line ignored", last, err)
+	}
+	if logs.count("line 2") != 1 {
+		t.Fatalf("log = %s, want the torn line named", logs)
+	}
+	// The next append starts on its own line, so the ledger reads cleanly.
+	if err := NewLedger(p).Append(LedgerRecord{Issue: 54, FinalStage: ledgerDone}); err != nil {
+		t.Fatal(err)
+	}
+	if last, err = readLedger(p, logs.logf); err != nil || last[54].FinalStage != ledgerDone {
+		t.Fatalf("after an append: %v, %v", last, err)
+	}
+}
+
+func TestRun_DropWithoutAForgeWaits(t *testing.T) {
+	env := newLoopEnv(t)
+	env.park(t, 54, ParkEscalate, string(StageVerify), true)
+	if err := AnswerDecision(env.cfg.DecisionsDir, 54, ParkEscalate, "drop"); err != nil {
+		t.Fatal(err)
+	}
+	env.cfg.Forge = nil
+	env.cfg.Answerer = ""
+	env.run(t, env.queue(t, QueueItem{Issue: 54}))
+	if _, err := os.Stat(env.cfg.LedgerPath); !os.IsNotExist(err) {
+		t.Fatal("dropped without a forge to comment with")
+	}
+	if env.logs.count("no forge") != 1 {
+		t.Fatalf("log = %s", env.logs)
 	}
 }

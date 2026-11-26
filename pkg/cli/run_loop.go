@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	sigsyaml "sigs.k8s.io/yaml"
@@ -86,6 +87,9 @@ const (
 	stateParked
 	stateDone
 	stateFailed
+	// stateSkipped: preflight found the work already in flight elsewhere.
+	// It does not release what runs after the item.
+	stateSkipped
 )
 
 // runLoop is a live run's state. Everything but the drives themselves runs
@@ -102,6 +106,18 @@ type runLoop struct {
 	// After list is here.
 	finished map[int32]bool
 	logged   map[string]bool
+	// skipReason holds why preflight skipped an item, for the log line a
+	// waiting dependent gets.
+	skipReason map[int32]string
+
+	// mu guards the two maps the lane goroutines share with this one.
+	mu sync.Mutex
+	// restarts holds the items a maintainer's answer sent round again, by
+	// the answered file to remove once Restart has succeeded. Until then the
+	// answer stays on disk, so a crash in between acts on it again.
+	restarts map[int32]string
+	// skips holds preflight skip reasons a drive reported, for finish.
+	skips map[int32]string
 }
 
 func newRunLoop(cfg runLoopConfig) *runLoop {
@@ -115,12 +131,15 @@ func newRunLoop(cfg runLoopConfig) *runLoop {
 		cfg.Logf = log.Printf
 	}
 	l := &runLoop{
-		cfg:      cfg,
-		ledger:   NewLedger(cfg.LedgerPath),
-		items:    map[int32]QueueItem{},
-		state:    map[int32]itemState{},
-		finished: map[int32]bool{},
-		logged:   map[string]bool{},
+		cfg:        cfg,
+		ledger:     NewLedger(cfg.LedgerPath),
+		items:      map[int32]QueueItem{},
+		state:      map[int32]itemState{},
+		finished:   map[int32]bool{},
+		logged:     map[string]bool{},
+		skipReason: map[int32]string{},
+		restarts:   map[int32]string{},
+		skips:      map[int32]string{},
 	}
 	l.sched = newLaneScheduler(cfg.Limits, l.drive)
 	return l
@@ -166,7 +185,7 @@ func (l *runLoop) run(ctx context.Context, items []QueueItem) error {
 	if err := checkOneRepo(items, l.cfg.Repo); err != nil {
 		return err
 	}
-	last, err := ReadLedger(l.cfg.LedgerPath)
+	last, err := readLedger(l.cfg.LedgerPath, l.cfg.Logf)
 	if err != nil {
 		return err
 	}
@@ -248,8 +267,8 @@ func (l *runLoop) summary() string {
 	for _, issue := range l.order {
 		n[l.state[issue]]++
 	}
-	return fmt.Sprintf("%d done, %d parked, %d stopped on an error, %d waiting", n[stateDone], n[stateParked],
-		n[stateFailed], n[statePending])
+	return fmt.Sprintf("%d done, %d parked, %d skipped, %d stopped on an error, %d waiting", n[stateDone],
+		n[stateParked], n[stateSkipped], n[stateFailed], n[statePending])
 }
 
 // put adds or replaces an item, keeping queue order.
@@ -263,6 +282,11 @@ func (l *runLoop) put(it QueueItem) {
 func (l *runLoop) depsDone(it QueueItem) bool {
 	for _, a := range it.After {
 		if !l.finished[a] {
+			if l.state[a] == stateSkipped {
+				l.logOnce(fmt.Sprintf("wait-skip %d/%d", it.Issue, a),
+					"issue %d waits on issue %d, which preflight skipped (%s); it starts once %d is finished",
+					it.Issue, a, l.skipReason[a], a)
+			}
 			return false
 		}
 	}
@@ -298,6 +322,16 @@ func (l *runLoop) finish(ctx context.Context, r laneResult) {
 		l.state[issue] = stateParked
 		l.logf("issue %d parked", issue)
 	case r.stage == StageDone:
+		l.mu.Lock()
+		skip, skipped := l.skips[issue]
+		delete(l.skips, issue)
+		l.mu.Unlock()
+		if skipped {
+			l.state[issue] = stateSkipped
+			l.skipReason[issue] = skip
+			l.logf("issue %d skipped at preflight: %s", issue, skip)
+			break
+		}
 		l.state[issue] = stateDone
 		l.finished[issue] = true
 		l.logf("issue %d done", issue)
@@ -307,15 +341,26 @@ func (l *runLoop) finish(ctx context.Context, r laneResult) {
 	}
 }
 
-// drive runs one item through DriveItem on a lane goroutine and records how
-// it ended. A drive stopped by the context records nothing.
+// drive runs one item through DriveItem (or RestartItem, for a round a
+// maintainer's answer started) on a lane goroutine and records how it ended.
+// A drive stopped by the context records nothing.
 func (l *runLoop) drive(ctx context.Context, item QueueItem) (Stage, error) {
-	rec := &recordingEffects{Effects: l.cfg.Effects, dir: l.cfg.DecisionsDir, now: l.cfg.Now, logf: l.cfg.Logf}
+	l.mu.Lock()
+	answered, restart := l.restarts[item.Issue]
+	delete(l.restarts, item.Issue)
+	l.mu.Unlock()
+	rec := &recordingEffects{
+		Effects: l.cfg.Effects, dir: l.cfg.DecisionsDir, now: l.cfg.Now, logf: l.cfg.Logf, answered: answered,
+	}
 	started := l.cfg.Now()
 	stage := StagePreflight
 	intent, err := Queue{}.IntentFor(item)
 	if err == nil {
-		stage, err = DriveItem(ctx, rec, item, intent, l.cfg.DecisionsDir, l.cfg.Baseline, l.cfg.Factor)
+		run := DriveItem
+		if restart {
+			run = RestartItem
+		}
+		stage, err = run(ctx, rec, item, intent, l.cfg.DecisionsDir, l.cfg.Baseline, l.cfg.Factor)
 	}
 	if err != nil && ctx.Err() != nil {
 		return stage, err
@@ -332,11 +377,15 @@ func (l *runLoop) drive(ctx context.Context, item QueueItem) (Stage, error) {
 		if rec.parked != nil {
 			r.ParkKind, r.Reason = rec.parked.Kind, rec.parked.Reason
 		}
-	default:
+	case stage == StageDone && rec.skip != "":
+		r.FinalStage, r.Reason = ledgerSkipped, rec.skip
+		l.mu.Lock()
+		l.skips[item.Issue] = rec.skip
+		l.mu.Unlock()
+	case stage == StageDone:
 		r.FinalStage, r.Reason = ledgerDone, "finalized"
-		if rec.skip != "" {
-			r.Reason = "skipped at preflight: " + rec.skip
-		}
+	default:
+		r.FinalStage, r.Reason = ledgerError, fmt.Sprintf("ended at unexpected stage %s", stage)
 	}
 	if lerr := l.ledger.Append(r); lerr != nil {
 		l.cfg.Logf("issue %d: %v", item.Issue, lerr)
@@ -352,6 +401,9 @@ type recordingEffects struct {
 	dir  string
 	now  func() time.Time
 	logf func(format string, a ...any)
+	// answered is the answer file a Restart consumes: removed once the new
+	// round's Workload exists.
+	answered string
 
 	skip, workload, prURL string
 	attempts              int
@@ -370,6 +422,20 @@ func (r *recordingEffects) Dispatch(ctx context.Context, item QueueItem, intent 
 		r.workload, r.attempts = w, attempt
 	}
 	return w, attempt, err
+}
+
+func (r *recordingEffects) Restart(ctx context.Context, item QueueItem, intent string) (string, int, error) {
+	w, attempt, err := r.Effects.Restart(ctx, item, intent)
+	if err != nil {
+		return w, attempt, err
+	}
+	r.workload, r.attempts = w, attempt
+	if r.answered != "" {
+		if rerr := removeAnswered(r.answered); rerr != nil {
+			r.logf("issue %d: remove the answered decision: %v", item.Issue, rerr)
+		}
+	}
+	return w, attempt, nil
 }
 
 func (r *recordingEffects) Watch(
@@ -478,10 +544,10 @@ func (l *runLoop) act(ctx context.Context, d Decision) {
 	}
 }
 
-// requeue drives the item again from preflight. Dispatch resumes a Workload
-// that is still there and reports its attempt, so a requeue never buys an
-// extra feedback pass. A planner park has nothing to drive yet: requeue
-// plans it again.
+// requeue starts a new round with the item's existing intent: the next drive
+// skips preflight and goes through Effects.Restart, which recreates the
+// Workload at attempt 1. The decision file stays until Restart has
+// succeeded. A planner park has no intent yet: requeue plans it again.
 func (l *runLoop) requeue(ctx context.Context, d Decision) {
 	if d.Stage == intentsStage {
 		l.replan(ctx, d, "")
@@ -492,34 +558,38 @@ func (l *runLoop) requeue(ctx context.Context, d Decision) {
 			"issue %d (%s): requeue answered, but the issue is not in this run's queue", d.Issue, d.Kind)
 		return
 	}
-	if err := RemoveDecision(l.cfg.DecisionsDir, d.Issue, d.Kind); err != nil {
-		l.logf("issue %d: requeue: %v", d.Issue, err)
-		return
-	}
-	l.logf("issue %d: requeued by the maintainer", d.Issue)
-	l.release(d.Issue)
+	l.logf("issue %d: requeued by the maintainer; a new round starts", d.Issue)
+	l.newRound(d.Issue, decisionPath(l.cfg.DecisionsDir, d.Issue, d.Kind))
 }
 
-// release makes an item pending again, unless another decision file still
-// parks it.
-func (l *runLoop) release(issue int32) {
-	parked, err := parkedIssues(l.cfg.DecisionsDir)
-	if err != nil {
-		l.logf("issue %d: %v", issue, err)
-		return
-	}
-	if parked[issue] {
-		l.state[issue] = stateParked
-		return
-	}
+// newRound queues an item for a round a maintainer's answer started.
+// answered is the file the answer lives in, removed once Restart succeeds.
+func (l *runLoop) newRound(issue int32, answered string) {
+	l.mu.Lock()
+	l.restarts[issue] = answered
+	l.mu.Unlock()
 	l.state[issue] = statePending
 }
 
-// replan plans the issue again with the maintainer's decision. The answered
-// decision is set aside first, so a re-plan that parks under the same kind
-// writes a fresh park instead of meeting the answered one, and it is removed
-// only once the re-plan succeeded; on an error it is put back and the
-// answer is tried again next cycle.
+// removeAnswered deletes an answered decision (or its set-aside copy) once
+// the round it started is under way.
+func removeAnswered(path string) error {
+	decisionsMu.Lock()
+	defer decisionsMu.Unlock()
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// replan plans the issue again with the maintainer's decision, then starts
+// a new round with the new intent. The answered decision is set aside first,
+// so a re-plan that parks under the same kind writes a fresh park instead of
+// meeting the answered one. On an error it is put back and the answer is
+// tried again next cycle. When the re-plan parks again the set-aside answer
+// is removed; when it plans, the set-aside answer stays until the new
+// round's Workload exists, so a crash in between re-plans on restart rather
+// than resuming the old round.
 func (l *runLoop) replan(ctx context.Context, d Decision, decision string) {
 	if l.cfg.Replan == nil {
 		l.logOnce(fmt.Sprintf("replan-off %d/%s", d.Issue, d.Kind),
@@ -533,6 +603,7 @@ func (l *runLoop) replan(ctx context.Context, d Decision, decision string) {
 		l.logf("issue %d: re-plan: %v", d.Issue, err)
 		return
 	}
+	l.logf("issue %d (%s): asking the planner again for answer %q", d.Issue, d.Kind, d.Answer)
 	item, err := l.cfg.Replan(ctx, d.Issue, decision)
 	if err != nil {
 		if rerr := restoreReplanBackup(backup); rerr != nil {
@@ -541,10 +612,10 @@ func (l *runLoop) replan(ctx context.Context, d Decision, decision string) {
 		l.logf("issue %d: re-plan failed, the answer is kept for the next cycle: %v", d.Issue, err)
 		return
 	}
-	if err := os.Remove(backup); err != nil {
-		l.logf("issue %d: remove answered decision: %v", d.Issue, err)
-	}
 	if item == nil {
+		if err := os.Remove(backup); err != nil {
+			l.logf("issue %d: remove answered decision: %v", d.Issue, err)
+		}
 		l.logf("issue %d: re-planned and parked again", d.Issue)
 		if _, known := l.items[d.Issue]; known {
 			l.state[d.Issue] = stateParked
@@ -558,8 +629,8 @@ func (l *runLoop) replan(ctx context.Context, d Decision, decision string) {
 		item.Repo = l.cfg.Repo
 	}
 	l.put(*item)
-	l.logf("issue %d: re-planned, intent %s", d.Issue, item.IntentPath)
-	l.release(d.Issue)
+	l.logf("issue %d: re-planned, intent %s; a new round starts", d.Issue, item.IntentPath)
+	l.newRound(d.Issue, backup)
 	l.persistQueue()
 }
 
@@ -567,6 +638,11 @@ func (l *runLoop) replan(ctx context.Context, d Decision, decision string) {
 // not post it again), records the item as dropped and leaves the branch, PR,
 // Workload and decision file where they are.
 func (l *runLoop) drop(ctx context.Context, d Decision) {
+	if l.cfg.Forge == nil {
+		l.logOnce(fmt.Sprintf("drop-noforge %d/%s", d.Issue, d.Kind),
+			"issue %d (%s): drop answered, but the run has no forge to comment with", d.Issue, d.Kind)
+		return
+	}
 	repo := l.itemFor(d.Issue).Repo
 	comments, err := l.cfg.Forge.CommentsSince(ctx, repo, d.Issue, time.Time{})
 	if err != nil {

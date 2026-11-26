@@ -115,6 +115,7 @@ type fakeEffects struct {
 	verifyErr    error
 
 	calls      map[string]driveCall
+	restarted  int
 	dispatched int
 	killed     int
 	watched    int
@@ -149,6 +150,15 @@ func (f *fakeEffects) Dispatch(ctx context.Context, item QueueItem, intent strin
 		return f.dispatchWorkload, attempt, nil
 	}
 	return driveWorkload, attempt, nil
+}
+
+func (f *fakeEffects) Restart(ctx context.Context, item QueueItem, intent string) (string, int, error) {
+	f.record("restart", driveCall{ctx: ctx, item: item, intent: intent})
+	f.restarted++
+	if f.dispatchErr != nil {
+		return "", 0, f.dispatchErr
+	}
+	return driveWorkload, 1, nil
 }
 
 func (f *fakeEffects) Watch(ctx context.Context, workload string, baseline time.Duration,
@@ -646,7 +656,7 @@ func TestDriveLoop_StopsRatherThanSpinningOnACycle(t *testing.T) {
 	e := &fakeEffects{}
 	got, err := driveLoop(context.Background(), e,
 		QueueItem{Issue: driveIssue, Repo: driveRepo, IntentPath: "intent.md"},
-		driveIntent, dir, driveBaseline, driveFactor, cycle)
+		driveIntent, dir, driveBaseline, driveFactor, cycle, false)
 	if err == nil {
 		t.Fatal("driveLoop = nil, want a cycling machine refused rather than spun on")
 	}
@@ -766,5 +776,27 @@ func TestDrive_DispatchAttemptBelowOneIsAnError(t *testing.T) {
 	}
 	if e.verified != 0 {
 		t.Fatalf("verified %d times after a bad dispatch", e.verified)
+	}
+}
+
+// A maintainer's answer starts a new round: no preflight (the open draft PR
+// is the loop's own), Restart instead of Dispatch, and a fresh attempt
+// count, so one feedback pass is available again.
+func TestRestartItem_SkipsPreflightAndStartsAtAttemptOne(t *testing.T) {
+	e := &fakeEffects{skip: "an open PR already references it: x", verifyCleans: []bool{false, true}}
+	end, err := RestartItem(context.Background(), e,
+		QueueItem{Issue: driveIssue, Repo: driveRepo, IntentPath: "intent.md"},
+		driveIntent, t.TempDir(), driveBaseline, driveFactor)
+	if err != nil || end != StageDone {
+		t.Fatalf("RestartItem = %s, %v; want done", end, err)
+	}
+	if _, ran := e.calls["preflight"]; ran || e.dispatched != 0 || e.restarted != 1 {
+		t.Fatalf("preflight ran %v, dispatched %d, restarted %d; want only one Restart", ran, e.dispatched, e.restarted)
+	}
+	if e.calls["restart"].intent != driveIntent {
+		t.Fatalf("Restart got intent %q", e.calls["restart"].intent)
+	}
+	if len(e.redispatched) != 1 {
+		t.Fatalf("feedback passes = %d, want the round's one", len(e.redispatched))
 	}
 }

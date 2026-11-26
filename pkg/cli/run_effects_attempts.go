@@ -132,6 +132,46 @@ func (e *clusterEffects) Dispatch(ctx context.Context, item QueueItem, intent st
 	return name, attempt, nil
 }
 
+// Restart begins a new round for an item a maintainer answered. The live
+// Workload under the reserved name is deleted in the foreground and waited
+// out (bounded by deleteWaitTimeout); its branch and draft PR stay. The
+// Workload is then created again as attempt 1 with intent, revising the
+// branch when one was pushed, so the coder continues the draft PR instead of
+// opening a second one. A Workload under the name that is not running this
+// issue is somebody else's and is refused, as in Dispatch.
+func (e *clusterEffects) Restart(ctx context.Context, item QueueItem, intent string) (string, int, error) {
+	name := plannedWorkloadName(item.Issue)
+	w, err := e.existing(ctx, name)
+	if err != nil {
+		return "", 0, err
+	}
+	if w != nil {
+		if !slices.Contains(w.Spec.Issues, item.Issue) {
+			return "", 0, fmt.Errorf("workload %s exists but is not an issue-batch run for issue %d; leaving it alone",
+				name, item.Issue)
+		}
+		if w.DeletionTimestamp == nil {
+			if err := e.deleteWorkload(ctx, name); err != nil {
+				return "", 0, err
+			}
+		}
+		if err := e.waitGone(ctx, name); err != nil {
+			return "", 0, err
+		}
+	}
+	pushed, err := e.forge.BranchExists(ctx, e.repoFor(item), taskBranch(name, item.Issue))
+	if err != nil {
+		return "", 0, fmt.Errorf("restart issue %d: branch probe: %w", item.Issue, err)
+	}
+	fresh := e.newWorkload(name, item, intent, 1)
+	fresh.Spec.ReviseExistingBranch = pushed
+	if err := e.c.Create(ctx, fresh); err != nil {
+		return "", 0, fmt.Errorf("restart issue %d: create workload %s: %w", item.Issue, name, err)
+	}
+	e.remember(name, item)
+	return name, 1, nil
+}
+
 // lastBytes returns at most the last n bytes of s, starting on a rune
 // boundary so the coder is never handed a broken character.
 func lastBytes(s string, n int) string {
