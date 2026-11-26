@@ -47,9 +47,16 @@ const (
 
 // Reasons a planner park carries. "planner output unreadable" is what the
 // public park comment says, so it is pinned by tests.
+//
+// Notify posts Decision.Reason on the public issue, so a planner park's
+// Reason is always one of these fixed strings and never model text: the
+// model's own reason goes to Evidence["planner_reason"].
 const (
-	reasonUnreadable = "planner output unreadable"
-	reasonCallFailed = "planner call failed"
+	reasonUnreadable      = "planner output unreadable"
+	reasonCallFailed      = "planner call failed"
+	reasonNeedsDecision   = "the planner found a decision only a maintainer can make"
+	reasonNeedsSplit      = "the planner judged the issue too big for one run"
+	evidencePlannerReason = "planner_reason"
 )
 
 const (
@@ -87,14 +94,13 @@ func unreadable(format string, a ...any) error {
 func ParsePlanVerdict(raw string) (PlanVerdict, error) {
 	s := strings.TrimSpace(strings.ReplaceAll(raw, "\r\n", "\n"))
 	// A thinking model served without a reasoning parser puts its reasoning
-	// in the content. A closed block is dropped; an unclosed one is a
-	// completion that never got to its answer.
-	if rest, ok := strings.CutPrefix(s, "<think>"); ok {
-		_, after, closed := strings.Cut(rest, "</think>")
-		if !closed {
-			return PlanVerdict{}, unreadable("reasoning block never closed")
+	// in the content, sometimes without the opening tag. Everything through
+	// the first </think> is dropped; reasoning that never closed has no
+	// VERDICT line first and is unreadable.
+	if !strings.HasPrefix(s, "VERDICT:") {
+		if _, after, closed := strings.Cut(s, "</think>"); closed {
+			s = strings.TrimSpace(after)
 		}
-		s = strings.TrimSpace(after)
 	}
 	if s == "" {
 		return PlanVerdict{}, unreadable("empty answer")
@@ -191,6 +197,10 @@ type PlanConfig struct {
 	GPUPaths  []string
 	// Rules is inserted into the prompt verbatim under its own heading.
 	Rules string
+	// TrustedCommenters are the logins (matched case-insensitively) whose
+	// comments reach the prompt; empty means every comment does. Anyone can
+	// comment on a public issue.
+	TrustedCommenters []string
 	// BashTimeoutSeconds is the coder's bash time limit the prompt states;
 	// zero means 900.
 	BashTimeoutSeconds int
@@ -215,6 +225,11 @@ func PlanIssues(ctx context.Context, f RunForge, call PlannerCaller, repo, repoD
 	}
 	if cfg.BashTimeoutSeconds <= 0 {
 		cfg.BashTimeoutSeconds = defaultBashTimeoutSeconds
+	}
+	cfg.GPUPaths = cleanPrefixes(cfg.GPUPaths)
+	// Absolute, so `meitheal run` finds the intents from any directory.
+	if outDir, err = filepath.Abs(outDir); err != nil {
+		return Queue{}, fmt.Errorf("--out: %w", err)
 	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return Queue{}, fmt.Errorf("create --out: %w", err)
@@ -262,11 +277,13 @@ func (p planner) planOne(ctx context.Context, issue int32) (*QueueItem, []string
 		reason := fmt.Sprintf("labelled %q: a human decides this issue", p.cfg.DecisionLabel)
 		return nil, nil, p.park(issue, ParkNeedsDecision, reason, nil)
 	}
+	comments, omitted := trustedComments(d.Comments, p.cfg.TrustedCommenters)
 	prompt := buildIntentPrompt(intentPromptInput{
 		Issue:              issue,
 		Title:              d.Title,
 		Body:               d.Body,
-		Comments:           d.Comments,
+		Comments:           comments,
+		OmittedComments:    omitted,
 		Files:              p.listing.Files,
 		Named:              namedFileContents(p.listing.Root, p.listing.Files, d.Body),
 		Rules:              p.cfg.Rules,
@@ -291,17 +308,17 @@ func (p planner) planOne(ctx context.Context, issue int32) (*QueueItem, []string
 	}
 	switch v.Kind {
 	case VerdictNeedsDecision:
-		var ev map[string]string
+		ev := map[string]string{evidencePlannerReason: v.Reason}
 		if v.Intent != "" {
-			ev = map[string]string{"detail": v.Intent}
+			ev["detail"] = v.Intent
 		}
-		return nil, nil, p.park(issue, ParkNeedsDecision, v.Reason, ev)
+		return nil, nil, p.park(issue, ParkNeedsDecision, reasonNeedsDecision, ev)
 	case VerdictNeedsSplit:
-		var ev map[string]string
+		ev := map[string]string{evidencePlannerReason: v.Reason}
 		if v.Intent != "" {
-			ev = map[string]string{"drafts": v.Intent}
+			ev["drafts"] = v.Intent
 		}
-		return nil, nil, p.park(issue, ParkNeedsSplit, v.Reason, ev)
+		return nil, nil, p.park(issue, ParkNeedsSplit, reasonNeedsSplit, ev)
 	}
 
 	intentPath := filepath.Join(p.outDir, fmt.Sprintf("%d.intent.md", issue))
@@ -317,6 +334,42 @@ func (p planner) planOne(ctx context.Context, issue int32) (*QueueItem, []string
 	}
 	p.progress("issue %d: planned, lane %s, intent %s\n", issue, lane, intentPath)
 	return &QueueItem{Issue: issue, IntentPath: intentPath, Lane: lane}, v.Files, nil
+}
+
+// trustedComments keeps the comments by a trusted login and counts the rest.
+// No trusted logins means every comment is kept.
+func trustedComments(cs []IssueComment, trusted []string) ([]IssueComment, int) {
+	if len(trusted) == 0 {
+		return cs, 0
+	}
+	var kept []IssueComment
+	for _, c := range cs {
+		if slices.ContainsFunc(trusted, func(t string) bool { return strings.EqualFold(t, c.Author) }) {
+			kept = append(kept, c)
+		}
+	}
+	return kept, len(cs) - len(kept)
+}
+
+// cleanPrefixes cleans each GPU path prefix and keeps its trailing slash: a
+// prefix ending in "/" matches only files under that directory, one without
+// it is a plain string prefix ("crates/gpu" also matches "crates/gpu-extra/").
+func cleanPrefixes(prefixes []string) []string {
+	var out []string
+	for _, pre := range prefixes {
+		if strings.TrimSpace(pre) == "" {
+			continue
+		}
+		c := path.Clean(strings.TrimSpace(pre))
+		if c == "." {
+			continue
+		}
+		if strings.HasSuffix(pre, "/") && !strings.HasSuffix(c, "/") {
+			c += "/"
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // forcesGPU is the configured lane rule.
@@ -374,7 +427,7 @@ func capString(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "\n" + truncatedMarker
+	return cutUTF8(s, n) + "\n" + truncatedMarker
 }
 
 // writeQueue writes outDir/queue.yaml after checking it parses back. With
@@ -468,7 +521,9 @@ var pathTokenRE = regexp.MustCompile(`[\w./-]+`)
 // namedFileContents returns the tracked files the body mentions, in the
 // order it first mentions them, with their contents capped at namedFilesCap
 // bytes in total: the file that crosses the cap is cut there and marked, and
-// later ones are left out. Unreadable and binary files are skipped.
+// later ones are left out. Unreadable and binary files are skipped, and so is
+// anything that is not a regular file inside root: git tracks symlinks, and
+// a tracked link to a file outside the checkout must not be read.
 func namedFileContents(root string, files []string, body string) []namedFile {
 	tracked := make(map[string]bool, len(files))
 	for _, f := range files {
@@ -486,18 +541,53 @@ func namedFileContents(root string, files []string, body string) []namedFile {
 			continue
 		}
 		seen[name] = true
-		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
-		if err != nil || bytes.IndexByte(b, 0) >= 0 {
+		b, ok := readRegularFileInside(root, name)
+		if !ok || bytes.IndexByte(b, 0) >= 0 {
 			continue
 		}
 		nf := namedFile{Path: name, Content: string(b)}
 		if len(b) > budget {
-			nf.Content, nf.Truncated = string(b[:budget]), true
+			nf.Content, nf.Truncated = cutUTF8(string(b), budget), true
 		}
 		budget -= len(nf.Content)
 		out = append(out, nf)
+		if nf.Truncated {
+			break
+		}
 	}
 	return out
+}
+
+// readRegularFileInside reads root/name only when the cleaned path is inside
+// root, it is a regular file (not a symlink), and no directory on the way
+// resolves outside root.
+func readRegularFileInside(root, name string) ([]byte, bool) {
+	full := filepath.Join(root, filepath.FromSlash(name))
+	if rel, err := filepath.Rel(root, full); err != nil || rel == ".." ||
+		strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return nil, false
+	}
+	fi, err := os.Lstat(full)
+	if err != nil || !fi.Mode().IsRegular() {
+		return nil, false
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, false
+	}
+	realFull, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return nil, false
+	}
+	if rel, err := filepath.Rel(realRoot, realFull); err != nil || rel == ".." ||
+		strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, false
+	}
+	b, err := os.ReadFile(realFull)
+	if err != nil {
+		return nil, false
+	}
+	return b, true
 }
 
 // The command.
@@ -511,22 +601,23 @@ const (
 )
 
 type intentsOptions struct {
-	repo           string
-	issues         string
-	repoDir        string
-	out            string
-	hold           bool
-	plannerURL     string
-	plannerModel   string
-	plannerKwargs  string
-	plannerTimeout time.Duration
-	maxTokens      int
-	decisionsDir   string
-	rulesFile      string
-	gpuLabels      string
-	gpuPaths       string
-	decisionLabel  string
-	bashTimeout    int
+	repo              string
+	issues            string
+	repoDir           string
+	out               string
+	hold              bool
+	plannerURL        string
+	plannerModel      string
+	plannerKwargs     string
+	plannerTimeout    time.Duration
+	maxTokens         int
+	decisionsDir      string
+	rulesFile         string
+	gpuLabels         string
+	gpuPaths          string
+	trustedCommenters string
+	decisionLabel     string
+	bashTimeout       int
 }
 
 func newIntentsCommand() *cobra.Command {
@@ -546,6 +637,9 @@ in the queue.
 
 Rules that belong to one repository go in --rules-file; they reach the
 planner verbatim. --gpu-labels and --gpu-paths put an issue in the gpu lane.
+Anyone can comment on a public issue: --trusted-commenters limits the comments
+the planner reads to those logins. All issue and repository text reaches the
+planner fenced as data, never as instructions.
 
 The planner token is read from $%s and the GitHub token from $%s.
 
@@ -575,7 +669,10 @@ Example:
 	f.StringVar(&o.rulesFile, "rules-file", "", "File of repository-specific rules given to the planner verbatim")
 	f.StringVar(&o.gpuLabels, "gpu-labels", "", "Comma-separated issue labels that put an issue in the gpu lane")
 	f.StringVar(&o.gpuPaths, "gpu-paths", "",
-		"Comma-separated path prefixes; a planned file under one puts the issue in the gpu lane")
+		"Comma-separated path prefixes; a planned file starting with one puts the issue in the gpu lane. "+
+			"End a prefix with / to match only files under that directory")
+	f.StringVar(&o.trustedCommenters, "trusted-commenters", "",
+		"Comma-separated GitHub logins (any case) whose comments the planner reads; empty means all")
 	f.StringVar(&o.decisionLabel, "decision-label", "decision",
 		"Issue label that parks an issue for a human without calling the planner; empty disables")
 	f.IntVar(&o.bashTimeout, "bash-timeout-seconds", defaultBashTimeoutSeconds,
@@ -608,6 +705,7 @@ func runIntents(ctx context.Context, w io.Writer, o *intentsOptions) error {
 		DecisionLabel:      o.decisionLabel,
 		GPULabels:          splitList(o.gpuLabels),
 		GPUPaths:           splitList(o.gpuPaths),
+		TrustedCommenters:  splitList(o.trustedCommenters),
 		BashTimeoutSeconds: o.bashTimeout,
 		Progress:           w,
 	}
