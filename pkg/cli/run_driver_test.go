@@ -203,9 +203,9 @@ func (f *fakeEffects) Finalize(ctx context.Context, item QueueItem, workload, br
 	return f.finalizeErr
 }
 
-func (f *fakeEffects) Notify(_ context.Context, _ QueueItem, d Decision) error {
+func (f *fakeEffects) Notify(_ context.Context, _ QueueItem, d Decision) (ParkNotices, error) {
 	f.notified = append(f.notified, d)
-	return f.notifyErr
+	return ParkNotices{}, f.notifyErr
 }
 
 func driveItemUnderTest(ctx context.Context, e *fakeEffects, dir string) (Stage, error) {

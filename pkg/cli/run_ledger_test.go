@@ -59,7 +59,7 @@ func TestLedger_AppendsOneRecordPerItem(t *testing.T) {
 		t.Fatalf("ledger has %d records, want one per item:\n%v", len(lines), lines)
 	}
 	wantKeys := []string{"attempts", "ended", "finalStage", "issue", "lane", "parkKind", "prURL", "reason",
-		"started", "workload"}
+		"repo", "started", "workload"}
 	byIssue := map[int]map[string]any{}
 	for _, l := range lines {
 		var keys []string
@@ -105,7 +105,7 @@ func TestReadLedger_LastRecordPerIssue(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	last, err := ReadLedger(p)
+	last, err := ReadLedger(p, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestReadLedger_LastRecordPerIssue(t *testing.T) {
 
 func TestReadLedger_MissingIsEmptyAndBadLineIsAnError(t *testing.T) {
 	dir := t.TempDir()
-	last, err := ReadLedger(filepath.Join(dir, "none.jsonl"))
+	last, err := ReadLedger(filepath.Join(dir, "none.jsonl"), "")
 	if err != nil || len(last) != 0 {
 		t.Fatalf("missing ledger = %v, %v; want empty and no error", last, err)
 	}
@@ -131,7 +131,7 @@ func TestReadLedger_MissingIsEmptyAndBadLineIsAnError(t *testing.T) {
 	if err := os.WriteFile(p, []byte(`{"issue":52,"finalStage":"done"}`+"\n"+`{"issue":53,`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadLedger(p); err == nil || !strings.Contains(err.Error(), "line 2") {
+	if _, err := ReadLedger(p, ""); err == nil || !strings.Contains(err.Error(), "line 2") {
 		t.Fatalf("ReadLedger = %v, want an error naming line 2", err)
 	}
 }

@@ -1560,7 +1560,7 @@ func TestRenderGateJob_NilPlacement_Unchanged(t *testing.T) {
 
 func gpuPlacement() *meithealv1alpha1.GatePlacement {
 	return &meithealv1alpha1.GatePlacement{
-		NodeSelector: map[string]string{"kubernetes.io/hostname": "afi-spark-003"},
+		NodeSelector: map[string]string{"kubernetes.io/hostname": "gpu-node-1"},
 		Tolerations: []corev1.Toleration{
 			{Key: "nvidia.com/gpu", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
 		},
@@ -1589,7 +1589,7 @@ func TestRenderGateJob_PlacementApplied(t *testing.T) {
 	pod := job.Spec.Template.Spec
 	c := pod.Containers[0]
 
-	if pod.NodeSelector["kubernetes.io/hostname"] != "afi-spark-003" {
+	if pod.NodeSelector["kubernetes.io/hostname"] != "gpu-node-1" {
 		t.Errorf("nodeSelector: %v", pod.NodeSelector)
 	}
 	if len(pod.Tolerations) != 1 || pod.Tolerations[0].Key != "nvidia.com/gpu" ||

@@ -586,6 +586,16 @@ func TestRunCommand_RefusesBadParallel(t *testing.T) {
 	}
 }
 
+func TestRunCommand_RefusesANonPositiveGateDeadline(t *testing.T) {
+	queue, _ := runQueueFixture(t)
+	for _, v := range []string{"0", "-5"} {
+		_, err := meithealExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal", "--gate-deadline-seconds", v)
+		if err == nil || !strings.Contains(err.Error(), "--gate-deadline-seconds") {
+			t.Errorf("--gate-deadline-seconds %s: err = %v, want it refused by name", v, err)
+		}
+	}
+}
+
 func TestRunCommand_PlanIsNotADryRun(t *testing.T) {
 	_, err := meithealExec(t, "run", "--coder-agent", "coder-metal", "--plan", "--dry-run",
 		"--issues", "52", "--repo", "example/widgets")
@@ -619,7 +629,7 @@ func TestRunCommand_SharesThePlannerFlagsWithIntents(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"template", "parallel", "answerer", "notify-url", "ledger", "plan", "once",
-		"gate-allowed-host-paths", "gate-allowed-priority-classes"} {
+		"gate-allowed-host-paths", "gate-allowed-priority-classes", "gate-deadline-seconds"} {
 		if run.Flags().Lookup(name) == nil {
 			t.Errorf("run has no --%s", name)
 		}

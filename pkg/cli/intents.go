@@ -419,6 +419,7 @@ func (p planner) forcesGPU(labels, files []string) bool {
 // park's answers from the issue's history.
 func (p planner) park(issue int32, kind, reason string, evidence map[string]string) error {
 	where, err := ParkDecision(p.decisionsDir, Decision{
+		Repo:     p.repo,
 		Issue:    issue,
 		Stage:    intentsStage,
 		Kind:     kind,

@@ -347,3 +347,23 @@ func TestPollAnswers_ForgeErrorDoesNotStopOtherDecisions(t *testing.T) {
 		t.Fatalf("got %v, want issue 7 answered", got)
 	}
 }
+
+// A3: a decision written for another repository is never answered from
+// this repository's issue of the same number.
+func TestPollAnswers_IgnoresAnotherRepositorysDecision(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := ParkDecision(dir, Decision{
+		Repo: "o/other", Issue: 7, Kind: "needs-decision", Opened: answersT0,
+		Options: []string{"requeue", "decide", "drop"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f := newAnswersForge(map[int32][]IssueComment{7: {{Author: "Defilan", Body: "/meitheal drop", Created: at(1)}}})
+	got, _, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	if err != nil || len(got) != 0 || answerOf(t, dir) != "" {
+		t.Fatalf("answered = %+v, %v; want the other repository's decision left alone", got, err)
+	}
+	if _, asked := f.since[7]; asked {
+		t.Fatal("polled comments for another repository's decision")
+	}
+}

@@ -992,8 +992,7 @@ func TestFinalize_UpdatesPRBodyAndComments(t *testing.T) {
 	}
 	body := f.bodies[branch]
 	for _, want := range []string{"## Summary", "## Testing", "#42",
-		"Assisted-by: Meitheal; DeepSeek V4.1 Flash on a three-GB10 LLMKube ring wrote the change, " +
-			"Qwen3.8 Flash-Next reviewed it; gates: " +
+		"Assisted-by: Meitheal, with self-hosted models; gates: " +
 			"`cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, " +
 			"`cargo build --release`, `cargo test && bash tools/mutants.sh cpu`, " +
 			"`cargo test -p dluth-cuda && bash tools/mutants.sh all`",
@@ -1083,19 +1082,19 @@ func TestNotify_PublicCommentIsOneLine(t *testing.T) {
 		Reason:  "verify failed after the feedback pass",
 		Options: []string{"requeue", "decide", "hand-fix", "drop"},
 		Evidence: map[string]string{
-			"verify":  "ssh afi-spark-003: test failed\nGITHUB_TOKEN=ghp_x leaked",
-			"concern": "copies afi-spark-003's layout",
+			"verify":  "ssh gpu-host-7.lab.example.internal: test failed\nGITHUB_TOKEN=ghp_x leaked",
+			"concern": "copies gpu-host-7.lab.example.internal's layout",
 		},
 	}
 
-	if err := e.Notify(context.Background(), effItem("gpu"), d); err != nil {
+	if _, err := e.Notify(context.Background(), effItem("gpu"), d); err != nil {
 		t.Fatalf("Notify: %v", err)
 	}
 	want := "Meitheal parked this issue: verify failed after the feedback pass. Draft PR: " + url
 	if len(f.comments) != 1 || f.comments[0].body != want {
 		t.Fatalf("comments = %+v, want exactly %q", f.comments, want)
 	}
-	for _, leak := range []string{"afi-spark-003", "ghp_x", "requeue", "\n"} {
+	for _, leak := range []string{"gpu-host-7", "lab.example.internal", "ghp_x", "requeue", "\n"} {
 		if strings.Contains(f.comments[0].body, leak) {
 			t.Errorf("public comment contains %q", leak)
 		}
@@ -1121,7 +1120,7 @@ func TestNotify_NoPRMeansNoLinkAndNoLabel(t *testing.T) {
 	e := NewClusterEffects(c, effNS, f, testTemplate(), &fakeGateRunner{}, fastOpts())
 	d := Decision{Issue: effIssue, Workload: plannedWorkloadName(effIssue), Kind: ParkEscalate, Reason: "stalled",
 		Evidence: map[string]string{"verify": "ghp_x"}}
-	if err := e.Notify(context.Background(), effItem("cpu"), d); err != nil {
+	if _, err := e.Notify(context.Background(), effItem("cpu"), d); err != nil {
 		t.Fatalf("Notify: %v", err)
 	}
 	if len(f.comments) != 1 || f.comments[0].body != "Meitheal parked this issue: stalled." {
@@ -1138,7 +1137,7 @@ func TestNotify_ReasonIsFlattenedToOneLine(t *testing.T) {
 	f := newFakeRunForge()
 	e := NewClusterEffects(c, effNS, f, testTemplate(), &fakeGateRunner{}, fastOpts())
 	d := Decision{Issue: effIssue, Kind: ParkNeedsDecision, Reason: "planner output\nunreadable."}
-	if err := e.Notify(context.Background(), effItem("cpu"), d); err != nil {
+	if _, err := e.Notify(context.Background(), effItem("cpu"), d); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.comments[0].body; got != "Meitheal parked this issue: planner output unreadable." {
@@ -1157,7 +1156,7 @@ func TestNotify_WebhookNon2xxIsAnErrorButCommentStillPosts(t *testing.T) {
 	o.NotifyURL = srv.URL
 	e := NewClusterEffects(c, effNS, f, testTemplate(), &fakeGateRunner{}, o)
 	d := Decision{Issue: effIssue, Kind: ParkEscalate, Reason: "stalled"}
-	err := e.Notify(context.Background(), effItem("cpu"), d)
+	_, err := e.Notify(context.Background(), effItem("cpu"), d)
 	if err == nil || !strings.Contains(err.Error(), "502") {
 		t.Fatalf("err = %v, want the webhook's status", err)
 	}
@@ -1172,7 +1171,7 @@ func TestNotify_PRLookupErrorStillCommentsWithoutLink(t *testing.T) {
 	f.prErr = errors.New("api down")
 	e := NewClusterEffects(c, effNS, f, testTemplate(), &fakeGateRunner{}, fastOpts())
 	d := Decision{Issue: effIssue, Workload: plannedWorkloadName(effIssue), Kind: ParkEscalate, Reason: "stalled"}
-	err := e.Notify(context.Background(), effItem("cpu"), d)
+	_, err := e.Notify(context.Background(), effItem("cpu"), d)
 	if err == nil {
 		t.Fatal("want the PR lookup error reported")
 	}
@@ -1441,5 +1440,25 @@ func TestRestart_NoBranchStartsFreshAndForeignWorkloadIsRefused(t *testing.T) {
 	}
 	if got := getWorkload(t, c, plannedWorkloadName(effIssue)).Spec.Intent; got != "manual" {
 		t.Fatalf("other run's Workload changed: %q", got)
+	}
+}
+
+// A4: the attribution comes from the template, verbatim, with the gates
+// appended; unset, the neutral default above is used.
+func TestFinalize_AttributionComesFromTheTemplate(t *testing.T) {
+	c := newEffectsClient(t, nil)
+	f := newFakeRunForge()
+	tpl := testTemplate()
+	tpl.AssistedBy = "Assisted-by: Meitheal; example-coder wrote the change, example-reviewer reviewed it"
+	e := NewClusterEffects(c, effNS, f, tpl, &fakeGateRunner{}, fastOpts())
+	name := dispatched(t, e, "cpu")
+	branch := taskBranch(name, effIssue)
+	f.prs[branch] = "https://example.test/pr/9"
+	if err := e.Finalize(context.Background(), effItem("cpu"), name, branch); err != nil {
+		t.Fatal(err)
+	}
+	want := tpl.AssistedBy + "; gates: `cargo fmt --all -- --check`"
+	if body := f.bodies[branch]; !strings.Contains(body, want) || strings.Contains(body, defaultAssistedBy) {
+		t.Fatalf("PR body lacks %q, or carries the default:\n%s", want, body)
 	}
 }

@@ -334,7 +334,7 @@ type AgentSpec struct {
 
 	// ToolOutputRewrites are literal string rewrites applied to every tool
 	// result before it enters the transcript. Use them to defuse
-	// chat-template marker strings (for example a Qwen "<|im_start|>" in
+	// chat-template marker strings (for example a ChatML "<|im_start|>" in
 	// source or fixtures) that a model would otherwise read as its own
 	// special tokens. Each From matches literally and in its JSON-escaped
 	// form. Unset leaves tool output untouched.

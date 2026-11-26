@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -32,6 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	sigsyaml "sigs.k8s.io/yaml"
 
 	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
@@ -157,11 +160,11 @@ func (s *scriptEffects) Redispatch(context.Context, QueueItem, string, string, s
 
 func (s *scriptEffects) Finalize(context.Context, QueueItem, string, string) error { return nil }
 
-func (s *scriptEffects) Notify(_ context.Context, _ QueueItem, d Decision) error {
+func (s *scriptEffects) Notify(_ context.Context, _ QueueItem, d Decision) (ParkNotices, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.notified = append(s.notified, d)
-	return nil
+	return ParkNotices{}, nil
 }
 
 // loopForge serves issues and comments, honours since, and records what the
@@ -330,13 +333,13 @@ func (e *loopEnv) park(t *testing.T, issue int32, kind, stage string, notified b
 	t.Helper()
 	opened := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
 	if _, err := ParkDecision(e.cfg.DecisionsDir, Decision{
-		Issue: issue, Workload: plannedWorkloadName(issue), Stage: stage, Kind: kind, Opened: opened,
+		Repo: e.cfg.Repo, Issue: issue, Workload: plannedWorkloadName(issue), Stage: stage, Kind: kind, Opened: opened,
 		Reason: "stalled", Options: optionsFor(kind),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if notified {
-		if err := MarkNotified(e.cfg.DecisionsDir, issue, kind, opened.Add(time.Minute)); err != nil {
+		if err := RecordNotices(e.cfg.DecisionsDir, issue, kind, ParkNotices{}, true, opened.Add(time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -682,9 +685,14 @@ func TestDecision_FileWithoutNotifiedParses(t *testing.T) {
 	if !ok || d.Notified != nil {
 		t.Fatalf("old decision = %+v, %v; want it parsed with no notified stamp", d, ok)
 	}
-	env.run(t, nil)
+	// A park from before decisions named their repository is this run's
+	// only when its issue is in the queue.
+	env.run(t, env.queue(t, QueueItem{Issue: 61}))
 	if n := env.effects.notifications(); len(n) != 1 || n[0].Issue != 61 {
 		t.Fatalf("notified = %+v, want the old park announced once", n)
+	}
+	if got := env.effects.preflighted(); len(got) != 0 {
+		t.Fatalf("driven = %v, want 61 kept parked by its old decision", got)
 	}
 }
 
@@ -904,7 +912,7 @@ func TestRunLoopDoc_TemplateLoads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the documented template does not load: %v", err)
 	}
-	if tpl.GPUGate == nil || tpl.GPUNode == "" || len(tpl.Spec.ReviewerAgentRefs) != 1 {
+	if tpl.GPUGate == nil || tpl.GPUNode == "" || len(tpl.Spec.ReviewerAgentRefs) != 1 || tpl.AssistedBy == "" {
 		t.Fatalf("template = %+v", tpl)
 	}
 }
@@ -1049,7 +1057,7 @@ func TestReadLedger_IgnoresATornLastLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	logs := &logSink{}
-	last, err := readLedger(p, logs.logf)
+	last, err := readLedger(p, "", logs.logf)
 	if err != nil || last[52].FinalStage != ledgerDone || len(last) != 1 {
 		t.Fatalf("readLedger = %v, %v; want 52 and the torn line ignored", last, err)
 	}
@@ -1060,7 +1068,7 @@ func TestReadLedger_IgnoresATornLastLine(t *testing.T) {
 	if err := NewLedger(p).Append(LedgerRecord{Issue: 54, FinalStage: ledgerDone}); err != nil {
 		t.Fatal(err)
 	}
-	if last, err = readLedger(p, logs.logf); err != nil || last[54].FinalStage != ledgerDone {
+	if last, err = readLedger(p, "", logs.logf); err != nil || last[54].FinalStage != ledgerDone {
 		t.Fatalf("after an append: %v, %v", last, err)
 	}
 }
@@ -1079,5 +1087,225 @@ func TestRun_DropWithoutAForgeWaits(t *testing.T) {
 	}
 	if env.logs.count("no forge") != 1 {
 		t.Fatalf("log = %s", env.logs)
+	}
+}
+
+// flakyForge fails the next failComments issue comments and counts the
+// comment reads.
+type flakyForge struct {
+	*loopForge
+	failMu       sync.Mutex
+	failComments int
+	reads        int
+}
+
+func (f *flakyForge) CommentsSince(
+	ctx context.Context, repo string, issue int32, since time.Time,
+) ([]IssueComment, error) {
+	f.failMu.Lock()
+	f.reads++
+	f.failMu.Unlock()
+	return f.loopForge.CommentsSince(ctx, repo, issue, since)
+}
+
+func (f *flakyForge) CommentIssue(ctx context.Context, repo string, issue int32, body string) error {
+	f.failMu.Lock()
+	if f.failComments > 0 {
+		f.failComments--
+		f.failMu.Unlock()
+		return errors.New("forge unavailable")
+	}
+	f.failMu.Unlock()
+	return f.loopForge.CommentIssue(ctx, repo, issue, body)
+}
+
+// noticeEnv announces a planner park for 60 through the real cluster
+// Effects, with a webhook that answers status codes from codes in turn (the
+// last repeats).
+func noticeEnv(t *testing.T, failComments int, codes ...int) (*loopEnv, *flakyForge, *int) {
+	t.Helper()
+	env := newLoopEnv(t)
+	var mu sync.Mutex
+	pings := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.WriteHeader(codes[min(pings, len(codes)-1)])
+		pings++
+	}))
+	t.Cleanup(srv.Close)
+	forge := &flakyForge{loopForge: env.forge, failComments: failComments}
+	o := fastOpts()
+	o.NotifyURL = srv.URL
+	env.cfg.Forge = forge
+	env.cfg.Answerer = "" // only Notify reads comments here
+	env.cfg.Effects = NewClusterEffects(newEffectsClient(t, nil), effNS, forge, neutralTemplate(), &fakeGateRunner{}, o)
+	env.park(t, 60, ParkNeedsSplit, intentsStage, false)
+	return env, forge, &pings
+}
+
+// A2: a comment that fails is retried on the next cycle and posted once.
+func TestRun_FailedParkCommentIsRetriedAndPostedOnce(t *testing.T) {
+	env, forge, _ := noticeEnv(t, 1, http.StatusNoContent)
+	l := newRunLoop(env.cfg)
+	l.answerCycle(context.Background())
+	if d, _ := env.decision(t, 60, ParkNeedsSplit); d.Notified != nil || len(forge.postedTo(60)) != 0 {
+		t.Fatalf("after a failed comment: notified %v, posted %q; want neither", d.Notified, forge.postedTo(60))
+	}
+	l.answerCycle(context.Background())
+	l.answerCycle(context.Background())
+	if got := forge.postedTo(60); len(got) != 1 || !strings.HasPrefix(got[0], parkCommentPrefix) {
+		t.Fatalf("posted = %q, want the park comment exactly once", got)
+	}
+	if d, _ := env.decision(t, 60, ParkNeedsSplit); d.Notified == nil {
+		t.Fatal("park not stamped once every notice went out")
+	}
+}
+
+// A2: a failed ping is retried without posting the comment again.
+func TestRun_FailedPingIsRetriedWithoutRepostingTheComment(t *testing.T) {
+	env, forge, pings := noticeEnv(t, 0, http.StatusBadGateway, http.StatusNoContent)
+	l := newRunLoop(env.cfg)
+	l.answerCycle(context.Background())
+	d, _ := env.decision(t, 60, ParkNeedsSplit)
+	if d.Notified != nil || d.Notices == nil || d.Notices.Comment == nil || d.Notices.Ping != nil {
+		t.Fatalf("after a failed ping: %+v / %+v; want the comment recorded and the ping not", d.Notified, d.Notices)
+	}
+	l.answerCycle(context.Background())
+	l.answerCycle(context.Background())
+	if got := forge.postedTo(60); len(got) != 1 {
+		t.Fatalf("posted = %q, want the comment once", got)
+	}
+	if *pings != 2 {
+		t.Fatalf("pings = %d, want the failed one and its retry", *pings)
+	}
+	// The comment is recorded as sent, so the retry does not even look for it.
+	if forge.reads != 1 {
+		t.Fatalf("comment reads = %d, want one: the retry skips the recorded comment", forge.reads)
+	}
+	if d, _ := env.decision(t, 60, ParkNeedsSplit); d.Notified == nil {
+		t.Fatal("park not stamped after the ping went out")
+	}
+}
+
+// A2: the park comment is not posted twice when the first one went out but
+// was never recorded (a lost response, a crash before the stamp).
+func TestNotify_ParkCommentAlreadyThereIsNotPostedAgain(t *testing.T) {
+	forge := newLoopForge()
+	opened := time.Now().Add(-time.Hour)
+	forge.comments[60] = []IssueComment{
+		{Author: "meitheal-bot", Body: parkCommentPrefix + "stalled.", Created: opened.Add(-time.Hour)},
+	}
+	e := NewClusterEffects(newEffectsClient(t, nil), effNS, forge, neutralTemplate(), &fakeGateRunner{}, fastOpts())
+	d := Decision{Issue: 60, Kind: ParkEscalate, Reason: "stalled", Opened: opened, Repo: loopRepo}
+	// An earlier park's identical line, before this park opened, does not count.
+	if _, err := e.Notify(context.Background(), QueueItem{Issue: 60, Repo: loopRepo}, d); err != nil {
+		t.Fatal(err)
+	}
+	n, err := e.Notify(context.Background(), QueueItem{Issue: 60, Repo: loopRepo}, d)
+	if err != nil || n.Comment == nil {
+		t.Fatalf("second Notify = %+v, %v; want the comment counted as done", n, err)
+	}
+	if got := forge.postedTo(60); len(got) != 1 {
+		t.Fatalf("posted = %q, want one comment for this park", got)
+	}
+}
+
+// writeRawDecision writes a decision file as another run, or an older
+// release, would have.
+func writeRawDecision(t *testing.T, dir string, d Decision) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	b, err := sigsyaml.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(decisionPath(dir, d.Issue, d.Kind), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A3: a park written for another repository is not this run's: it does not
+// park the same-numbered issue here, it is not announced, and an answer on
+// this repository's issue of that number does not answer it.
+func TestRun_AnotherRepositorysParkIsLeftAlone(t *testing.T) {
+	env := newLoopEnv(t)
+	opened := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	writeRawDecision(t, env.cfg.DecisionsDir, Decision{
+		Repo: "example/other", Issue: 52, Kind: ParkEscalate, Stage: string(StageWatch), Opened: opened,
+		Reason: "stalled", Options: optionsFor(ParkEscalate),
+	})
+	env.forge.answer(52, "/meitheal drop", opened.Add(time.Minute))
+	env.run(t, env.queue(t, QueueItem{Issue: 52}))
+
+	if got := env.effects.preflighted(); !reflect.DeepEqual(got, []int32{52}) {
+		t.Fatalf("driven = %v, want this repository's 52 driven", got)
+	}
+	if n := env.effects.notifications(); len(n) != 0 {
+		t.Fatalf("notified = %+v, want the other repository's park left alone", n)
+	}
+	d, ok := env.decision(t, 52, ParkEscalate)
+	if !ok || d.Answer != "" || d.Notified != nil {
+		t.Fatalf("other repository's decision = %+v, %v; want it untouched", d, ok)
+	}
+	if got := env.forge.postedTo(52); len(got) != 0 {
+		t.Fatalf("posted %q", got)
+	}
+}
+
+// A3: a park with no repository outside the queue may be another run's: it
+// is neither announced nor answered.
+func TestRun_LegacyParkOutsideTheQueueIsLeftAlone(t *testing.T) {
+	env := newLoopEnv(t)
+	opened := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	writeRawDecision(t, env.cfg.DecisionsDir, Decision{
+		Issue: 70, Kind: ParkEscalate, Stage: string(StageWatch), Opened: opened,
+		Reason: "stalled", Options: optionsFor(ParkEscalate),
+	})
+	env.forge.answer(70, "/meitheal drop", opened.Add(time.Minute))
+	env.run(t, nil)
+	if n := env.effects.notifications(); len(n) != 0 {
+		t.Fatalf("notified = %+v", n)
+	}
+	if d, _ := env.decision(t, 70, ParkEscalate); d.Answer != "" {
+		t.Fatalf("legacy park outside the queue was answered: %+v", d)
+	}
+	if _, err := os.Stat(env.cfg.LedgerPath); !os.IsNotExist(err) {
+		t.Fatal("legacy park outside the queue was acted on")
+	}
+}
+
+// A3: a ledger record for another repository does not finish this one's
+// issue of the same number.
+func TestRun_AnotherRepositorysLedgerIsIgnored(t *testing.T) {
+	env := newLoopEnv(t)
+	if err := NewLedger(env.cfg.LedgerPath).Append(LedgerRecord{
+		Repo: "example/other", Issue: 52, FinalStage: ledgerDone,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	env.run(t, env.queue(t, QueueItem{Issue: 52}))
+	if got := env.effects.preflighted(); !reflect.DeepEqual(got, []int32{52}) {
+		t.Fatalf("driven = %v, want 52 driven: the done record is another repository's", got)
+	}
+	if led := env.ledger(t); len(led[52]) != 2 {
+		t.Fatalf("ledger = %+v", led)
+	}
+	for _, l := range ledgerLines(t, env.cfg.LedgerPath)[1:] {
+		if l["repo"] != loopRepo {
+			t.Fatalf("new record %v does not name the repository", l)
+		}
+	}
+}
+
+// A3: every park the loop writes names its repository.
+func TestRun_ParksNameTheirRepository(t *testing.T) {
+	env := newLoopEnv(t)
+	env.effects.outcomes = map[int32][]string{52: {"park"}}
+	env.run(t, env.queue(t, QueueItem{Issue: 52}))
+	if d, ok := env.decision(t, 52, ParkEscalate); !ok || d.Repo != loopRepo {
+		t.Fatalf("decision = %+v, want repo %q", d, loopRepo)
 	}
 }

@@ -47,6 +47,8 @@ import (
 const (
 	defaultDecisionsDir = ".meitheal/decisions"
 	defaultLedgerPath   = ".meitheal/ledger.jsonl"
+	// defaultGateDeadlineSeconds matches run_gate_job's own default.
+	defaultGateDeadlineSeconds = 1800
 	// notifyURLEnv is read when --notify-url is not given, so a URL that
 	// carries a token need not sit in the process arguments.
 	notifyURLEnv = "MEITHEAL_NOTIFY_URL"
@@ -69,6 +71,7 @@ type runOptions struct {
 	once                bool
 	gateHostPaths       string
 	gatePriorityClasses string
+	gateDeadline        int
 	planner             intentsOptions
 }
 
@@ -93,7 +96,7 @@ The queue comes from --queue (written by 'meitheal intents' or by hand) or
 from --plan, which plans --issues first with the same planner flags as
 'meitheal intents'. Workloads are built from --template, a YAML file with
 the keys spec (a Workload spec: agents, gateProfile, maxReviewIterations),
-gpuGate and gpuNode. --coder-agent fills spec.coderAgentRef.
+gpuGate, gpuNode and assistedBy (the PR's attribution line). --coder-agent fills spec.coderAgentRef.
 
 Items run in two lanes, cpu and gpu, at most --parallel of each at once,
 and an item waits for every issue in its 'after' list to finish.
@@ -146,7 +149,7 @@ Example:
 		"Kill a run with no branch after this multiple of baseline")
 	f.BoolVar(&opts.dryRun, "dry-run", false, "Print what would happen without applying anything")
 	f.StringVar(&opts.templateFile, "template", "",
-		"Workload template YAML (spec, gpuGate, gpuNode); required for a live run")
+		"Workload template YAML (spec, gpuGate, gpuNode, assistedBy); required for a live run")
 	f.StringVar(&opts.parallel, "parallel", "cpu=1,gpu=1", "Items run at once per lane, as cpu=N,gpu=M")
 	f.StringVar(&opts.answerer, "answerer", "", "The one GitHub login whose '/meitheal' comments answer a park")
 	f.StringVar(&opts.notifyURL, "notify-url", "",
@@ -159,6 +162,8 @@ Example:
 		"Comma-separated host directories a gate profile's placement may mount; empty allows none")
 	f.StringVar(&opts.gatePriorityClasses, "gate-allowed-priority-classes", "",
 		"Comma-separated priority classes a gate profile's placement may request; empty allows none")
+	f.IntVar(&opts.gateDeadline, "gate-deadline-seconds", defaultGateDeadlineSeconds,
+		"Wall-clock limit of one gate Job, in seconds")
 	addPlannerFlags(f, &opts.planner, " (with --plan)")
 	// A queue-less run has nothing to do, and an agent-less run would have
 	// to guess which box does the work.
@@ -244,6 +249,9 @@ func runLive(ctx context.Context, w io.Writer, opts *runOptions) error {
 	if err != nil {
 		return fmt.Errorf("--parallel: %w", err)
 	}
+	if opts.gateDeadline <= 0 {
+		return fmt.Errorf("--gate-deadline-seconds must be greater than 0, got %d", opts.gateDeadline)
+	}
 	var q Queue
 	if !opts.plan {
 		if q, _, err = loadRunQueue(opts.queueFile); err != nil {
@@ -300,6 +308,7 @@ func runLive(ctx context.Context, w io.Writer, opts *runOptions) error {
 		Namespace:              opts.namespace,
 		AllowedHostPaths:       splitList(opts.gateHostPaths),
 		AllowedPriorityClasses: splitList(opts.gatePriorityClasses),
+		ActiveDeadlineSeconds:  int32(min(opts.gateDeadline, math.MaxInt32)), //nolint:gosec // G115: clamped
 		LogTailFn:              podLogTail(kcs),
 	})
 	notifyURL := opts.notifyURL
@@ -389,11 +398,11 @@ func planForRun(ctx context.Context, w io.Writer, f RunForge, call PlannerCaller
 			}
 		}
 	}
-	last, err := ReadLedger(opts.ledgerPath)
+	last, err := ReadLedger(opts.ledgerPath, runRepo)
 	if err != nil {
 		return nil, err
 	}
-	parked, err := parkedIssues(opts.decisionsDir)
+	parked, err := parkedIssues(opts.decisionsDir, runRepo)
 	if err != nil {
 		return nil, err
 	}
@@ -464,7 +473,9 @@ func newRunClients() (client.Client, kubernetes.Interface, error) {
 // gate hands the feedback pass. Like the meitheal-agent's own helper
 // (cmd/meitheal-agent makePodLogTailFn) it finds the Job's one pod by the
 // modern job-name label or the legacy one, and anything unexpected yields "".
-// Unlike it, it keeps the END of the log: that is where a gate fails.
+// Unlike it, it asks the API server for the END of the log (TailLines) and
+// keeps the last MaxLogTailBytes of that: that is where a gate fails, and a
+// large log is never read from the start.
 func podLogTail(kcs kubernetes.Interface) func(ctx context.Context, namespace, jobName string) string {
 	return func(ctx context.Context, namespace, jobName string) string {
 		for _, selector := range []string{"batch.kubernetes.io/job-name=" + jobName, "job-name=" + jobName} {
@@ -472,7 +483,9 @@ func podLogTail(kcs kubernetes.Interface) func(ctx context.Context, namespace, j
 			if err != nil || len(pods.Items) != 1 {
 				continue
 			}
-			stream, err := kcs.CoreV1().Pods(namespace).GetLogs(pods.Items[0].Name, &corev1.PodLogOptions{}).Stream(ctx)
+			tail := int64(gateLogTailLines)
+			stream, err := kcs.CoreV1().Pods(namespace).GetLogs(pods.Items[0].Name,
+				&corev1.PodLogOptions{TailLines: &tail}).Stream(ctx)
 			if err != nil {
 				return ""
 			}
@@ -484,8 +497,12 @@ func podLogTail(kcs kubernetes.Interface) func(ctx context.Context, namespace, j
 	}
 }
 
-// maxGateLogRead bounds how much of a gate log is read to find its end.
-const maxGateLogRead = 64 << 20
+// gateLogTailLines is how many lines from the end of a gate log are fetched,
+// and maxGateLogRead bounds the bytes read from them (a line can be long).
+const (
+	gateLogTailLines = 2000
+	maxGateLogRead   = 8 << 20
+)
 
 // checkStallFactor refuses a stall budget that would kill every run.
 //

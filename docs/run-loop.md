@@ -31,7 +31,9 @@ items:
   dependency is finalized, dropped or hand-fixed. The run refuses a queue that lists an issue twice
   or whose `after` lists form a cycle.
 - One run works in one repository: answers are read from that
-  repository's issues.
+  repository's issues. Decision files and ledger records name their
+  repository, and a run ignores those of another. A decision from before
+  they did is announced and answered only when its issue is in the queue.
 
 `--plan` plans `--issues` first with the planner flags `meitheal intents`
 takes (`--repo`, `--repo-dir`, `--planner-url`, `--rules-file`,
@@ -66,7 +68,15 @@ gpuGate:                   # optional: the second gate for gpu-lane items
   placement:
     nodeSelector: {kubernetes.io/hostname: gpu-node-1}
 gpuNode: gpu-node-1        # checked for a serving model before each GPU gate
+assistedBy: "Assisted-by: Meitheal; example-coder wrote the change, example-reviewer reviewed it"
 ```
+
+`assistedBy` is the attribution line every finalized PR ends with, used as
+written, with `; gates:` and the gate commands that ran appended. Without
+it the line is `Assisted-by: Meitheal, with self-hosted models`.
+
+`--gate-deadline-seconds` (default 1800) is the wall-clock limit of one
+gate Job.
 
 `--coder-agent` fills `spec.coderAgentRef`; a template that names a
 different coder is refused. Unknown keys are an error, so a misspelt
@@ -96,8 +106,10 @@ Every park is announced once: a one-line comment on the issue (the reason,
 and the draft PR link when there is one; never logs or evidence), the
 `meitheal:parked` label on the draft PR, and, when `--notify-url` (or
 `$MEITHEAL_NOTIFY_URL`) is set, a JSON POST with the whole decision. The
-decision file records when it was announced (`notified`), so a restart does
-not announce it again.
+decision file records each notice that went out (`notices`) and when all of
+them had (`notified`). A notice that failed is retried on every answer
+cycle without repeating the ones that went out, and the comment is not
+posted again when this park's line is already on the issue.
 
 ## Answering a park
 
@@ -141,7 +153,7 @@ Each drive's end, and each answer that finishes an item, is one JSON line
 in `--ledger` (default `.meitheal/ledger.jsonl`):
 
 ```json
-{"issue":52,"lane":"cpu","workload":"wl-52","attempts":1,"finalStage":"done","parkKind":"","reason":"finalized","prURL":"https://github.com/example/widgets/pull/60","started":"...","ended":"..."}
+{"repo":"example/widgets","issue":52,"lane":"cpu","workload":"wl-52","attempts":1,"finalStage":"done","parkKind":"","reason":"finalized","prURL":"https://github.com/example/widgets/pull/60","started":"...","ended":"..."}
 ```
 
 `finalStage` is `done` (finalized or hand-fixed), `skipped` (preflight

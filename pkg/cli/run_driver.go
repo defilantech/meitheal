@@ -76,9 +76,12 @@ type Effects interface {
 	Redispatch(ctx context.Context, item QueueItem, workload, intent, evidence string) error
 	// Finalize opens the pull request for a clean verify.
 	Finalize(ctx context.Context, item QueueItem, workload, branch string) error
-	// Notify tells a human a decision was parked. A failure is logged by the
-	// driver and never unparks the item.
-	Notify(ctx context.Context, item QueueItem, d Decision) error
+	// Notify tells a human a decision was parked, on every channel that
+	// d.Notices does not already show as done, and returns the channels that
+	// are done now. Each is recorded only once it succeeded, so a caller can
+	// retry a failure without repeating what went out. A failure is logged
+	// by the driver and never unparks the item.
+	Notify(ctx context.Context, item QueueItem, d Decision) (ParkNotices, error)
 }
 
 // taskBranch is the branch Meitheal's coder pushes for a Workload. It mirrors
@@ -290,6 +293,10 @@ func driveLoop(
 				Kind:     t.Park,
 				Reason:   t.Reason,
 				Options:  optionsFor(t.Park),
+				Repo:     item.Repo,
+				// Set here, not left to ParkDecision, so Notify sees the
+				// same park time the file records.
+				Opened: time.Now().UTC(),
 			}
 			// Only when verify actually produced some: a stall is killed
 			// before verify runs, and an empty "verify" key would claim a
@@ -312,7 +319,7 @@ func driveLoop(
 			// Told after the decision is on disk: a ping about a park that was
 			// never written would send a human to nothing. A failed ping is a
 			// missed notification, not a missed park, so it never unparks.
-			if err := e.Notify(ctx, item, d); err != nil {
+			if _, err := e.Notify(ctx, item, d); err != nil {
 				log.Printf("notify for issue %d (%s) failed: %v", item.Issue, d.Kind, err)
 			}
 			return StageParked, nil

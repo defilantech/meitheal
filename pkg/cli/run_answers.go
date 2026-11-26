@@ -69,8 +69,19 @@ type RejectedAnswer struct {
 // I/O failures, so one stale comment cannot fail every poll; a failure on one
 // decision does not stop the others, and the errors come back joined alongside
 // whatever was answered.
+//
+// Only decisions of repo are polled: one written for another repository
+// names an issue number that means something else here. A decision from
+// before decisions recorded their repository is polled too; the run loop,
+// which knows its queue, narrows that further.
 func PollAnswers(
 	ctx context.Context, f RunForge, dir, repo, answerer string,
+) (answered []Decision, rejected []RejectedAnswer, err error) {
+	return pollAnswers(ctx, f, dir, repo, answerer, func(d Decision) bool { return d.Repo == "" || d.Repo == repo })
+}
+
+func pollAnswers(
+	ctx context.Context, f RunForge, dir, repo, answerer string, owns func(Decision) bool,
 ) (answered []Decision, rejected []RejectedAnswer, err error) {
 	decisions, listErr := ListDecisions(dir)
 	errs := []error{listErr}
@@ -80,7 +91,7 @@ func PollAnswers(
 	for _, d := range decisions {
 		// Without a park time there is no way to tell this park's comments
 		// from the issue's whole history.
-		if d.Answer != "" || d.Opened.IsZero() {
+		if d.Answer != "" || d.Opened.IsZero() || !owns(d) {
 			continue
 		}
 		comments, cerr := f.CommentsSince(ctx, repo, d.Issue, d.Opened)

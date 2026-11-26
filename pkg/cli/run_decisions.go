@@ -45,11 +45,28 @@ type Decision struct {
 	Options  []string          `json:"options,omitempty"`
 	// Answer is empty until a human answers it.
 	Answer string `json:"answer,omitempty"`
-	// Notified is when the run loop announced the park (Effects.Notify).
-	// Nil means it has not been announced yet: the loop announces it on its
-	// next answer cycle. A file written before the field existed parses with
-	// nil and is announced once.
+	// Notified is when every notice of the park went out (Effects.Notify).
+	// Nil means some have not yet: the loop retries them on its next answer
+	// cycle. A file written before the field existed parses with nil and is
+	// announced once.
 	Notified *time.Time `json:"notified,omitempty"`
+	// Notices records each notice channel that went out, so a retry sends
+	// only the ones that failed.
+	Notices *ParkNotices `json:"notices,omitempty"`
+	// Repo is the repository the issue is in. Decisions written before the
+	// field existed have none; the run loop then acts on one only when its
+	// issue is in the run's queue.
+	Repo string `json:"repo,omitempty"`
+}
+
+// ParkNotices is when each notice of a park succeeded; nil is not yet.
+type ParkNotices struct {
+	// Comment is the one-line public comment on the issue.
+	Comment *time.Time `json:"comment,omitempty"`
+	// Label is the parked label on the draft PR.
+	Label *time.Time `json:"label,omitempty"`
+	// Ping is the POST to the notify URL.
+	Ping *time.Time `json:"ping,omitempty"`
 }
 
 // decisionsMu serialises this process's read-modify-write of decision files.
@@ -288,9 +305,10 @@ func AnswerDecision(dir string, issue int32, kind, answer string) error {
 	return writeDecisionFile(p, out)
 }
 
-// MarkNotified stamps a parked decision as announced at the given time, so
-// the run loop does not announce it again.
-func MarkNotified(dir string, issue int32, kind string, at time.Time) error {
+// RecordNotices saves which notices of a park went out and, when complete,
+// stamps the park as fully announced at the given time, so the run loop
+// retries only what failed and never announces a park twice.
+func RecordNotices(dir string, issue int32, kind string, n ParkNotices, complete bool, at time.Time) error {
 	if err := checkDecisionKind(kind); err != nil {
 		return err
 	}
@@ -305,8 +323,11 @@ func MarkNotified(dir string, issue int32, kind string, at time.Time) error {
 	if err := yaml.Unmarshal(b, &d); err != nil {
 		return fmt.Errorf("parse decision %s: %w", p, err)
 	}
-	t := at.UTC()
-	d.Notified = &t
+	d.Notices = &n
+	if complete {
+		t := at.UTC()
+		d.Notified = &t
+	}
 	out, err := yaml.Marshal(d)
 	if err != nil {
 		return fmt.Errorf("marshal decision: %w", err)
@@ -328,11 +349,12 @@ func RemoveDecision(dir string, issue int32, kind string) error {
 	return nil
 }
 
-// parkedIssues names every issue with a decision file in dir, read from the
-// file names ("<issue>-<kind>.yaml") rather than their contents: a file that
-// no longer parses still means a human was asked, and the issue must stay
-// parked until someone looks at it. A missing directory parks nothing.
-func parkedIssues(dir string) (map[int32]bool, error) {
+// parkedIssues names every issue of repo with a decision file in dir. The
+// issue comes from the file name ("<issue>-<kind>.yaml"), so a file that no
+// longer parses still parks its issue: a human was asked, and the issue
+// stays parked until someone looks at it. A file that parses and names
+// another repository parks nothing here. A missing directory parks nothing.
+func parkedIssues(dir, repo string) (map[int32]bool, error) {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return map[int32]bool{}, nil
@@ -349,9 +371,17 @@ func parkedIssues(dir string) (map[int32]bool, error) {
 		if !ok {
 			continue
 		}
-		if n, err := strconv.ParseInt(num, 10, 32); err == nil {
-			out[int32(n)] = true
+		n, err := strconv.ParseInt(num, 10, 32)
+		if err != nil {
+			continue
 		}
+		if b, err := os.ReadFile(filepath.Join(dir, e.Name())); err == nil {
+			var d Decision
+			if yaml.Unmarshal(b, &d) == nil && d.Repo != "" && d.Repo != repo {
+				continue
+			}
+		}
+		out[int32(n)] = true
 	}
 	return out, nil
 }

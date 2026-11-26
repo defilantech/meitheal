@@ -185,7 +185,7 @@ func (l *runLoop) run(ctx context.Context, items []QueueItem) error {
 	if err := checkOneRepo(items, l.cfg.Repo); err != nil {
 		return err
 	}
-	last, err := readLedger(l.cfg.LedgerPath, l.cfg.Logf)
+	last, err := readLedger(l.cfg.LedgerPath, l.cfg.Repo, l.cfg.Logf)
 	if err != nil {
 		return err
 	}
@@ -197,7 +197,7 @@ func (l *runLoop) run(ctx context.Context, items []QueueItem) error {
 	if err := restoreReplanBackups(l.cfg.DecisionsDir); err != nil {
 		return err
 	}
-	parked, err := parkedIssues(l.cfg.DecisionsDir)
+	parked, err := parkedIssues(l.cfg.DecisionsDir, l.cfg.Repo)
 	if err != nil {
 		return err
 	}
@@ -366,7 +366,7 @@ func (l *runLoop) drive(ctx context.Context, item QueueItem) (Stage, error) {
 		return stage, err
 	}
 	r := LedgerRecord{
-		Issue: item.Issue, Lane: laneOf(item), Workload: rec.workload, Attempts: rec.attempts,
+		Repo: item.Repo, Issue: item.Issue, Lane: laneOf(item), Workload: rec.workload, Attempts: rec.attempts,
 		PRURL: rec.prURL, Started: started.UTC(), Ended: l.cfg.Now().UTC(),
 	}
 	switch {
@@ -456,20 +456,28 @@ func (r *recordingEffects) Redispatch(ctx context.Context, item QueueItem, workl
 	return err
 }
 
-// Notify stamps the park even when Notify reported an error: its steps run
-// independently, so the public comment may well have gone out, and
-// re-announcing on every cycle would repeat it. The error is the driver's
-// to log. A stop signal is the exception: the park is left unstamped so the
-// restart announces it.
-func (r *recordingEffects) Notify(ctx context.Context, item QueueItem, d Decision) error {
+// Notify records which notices went out. The park counts as announced only
+// when all of them did; the answer cycle retries the rest. The error is the
+// driver's to log.
+func (r *recordingEffects) Notify(ctx context.Context, item QueueItem, d Decision) (ParkNotices, error) {
 	r.parked = &d
-	err := r.Effects.Notify(ctx, item, d)
-	if ctx.Err() == nil {
-		if serr := MarkNotified(r.dir, d.Issue, d.Kind, r.now()); serr != nil {
-			r.logf("issue %d: stamp notified: %v", d.Issue, serr)
-		}
+	n, err := r.Effects.Notify(ctx, item, d)
+	if serr := RecordNotices(r.dir, d.Issue, d.Kind, n, err == nil, r.now()); serr != nil {
+		r.logf("issue %d: record notices: %v", d.Issue, serr)
 	}
-	return err
+	return n, err
+}
+
+// owns reports whether a decision is this run's to announce and answer: it
+// names the run's repository, or it names none (written before decisions
+// recorded one) and its issue is in the run's queue. A legacy park outside
+// the queue may belong to another repository's run sharing the directory.
+func (l *runLoop) owns(d Decision) bool {
+	if d.Repo != "" {
+		return d.Repo == l.cfg.Repo
+	}
+	_, queued := l.items[d.Issue]
+	return queued
 }
 
 // itemFor is the queue item for an issue, or a minimal one in the run's
@@ -488,7 +496,7 @@ func (l *runLoop) answerCycle(ctx context.Context) {
 		return
 	}
 	if l.cfg.Answerer != "" && l.cfg.Forge != nil {
-		_, rejected, err := PollAnswers(ctx, l.cfg.Forge, l.cfg.DecisionsDir, l.cfg.Repo, l.cfg.Answerer)
+		_, rejected, err := pollAnswers(ctx, l.cfg.Forge, l.cfg.DecisionsDir, l.cfg.Repo, l.cfg.Answerer, l.owns)
 		if err != nil {
 			l.logf("reading answers: %v", err)
 		}
@@ -506,7 +514,7 @@ func (l *runLoop) answerCycle(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if d.Answer == "" || l.finished[d.Issue] {
+		if d.Answer == "" || l.finished[d.Issue] || !l.owns(d) {
 			continue
 		}
 		// Only a parked item, or a park outside the queue, takes an answer
@@ -671,7 +679,7 @@ func (l *runLoop) drop(ctx context.Context, d Decision) {
 func (l *runLoop) finishByAnswer(d Decision, stage, reason string) {
 	now := l.cfg.Now().UTC()
 	if err := l.ledger.Append(LedgerRecord{
-		Issue: d.Issue, Lane: laneOf(l.itemFor(d.Issue)), Workload: d.Workload,
+		Repo: l.cfg.Repo, Issue: d.Issue, Lane: laneOf(l.itemFor(d.Issue)), Workload: d.Workload,
 		FinalStage: stage, ParkKind: d.Kind, Reason: reason, Started: now, Ended: now,
 	}); err != nil {
 		l.logf("issue %d: %v (the answer is tried again next cycle)", d.Issue, err)
@@ -684,28 +692,27 @@ func (l *runLoop) finishByAnswer(d Decision, stage, reason string) {
 	l.logf("issue %d: %s", d.Issue, reason)
 }
 
-// notifyParked announces every unanswered park that has not been announced
-// (a planner park, or one an earlier run could not stamp) and stamps it.
+// notifyParked announces every unanswered park that has not been fully
+// announced (a planner park, or one whose notice failed) and records what
+// went out; a failed notice is retried next cycle.
 func (l *runLoop) notifyParked(ctx context.Context) {
 	ds, _ := ListDecisions(l.cfg.DecisionsDir)
 	for _, d := range ds {
 		if ctx.Err() != nil {
 			return
 		}
-		if d.Answer != "" || d.Notified != nil || l.finished[d.Issue] {
+		if d.Answer != "" || d.Notified != nil || l.finished[d.Issue] || !l.owns(d) {
 			continue
 		}
 		if st, known := l.state[d.Issue]; known && st == stateRunning {
 			continue
 		}
-		if err := l.cfg.Effects.Notify(ctx, l.itemFor(d.Issue), d); err != nil {
-			l.logf("notify for issue %d (%s) failed: %v", d.Issue, d.Kind, err)
+		n, err := l.cfg.Effects.Notify(ctx, l.itemFor(d.Issue), d)
+		if err != nil {
+			l.logf("notify for issue %d (%s) failed, retried next cycle: %v", d.Issue, d.Kind, err)
 		}
-		if ctx.Err() != nil {
-			return
-		}
-		if err := MarkNotified(l.cfg.DecisionsDir, d.Issue, d.Kind, l.cfg.Now()); err != nil {
-			l.logf("issue %d: stamp notified: %v", d.Issue, err)
+		if rerr := RecordNotices(l.cfg.DecisionsDir, d.Issue, d.Kind, n, err == nil, l.cfg.Now()); rerr != nil {
+			l.logf("issue %d: record notices: %v", d.Issue, rerr)
 		}
 	}
 }

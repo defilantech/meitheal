@@ -48,10 +48,15 @@ type WorkloadTemplate struct {
 	// GPUNode is the node the GPU gate runs on, checked for a serving
 	// model before each GPU gate run.
 	GPUNode string `json:"gpuNode,omitempty"`
+	// AssistedBy is the attribution line every finalized PR ends with, used
+	// verbatim (for example "Assisted-by: Meitheal; <coder> wrote the
+	// change, <reviewer> reviewed it"); "; gates: " and the gate commands
+	// that ran are appended. Empty uses a neutral default.
+	AssistedBy string `json:"assistedBy,omitempty"`
 }
 
 // LoadWorkloadTemplate reads a WorkloadTemplate from a YAML file with the
-// keys spec, gpuGate and gpuNode. Unknown keys are an error: a misspelt
+// keys spec, gpuGate, gpuNode and assistedBy. Unknown keys are an error: a misspelt
 // gpuGate would otherwise drop the GPU gate without a word.
 func LoadWorkloadTemplate(path string) (WorkloadTemplate, error) {
 	b, err := os.ReadFile(path)

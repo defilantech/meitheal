@@ -219,7 +219,7 @@ func TestGateProfileResolve(t *testing.T) {
 
 func TestResolveGateProfile_PlacementPassThrough(t *testing.T) {
 	placement := &GatePlacement{
-		NodeSelector: map[string]string{"kubernetes.io/hostname": "afi-spark-003"},
+		NodeSelector: map[string]string{"kubernetes.io/hostname": "gpu-node-1"},
 		Tolerations: []corev1.Toleration{
 			{Key: "nvidia.com/gpu", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
 		},

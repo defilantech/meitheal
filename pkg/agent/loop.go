@@ -206,7 +206,7 @@ type LoopConfig struct {
 
 	// ToolOutputRewrites are literal substring rewrites applied to every
 	// tool result's final content string before it enters the transcript,
-	// so chat-template marker strings in tool output (e.g. a Qwen
+	// so chat-template marker strings in tool output (e.g. a ChatML
 	// "<|im_start|>" inside a source file) reach the model defused. Each
 	// From is matched literally and in its json.Marshal-escaped form. The
 	// executor maps Agent.spec.toolOutputRewrites here. Nil or empty leaves

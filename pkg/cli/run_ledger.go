@@ -49,6 +49,9 @@ const (
 // one answer that finished it, ended. Every key is always written, so a
 // reader can rely on the shape.
 type LedgerRecord struct {
+	// Repo is the repository the issue is in; records from before it was
+	// written have none and count for any repository.
+	Repo       string    `json:"repo,omitempty"`
 	Issue      int32     `json:"issue"`
 	Lane       string    `json:"lane"`
 	Workload   string    `json:"workload"`
@@ -139,12 +142,13 @@ func cutTornTail(f *os.File) error {
 // what keeps a finished item from being driven again, and guessing past a
 // damaged line could re-run a finalize. The one exception is a last line
 // with no newline, which is what a crash in the middle of an append leaves:
-// it is ignored and logged.
-func ReadLedger(path string) (map[int32]LedgerRecord, error) {
-	return readLedger(path, log.Printf)
+// it is ignored and logged. Records for a repository other than repo are
+// ignored; an empty repo reads them all.
+func ReadLedger(path, repo string) (map[int32]LedgerRecord, error) {
+	return readLedger(path, repo, log.Printf)
 }
 
-func readLedger(path string, logf func(string, ...any)) (map[int32]LedgerRecord, error) {
+func readLedger(path, repo string, logf func(string, ...any)) (map[int32]LedgerRecord, error) {
 	out := map[int32]LedgerRecord{}
 	b, err := os.ReadFile(path) //nolint:gosec // G304: operator-supplied path
 	if os.IsNotExist(err) {
@@ -172,6 +176,9 @@ func readLedger(path string, logf func(string, ...any)) (map[int32]LedgerRecord,
 				continue
 			}
 			return nil, fmt.Errorf("ledger %s line %d does not parse: %w", path, n, err)
+		}
+		if repo != "" && r.Repo != "" && r.Repo != repo {
+			continue
 		}
 		out[r.Issue] = r
 	}

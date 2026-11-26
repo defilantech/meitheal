@@ -31,10 +31,9 @@ import (
 	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
 
-// assistedByPrefix is the attribution line every finalized PR carries, ahead
-// of the gate commands that actually ran.
-const assistedByPrefix = "Assisted-by: Meitheal; DeepSeek V4.1 Flash on a three-GB10 LLMKube ring " +
-	"wrote the change, Qwen3.8 Flash-Next reviewed it; gates: "
+// defaultAssistedBy is the attribution a finalized PR carries when the
+// template sets none. The gate commands that ran are appended to it.
+const defaultAssistedBy = "Assisted-by: Meitheal, with self-hosted models"
 
 // readyMarker is hidden in the ready comment so a rerun of Finalize (a
 // restarted loop going round a finished item again) does not post it twice.
@@ -105,7 +104,11 @@ func (e *clusterEffects) prBody(ctx context.Context, item QueueItem, workload st
 		quoted[i] = "`" + g + "`"
 		b.WriteString("- " + quoted[i] + "\n")
 	}
-	b.WriteString("\n" + assistedByPrefix + strings.Join(quoted, ", ") + "\n")
+	attribution := e.tpl.AssistedBy
+	if strings.TrimSpace(attribution) == "" {
+		attribution = defaultAssistedBy
+	}
+	b.WriteString("\n" + attribution + "; gates: " + strings.Join(quoted, ", ") + "\n")
 	return b.String()
 }
 
@@ -151,19 +154,33 @@ func publicReason(r string) string {
 	return r
 }
 
+// parkCommentPrefix starts every public park comment.
+const parkCommentPrefix = "Meitheal parked this issue: "
+
 // Notify posts the public one-line park comment, labels the draft PR when
-// there is one, and POSTs the full decision to NotifyURL when set.
+// there is one, and POSTs the full decision to NotifyURL when set. A channel
+// d.Notices already shows as done is skipped, and each one is recorded in
+// the returned notices only when it succeeded, so a retry sends only what
+// failed.
 //
 // The public comment is built from the reason and the PR link ONLY. Evidence
 // (gate logs, concern text) and options never reach it: a log can carry a
 // hostname or a token, and the answer options are for the one human allowed
 // to answer. Every step runs even when an earlier one fails; the errors come
 // back joined for the driver to log.
-func (e *clusterEffects) Notify(ctx context.Context, item QueueItem, d Decision) error {
-	repo := e.repoFor(item)
+func (e *clusterEffects) Notify(ctx context.Context, item QueueItem, d Decision) (ParkNotices, error) {
+	var n ParkNotices
+	if d.Notices != nil {
+		n = *d.Notices
+	}
+	now := e.o.Now().UTC()
+	repo := d.Repo
+	if repo == "" {
+		repo = e.repoFor(item)
+	}
 	var errs []error
 	prURL, branch := "", ""
-	if d.Workload != "" {
+	if d.Workload != "" && (n.Comment == nil || n.Label == nil) {
 		branch = taskBranch(d.Workload, d.Issue)
 		u, err := e.forge.PRForBranch(ctx, repo, branch)
 		if err != nil {
@@ -172,24 +189,53 @@ func (e *clusterEffects) Notify(ctx context.Context, item QueueItem, d Decision)
 			prURL = u
 		}
 	}
-	comment := "Meitheal parked this issue: " + publicReason(d.Reason) + "."
+	if n.Comment == nil {
+		if err := e.postParkComment(ctx, repo, d, prURL); err != nil {
+			errs = append(errs, fmt.Errorf("notify issue %d: comment: %w", d.Issue, err))
+		} else {
+			n.Comment = &now
+		}
+	}
+	if prURL != "" && n.Label == nil {
+		if err := e.forge.LabelPR(ctx, repo, branch, parkedLabel); err != nil {
+			errs = append(errs, fmt.Errorf("notify issue %d: label PR: %w", d.Issue, err))
+		} else {
+			n.Label = &now
+		}
+	}
+	if e.o.NotifyURL != "" && n.Ping == nil {
+		if err := e.postNotify(ctx, d); err != nil {
+			errs = append(errs, fmt.Errorf("notify issue %d: webhook: %w", d.Issue, err))
+		} else {
+			n.Ping = &now
+		}
+	}
+	return n, errors.Join(errs...)
+}
+
+// postParkComment posts the park's public line unless this park's line is
+// already on the issue: a comment since the park opened that starts with the
+// same reason counts, with or without the PR link, so a retry after a lost
+// response or a failed lookup does not post it twice. A park with no open
+// time cannot be told from an earlier one's and is always posted.
+func (e *clusterEffects) postParkComment(ctx context.Context, repo string, d Decision, prURL string) error {
+	line := parkCommentPrefix + publicReason(d.Reason) + "."
+	if !d.Opened.IsZero() {
+		comments, err := e.forge.CommentsSince(ctx, repo, d.Issue, d.Opened)
+		if err != nil {
+			return fmt.Errorf("read comments: %w", err)
+		}
+		for _, c := range comments {
+			if strings.HasPrefix(strings.TrimSpace(c.Body), line) {
+				return nil
+			}
+		}
+	}
+	comment := line
 	if prURL != "" {
 		comment += " Draft PR: " + prURL
 	}
-	if err := e.forge.CommentIssue(ctx, repo, d.Issue, comment); err != nil {
-		errs = append(errs, fmt.Errorf("notify issue %d: comment: %w", d.Issue, err))
-	}
-	if prURL != "" {
-		if err := e.forge.LabelPR(ctx, repo, branch, parkedLabel); err != nil {
-			errs = append(errs, fmt.Errorf("notify issue %d: label PR: %w", d.Issue, err))
-		}
-	}
-	if e.o.NotifyURL != "" {
-		if err := e.postNotify(ctx, d); err != nil {
-			errs = append(errs, fmt.Errorf("notify issue %d: webhook: %w", d.Issue, err))
-		}
-	}
-	return errors.Join(errs...)
+	return e.forge.CommentIssue(ctx, repo, d.Issue, comment)
 }
 
 // postNotify sends the decision to the private webhook. Errors never carry

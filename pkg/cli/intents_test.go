@@ -287,6 +287,9 @@ func assertPlannerPark(t *testing.T, d Decision, issue int32, kind, reason strin
 	if d.Opened.IsZero() {
 		t.Fatal("decision has no Opened time; PollAnswers would never read its answers")
 	}
+	if d.Repo != planRepo {
+		t.Fatalf("decision repo = %q, want %q", d.Repo, planRepo)
+	}
 	if !reflect.DeepEqual(d.Options, optionsFor(kind)) {
 		t.Fatalf("options = %v, want %v", d.Options, optionsFor(kind))
 	}
