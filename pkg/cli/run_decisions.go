@@ -22,7 +22,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"sigs.k8s.io/yaml"
@@ -43,7 +45,20 @@ type Decision struct {
 	Options  []string          `json:"options,omitempty"`
 	// Answer is empty until a human answers it.
 	Answer string `json:"answer,omitempty"`
+	// Notified is when the run loop announced the park (Effects.Notify).
+	// Nil means it has not been announced yet: the loop announces it on its
+	// next answer cycle. A file written before the field existed parses with
+	// nil and is announced once.
+	Notified *time.Time `json:"notified,omitempty"`
 }
+
+// decisionsMu serialises this process's read-modify-write of decision files.
+// The run loop's lanes park and stamp files while its answer cycle records
+// answers, and two writers of one file would otherwise lose one write. Other
+// processes (a human's 'meitheal decisions answer') are not covered; the
+// atomic rename keeps every file whole, and an answer lost that way is
+// re-read from the issue comment on the next poll.
+var decisionsMu sync.Mutex
 
 // checkDecisionKind rejects a kind that would steer the path out of dir.
 // `meitheal decisions answer ISSUE KIND ANSWER` takes the kind straight off the
@@ -118,6 +133,8 @@ func ParkDecision(dir string, d Decision) (string, error) {
 	if err := checkDecisionKind(d.Kind); err != nil {
 		return "", err
 	}
+	decisionsMu.Lock()
+	defer decisionsMu.Unlock()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create decisions dir: %w", err)
 	}
@@ -228,6 +245,8 @@ func AnswerDecision(dir string, issue int32, kind, answer string) error {
 	if answer == "" {
 		return fmt.Errorf("decision answer must not be empty")
 	}
+	decisionsMu.Lock()
+	defer decisionsMu.Unlock()
 	p := decisionPath(dir, issue, kind)
 	b, err := os.ReadFile(p)
 	if err != nil {
@@ -267,4 +286,72 @@ func AnswerDecision(dir string, issue int32, kind, answer string) error {
 		return fmt.Errorf("marshal decision: %w", err)
 	}
 	return writeDecisionFile(p, out)
+}
+
+// MarkNotified stamps a parked decision as announced at the given time, so
+// the run loop does not announce it again.
+func MarkNotified(dir string, issue int32, kind string, at time.Time) error {
+	if err := checkDecisionKind(kind); err != nil {
+		return err
+	}
+	decisionsMu.Lock()
+	defer decisionsMu.Unlock()
+	p := decisionPath(dir, issue, kind)
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return fmt.Errorf("read decision %s: %w", p, err)
+	}
+	var d Decision
+	if err := yaml.Unmarshal(b, &d); err != nil {
+		return fmt.Errorf("parse decision %s: %w", p, err)
+	}
+	t := at.UTC()
+	d.Notified = &t
+	out, err := yaml.Marshal(d)
+	if err != nil {
+		return fmt.Errorf("marshal decision: %w", err)
+	}
+	return writeDecisionFile(p, out)
+}
+
+// RemoveDecision deletes a decision file. One that is already gone is not an
+// error.
+func RemoveDecision(dir string, issue int32, kind string) error {
+	if err := checkDecisionKind(kind); err != nil {
+		return err
+	}
+	decisionsMu.Lock()
+	defer decisionsMu.Unlock()
+	if err := os.Remove(decisionPath(dir, issue, kind)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove decision: %w", err)
+	}
+	return nil
+}
+
+// parkedIssues names every issue with a decision file in dir, read from the
+// file names ("<issue>-<kind>.yaml") rather than their contents: a file that
+// no longer parses still means a human was asked, and the issue must stay
+// parked until someone looks at it. A missing directory parks nothing.
+func parkedIssues(dir string) (map[int32]bool, error) {
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return map[int32]bool{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read decisions dir: %w", err)
+	}
+	out := map[int32]bool{}
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".yaml" {
+			continue
+		}
+		num, _, ok := strings.Cut(e.Name(), "-")
+		if !ok {
+			continue
+		}
+		if n, err := strconv.ParseInt(num, 10, 32); err == nil {
+			out[int32(n)] = true
+		}
+	}
+	return out, nil
 }

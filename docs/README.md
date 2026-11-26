@@ -348,6 +348,9 @@ progress while keeping `source.onmessage` for completed turns.
 - **[Model compatibility table](/docs/model-compatibility)**: which
   models the v0.4 reviewer and coder roles have been empirically
   validated against.
+- **[The run loop](/docs/run-loop)**: `meitheal run` drives a queue of
+  issues to draft PRs unattended, parks judgment calls, and takes answers
+  from issue comments.
 
 ## Where to file issues
 

@@ -127,7 +127,14 @@ type intentPromptInput struct {
 	Named              []namedFile
 	Rules              string
 	BashTimeoutSeconds int
+	// MaintainerDecision is a decision the repository's maintainer made for
+	// this issue, from the one login allowed to answer a park. It is placed
+	// after the data blocks, as settled, not fenced as untrusted text.
+	MaintainerDecision string
 }
+
+// maintainerDecisionHeading introduces a maintainer's decision in the prompt.
+const maintainerDecisionHeading = "A maintainer of this repository has decided the following for this issue."
 
 // newNonce returns 16 random bytes as hex. A reader of a public issue cannot
 // guess it, so untrusted text cannot close its own data block.
@@ -227,6 +234,13 @@ func buildIntentPrompt(in intentPromptInput) string {
 			}
 			block(&b, "File "+oneLine(f.Path)+":", content)
 		}
+	}
+
+	if d := strings.TrimSpace(in.MaintainerDecision); d != "" {
+		b.WriteString("\n" + maintainerDecisionHeading + " It is settled: follow it, and do not answer\n" +
+			"needs-decision for the question it settles.\n\n")
+		b.WriteString(d)
+		b.WriteString("\n")
 	}
 
 	b.WriteString("\nEnd of the data. Reminder: follow the rules at the top of this message")

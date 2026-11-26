@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 	sigsyaml "sigs.k8s.io/yaml"
 )
@@ -206,6 +207,11 @@ type PlanConfig struct {
 	BashTimeoutSeconds int
 	// Progress, when set, gets one line per issue.
 	Progress io.Writer
+	// MaintainerDecisions maps an issue to a decision its maintainer made
+	// (a '/meitheal decide' answer). It reaches that issue's prompt as
+	// settled, and the decision label no longer parks the issue: the human
+	// it was waiting for has decided. Nil adds nothing.
+	MaintainerDecisions map[int32]string
 }
 
 // PlanIssues asks the planner for an intent for each issue, writes each
@@ -216,12 +222,30 @@ type PlanConfig struct {
 // stops the run with an error.
 func PlanIssues(ctx context.Context, f RunForge, call PlannerCaller, repo, repoDir string, issues []int32,
 	outDir, decisionsDir string, cfg PlanConfig) (Queue, error) {
-	if err := checkIssueList(issues); err != nil {
+	q, err := planIssuesTo(ctx, f, call, repo, repoDir, issues, outDir, decisionsDir, cfg)
+	if err != nil {
 		return Queue{}, err
+	}
+	return q.Queue, writeQueue(q.outDir, q.Queue)
+}
+
+// plannedQueue is a planned queue and the absolute directory its intents
+// were written to.
+type plannedQueue struct {
+	Queue
+	outDir string
+}
+
+// planIssuesTo is PlanIssues without writing queue.yaml: the run loop
+// re-plans one issue at a time and keeps its own queue file.
+func planIssuesTo(ctx context.Context, f RunForge, call PlannerCaller, repo, repoDir string, issues []int32,
+	outDir, decisionsDir string, cfg PlanConfig) (plannedQueue, error) {
+	if err := checkIssueList(issues); err != nil {
+		return plannedQueue{}, err
 	}
 	listing, err := repoFiles(repoDir)
 	if err != nil {
-		return Queue{}, err
+		return plannedQueue{}, err
 	}
 	if cfg.BashTimeoutSeconds <= 0 {
 		cfg.BashTimeoutSeconds = defaultBashTimeoutSeconds
@@ -229,10 +253,10 @@ func PlanIssues(ctx context.Context, f RunForge, call PlannerCaller, repo, repoD
 	cfg.GPUPaths = cleanPrefixes(cfg.GPUPaths)
 	// Absolute, so `meitheal run` finds the intents from any directory.
 	if outDir, err = filepath.Abs(outDir); err != nil {
-		return Queue{}, fmt.Errorf("--out: %w", err)
+		return plannedQueue{}, fmt.Errorf("--out: %w", err)
 	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return Queue{}, fmt.Errorf("create --out: %w", err)
+		return plannedQueue{}, fmt.Errorf("create --out: %w", err)
 	}
 	p := planner{f: f, call: call, repo: repo, listing: listing, outDir: outDir, decisionsDir: decisionsDir,
 		cfg: cfg}
@@ -241,7 +265,7 @@ func PlanIssues(ctx context.Context, f RunForge, call PlannerCaller, repo, repoD
 	for _, issue := range issues {
 		item, files, err := p.planOne(ctx, issue)
 		if err != nil {
-			return Queue{}, err
+			return plannedQueue{}, err
 		}
 		if item == nil {
 			continue
@@ -254,7 +278,7 @@ func PlanIssues(ctx context.Context, f RunForge, call PlannerCaller, repo, repoD
 		planned[issue] = files
 		q.Items = append(q.Items, *item)
 	}
-	return q, writeQueue(outDir, q)
+	return plannedQueue{Queue: q, outDir: outDir}, nil
 }
 
 type planner struct {
@@ -273,7 +297,8 @@ func (p planner) planOne(ctx context.Context, issue int32) (*QueueItem, []string
 	if err != nil {
 		return nil, nil, fmt.Errorf("fetch issue %d: %w", issue, err)
 	}
-	if p.cfg.DecisionLabel != "" && slices.Contains(d.Labels, p.cfg.DecisionLabel) {
+	decided := strings.TrimSpace(p.cfg.MaintainerDecisions[issue])
+	if decided == "" && p.cfg.DecisionLabel != "" && slices.Contains(d.Labels, p.cfg.DecisionLabel) {
 		reason := fmt.Sprintf("labelled %q: a human decides this issue", p.cfg.DecisionLabel)
 		return nil, nil, p.park(issue, ParkNeedsDecision, reason, nil)
 	}
@@ -288,6 +313,7 @@ func (p planner) planOne(ctx context.Context, issue int32) (*QueueItem, []string
 		Named:              namedFileContents(p.listing.Root, p.listing.Files, d.Body),
 		Rules:              p.cfg.Rules,
 		BashTimeoutSeconds: p.cfg.BashTimeoutSeconds,
+		MaintainerDecision: decided,
 	})
 	raw, err := p.call(ctx, prompt)
 	if ctxErr := ctx.Err(); ctxErr != nil {
@@ -654,18 +680,29 @@ Example:
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&o.repo, "repo", "", "Repository as owner/name (required)")
-	f.StringVar(&o.issues, "issues", "", "Comma-separated issue numbers to plan (required)")
-	f.StringVar(&o.repoDir, "repo-dir", "", "A git checkout of the repository at its base branch (required)")
-	f.StringVar(&o.out, "out", defaultIntentsOut, "Where the intents and queue.yaml are written")
+	addPlannerFlags(f, o, " (required)")
 	f.BoolVar(&o.hold, "hold", false, "Write the intents and queue, then stop for review")
-	f.StringVar(&o.plannerURL, "planner-url", "", "OpenAI-compatible base URL of the planner model (required)")
+	f.StringVar(&o.decisionsDir, "decisions-dir", defaultDecisionsDir, "Where parked decisions are written")
+	for _, name := range []string{"repo", "issues", "repo-dir", "planner-url"} {
+		_ = cmd.MarkFlagRequired(name)
+	}
+	return cmd
+}
+
+// addPlannerFlags registers the planner flags 'meitheal intents' and
+// 'meitheal run --plan' share, so the two cannot drift apart. need is
+// appended to the usage of the flags a plan cannot do without.
+func addPlannerFlags(f *pflag.FlagSet, o *intentsOptions, need string) {
+	f.StringVar(&o.repo, "repo", "", "Repository as owner/name"+need)
+	f.StringVar(&o.issues, "issues", "", "Comma-separated issue numbers to plan"+need)
+	f.StringVar(&o.repoDir, "repo-dir", "", "A git checkout of the repository at its base branch"+need)
+	f.StringVar(&o.out, "out", defaultIntentsOut, "Where the intents and queue.yaml are written")
+	f.StringVar(&o.plannerURL, "planner-url", "", "OpenAI-compatible base URL of the planner model"+need)
 	f.StringVar(&o.plannerModel, "planner-model", "", "Planner model name to send in the request")
 	f.StringVar(&o.plannerKwargs, "planner-kwargs", defaultPlannerKwargs,
 		"JSON object sent as chat_template_kwargs; empty or {} sends none")
 	f.DurationVar(&o.plannerTimeout, "planner-timeout", 30*time.Minute, "Time limit for one planner call")
 	f.IntVar(&o.maxTokens, "max-tokens", 16000, "max_tokens for one planner call")
-	f.StringVar(&o.decisionsDir, "decisions-dir", defaultDecisionsDir, "Where parked decisions are written")
 	f.StringVar(&o.rulesFile, "rules-file", "", "File of repository-specific rules given to the planner verbatim")
 	f.StringVar(&o.gpuLabels, "gpu-labels", "", "Comma-separated issue labels that put an issue in the gpu lane")
 	f.StringVar(&o.gpuPaths, "gpu-paths", "",
@@ -677,29 +714,23 @@ Example:
 		"Issue label that parks an issue for a human without calling the planner; empty disables")
 	f.IntVar(&o.bashTimeout, "bash-timeout-seconds", defaultBashTimeoutSeconds,
 		"The coder's bash time limit, stated to the planner")
-	for _, name := range []string{"repo", "issues", "repo-dir", "planner-url"} {
-		_ = cmd.MarkFlagRequired(name)
-	}
-	return cmd
 }
 
-func runIntents(ctx context.Context, w io.Writer, o *intentsOptions) error {
-	issues, err := parseIssueList(o.issues)
-	if err != nil {
-		return fmt.Errorf("--issues: %w", err)
-	}
+// plannerSetup checks the planner flags and builds the PlanConfig and the
+// planner call they describe. progress receives one line per planned issue.
+func (o *intentsOptions) plannerSetup(progress io.Writer) (PlanConfig, PlannerCaller, error) {
 	kwargs, err := parsePlannerKwargs(o.plannerKwargs)
 	if err != nil {
-		return fmt.Errorf("--planner-kwargs: %w", err)
+		return PlanConfig{}, nil, fmt.Errorf("--planner-kwargs: %w", err)
 	}
 	if o.maxTokens <= 0 {
-		return fmt.Errorf("--max-tokens must be greater than 0, got %d", o.maxTokens)
+		return PlanConfig{}, nil, fmt.Errorf("--max-tokens must be greater than 0, got %d", o.maxTokens)
 	}
 	if o.bashTimeout <= 0 {
-		return fmt.Errorf("--bash-timeout-seconds must be greater than 0, got %d", o.bashTimeout)
+		return PlanConfig{}, nil, fmt.Errorf("--bash-timeout-seconds must be greater than 0, got %d", o.bashTimeout)
 	}
 	if o.plannerTimeout <= 0 {
-		return fmt.Errorf("--planner-timeout must be greater than 0, got %s", o.plannerTimeout)
+		return PlanConfig{}, nil, fmt.Errorf("--planner-timeout must be greater than 0, got %s", o.plannerTimeout)
 	}
 	cfg := PlanConfig{
 		DecisionLabel:      o.decisionLabel,
@@ -707,19 +738,15 @@ func runIntents(ctx context.Context, w io.Writer, o *intentsOptions) error {
 		GPUPaths:           splitList(o.gpuPaths),
 		TrustedCommenters:  splitList(o.trustedCommenters),
 		BashTimeoutSeconds: o.bashTimeout,
-		Progress:           w,
+		Progress:           progress,
 	}
 	if o.rulesFile != "" {
 		b, err := os.ReadFile(o.rulesFile)
 		if err != nil {
-			return fmt.Errorf("--rules-file: %w", err)
+			return PlanConfig{}, nil, fmt.Errorf("--rules-file: %w", err)
 		}
 		cfg.Rules = string(b)
 	}
-	if os.Getenv(githubTokenEnv) == "" {
-		return fmt.Errorf("$%s must hold a GitHub token that can read the issues", githubTokenEnv)
-	}
-	forge := NewGitHubRunForge(githubAPIBase, func() (string, error) { return os.Getenv(githubTokenEnv), nil })
 	call := httpPlannerCallWithOptions(o.plannerURL, o.plannerModel, os.Getenv(plannerTokenEnv), PlannerCallOptions{
 		MaxTokens:       o.maxTokens,
 		Temperature:     0.2,
@@ -727,6 +754,22 @@ func runIntents(ctx context.Context, w io.Writer, o *intentsOptions) error {
 		Timeout:         o.plannerTimeout,
 		RejectTruncated: true,
 	})
+	return cfg, call, nil
+}
+
+func runIntents(ctx context.Context, w io.Writer, o *intentsOptions) error {
+	issues, err := parseIssueList(o.issues)
+	if err != nil {
+		return fmt.Errorf("--issues: %w", err)
+	}
+	cfg, call, err := o.plannerSetup(w)
+	if err != nil {
+		return err
+	}
+	if os.Getenv(githubTokenEnv) == "" {
+		return fmt.Errorf("$%s must hold a GitHub token that can read the issues", githubTokenEnv)
+	}
+	forge := NewGitHubRunForge(githubAPIBase, func() (string, error) { return os.Getenv(githubTokenEnv), nil })
 	if ctx == nil {
 		ctx = context.Background()
 	}

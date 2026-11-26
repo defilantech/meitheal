@@ -139,12 +139,8 @@ const maxStageTransitions = 64
 // or parked. Parking is terminal for this pass by design, so the caller
 // proceeds to the next item rather than blocking on a human.
 //
-// NOTHING IN PRODUCTION CALLS THIS YET. The Effects implementation that would
-// is deferred to a follow-up plan, and no lint catches the gap: golangci-lint's
-// `unused` treats an exported identifier in a non-main package as used, so
-// neither `make lint` nor `make lint-deadcode` reports this function, IsStalled
-// or the package-level Preflight despite all three having zero non-test
-// callers. Wiring is a human check here, not a gate.
+// `meitheal run` calls it once per drive of an item, from a lane goroutine
+// (run_loop.go), with the cluster Effects from NewClusterEffects.
 func DriveItem(
 	ctx context.Context,
 	e Effects,

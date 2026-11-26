@@ -1112,3 +1112,43 @@ func TestPlanIssues_EmptyDecisionLabelDisablesSkip(t *testing.T) {
 		t.Fatalf("calls = %d, items = %+v; an empty label must not skip the model", s.calls, q.Items)
 	}
 }
+
+// A maintainer's decision reaches the planner as settled, outside the
+// untrusted fences, and bypasses the decision label: the human has decided.
+func TestPlanIssues_MaintainerDecisionReachesThePrompt(t *testing.T) {
+	e := newPlanEnv(t)
+	e.cfg.MaintainerDecisions = map[int32]string{52: "use the binary format"}
+	f := newPlanForge(map[int32]IssueDetail{
+		52: {Title: "Pick a wire format", Body: "Which one?", Labels: []string{"decision"}},
+		53: {Title: "t", Body: "b"},
+	})
+	s := &stubPlanner{answers: map[int32]string{
+		52: plannedAnswer("cpu", "src/lib.rs"), 53: plannedAnswer("cpu", "README.md"),
+	}}
+	q := e.plan(t, f, s.call, 52, 53)
+	if len(q.Items) != 2 {
+		t.Fatalf("queue = %+v, want both planned", q.Items)
+	}
+	p := s.prompts[52]
+	i := strings.Index(p, maintainerDecisionHeading)
+	if i < 0 || !strings.Contains(p[i:], "use the binary format") {
+		t.Fatalf("prompt lacks the maintainer decision:\n%s", p)
+	}
+	// After every data block: the decision is not fenced as untrusted text.
+	if j := strings.LastIndex(p, "<<<END nonce="); j > i {
+		t.Fatalf("maintainer decision sits inside the data blocks:\n%s", p)
+	}
+	if strings.Contains(s.prompts[53], maintainerDecisionHeading) {
+		t.Fatal("another issue's prompt carries the maintainer decision")
+	}
+}
+
+func TestPlanIssues_NoMaintainerDecisionNoHeading(t *testing.T) {
+	e := newPlanEnv(t)
+	f := newPlanForge(map[int32]IssueDetail{52: {Title: "t", Body: "b"}})
+	s := &stubPlanner{answers: map[int32]string{52: plannedAnswer("cpu", "src/lib.rs")}}
+	e.plan(t, f, s.call, 52)
+	if strings.Contains(s.prompts[52], maintainerDecisionHeading) {
+		t.Fatal("maintainer decision heading present with no decision")
+	}
+}

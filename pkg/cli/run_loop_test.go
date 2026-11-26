@@ -1,0 +1,885 @@
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+)
+
+const (
+	loopRepo     = planRepo
+	loopAnswerer = "maintainer"
+)
+
+// --- fakes -----------------------------------------------------------------
+
+// scriptEffects plays one scripted outcome per drive of an issue: "done"
+// (a clean verify, then finalize), "park" (a stall), "block" (watch waits
+// for the context) or "error" (watch fails). The last outcome repeats; no
+// script means "done". Safe for the lanes' goroutines.
+type scriptEffects struct {
+	mu       sync.Mutex
+	outcomes map[int32][]string
+	drives   map[int32]int
+	current  map[string]string // workload -> outcome of this drive
+	order    []int32
+	intents  map[int32][]string
+	notified []Decision
+	kills    int
+	blocked  chan int32
+}
+
+func newScriptEffects() *scriptEffects {
+	return &scriptEffects{
+		drives: map[int32]int{}, current: map[string]string{}, intents: map[int32][]string{},
+		blocked: make(chan int32, 16),
+	}
+}
+
+func (s *scriptEffects) preflighted() []int32 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]int32(nil), s.order...)
+}
+
+func (s *scriptEffects) notifications() []Decision {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Decision(nil), s.notified...)
+}
+
+func (s *scriptEffects) Preflight(_ context.Context, item QueueItem, _ string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.order = append(s.order, item.Issue)
+	s.drives[item.Issue]++
+	return "", nil
+}
+
+func (s *scriptEffects) Dispatch(_ context.Context, item QueueItem, intent string) (string, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	w := plannedWorkloadName(item.Issue)
+	out := "done"
+	if o := s.outcomes[item.Issue]; len(o) > 0 {
+		out = o[min(s.drives[item.Issue]-1, len(o)-1)]
+	}
+	s.current[w] = out
+	s.intents[item.Issue] = append(s.intents[item.Issue], intent)
+	return w, 1, nil
+}
+
+func (s *scriptEffects) Watch(ctx context.Context, workload string, _ time.Duration, _ float64) (WatchResult, error) {
+	s.mu.Lock()
+	out := s.current[workload]
+	s.mu.Unlock()
+	switch out {
+	case "park":
+		return WatchResult{Stalled: true}, nil
+	case "block":
+		var n int32
+		_, _ = fmt.Sscanf(workload, "wl-%d", &n)
+		s.blocked <- n
+		<-ctx.Done()
+		return WatchResult{}, ctx.Err()
+	case "error":
+		return WatchResult{}, errors.New("watch failed")
+	}
+	return WatchResult{PRURL: "https://example.test/pr/" + strings.TrimPrefix(workload, "wl-")}, nil
+}
+
+func (s *scriptEffects) Kill(context.Context, string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.kills++
+	return nil
+}
+
+func (s *scriptEffects) Verify(context.Context, string, string) (bool, string, error) {
+	return true, "", nil
+}
+
+func (s *scriptEffects) Redispatch(context.Context, QueueItem, string, string, string) error {
+	return nil
+}
+
+func (s *scriptEffects) Finalize(context.Context, QueueItem, string, string) error { return nil }
+
+func (s *scriptEffects) Notify(_ context.Context, _ QueueItem, d Decision) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notified = append(s.notified, d)
+	return nil
+}
+
+// loopForge serves issues and comments, honours since, and records what the
+// loop posts.
+type loopForge struct {
+	mu       sync.Mutex
+	issues   map[int32]IssueDetail
+	comments map[int32][]IssueComment
+	posted   []forgeComment
+}
+
+func newLoopForge() *loopForge {
+	return &loopForge{issues: map[int32]IssueDetail{}, comments: map[int32][]IssueComment{}}
+}
+
+func (f *loopForge) answer(issue int32, body string, at time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.comments[issue] = append(f.comments[issue], IssueComment{Author: loopAnswerer, Body: body, Created: at})
+}
+
+func (f *loopForge) postedTo(issue int32) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, c := range f.posted {
+		if c.issue == issue {
+			out = append(out, c.body)
+		}
+	}
+	return out
+}
+
+func (f *loopForge) OpenPRForIssue(context.Context, string, int32) (string, error) { return "", nil }
+func (f *loopForge) BranchExists(context.Context, string, string) (bool, error)    { return false, nil }
+func (f *loopForge) PRForBranch(context.Context, string, string) (string, error)   { return "", nil }
+func (f *loopForge) UpdatePRBody(context.Context, string, string, string) error    { return nil }
+func (f *loopForge) LabelPR(context.Context, string, string, string) error         { return nil }
+
+func (f *loopForge) CommentIssue(_ context.Context, repo string, issue int32, body string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if repo != loopRepo {
+		return fmt.Errorf("unexpected repo %q", repo)
+	}
+	f.posted = append(f.posted, forgeComment{repo, issue, body})
+	f.comments[issue] = append(f.comments[issue], IssueComment{Author: "meitheal-bot", Body: body, Created: time.Now()})
+	return nil
+}
+
+func (f *loopForge) CommentsSince(
+	_ context.Context, repo string, issue int32, since time.Time,
+) ([]IssueComment, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if repo != loopRepo {
+		return nil, fmt.Errorf("unexpected repo %q", repo)
+	}
+	var out []IssueComment
+	for _, c := range f.comments[issue] {
+		if !c.Created.Before(since) {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func (f *loopForge) FetchIssue(_ context.Context, repo string, issue int32) (IssueDetail, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if repo != loopRepo {
+		return IssueDetail{}, fmt.Errorf("unexpected repo %q", repo)
+	}
+	d, ok := f.issues[issue]
+	if !ok {
+		return IssueDetail{}, fmt.Errorf("no issue %d", issue)
+	}
+	return d, nil
+}
+
+type logSink struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+func (l *logSink) logf(format string, a ...any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.lines = append(l.lines, fmt.Sprintf(format, a...))
+}
+
+func (l *logSink) count(sub string) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n := 0
+	for _, s := range l.lines {
+		if strings.Contains(s, sub) {
+			n++
+		}
+	}
+	return n
+}
+
+func (l *logSink) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return strings.Join(l.lines, "\n")
+}
+
+// --- environment -----------------------------------------------------------
+
+type loopEnv struct {
+	root    string
+	cfg     runLoopConfig
+	effects *scriptEffects
+	forge   *loopForge
+	logs    *logSink
+}
+
+func newLoopEnv(t *testing.T) *loopEnv {
+	t.Helper()
+	root := t.TempDir()
+	e := &loopEnv{root: root, effects: newScriptEffects(), forge: newLoopForge(), logs: &logSink{}}
+	e.cfg = runLoopConfig{
+		Effects:      e.effects,
+		Forge:        e.forge,
+		DecisionsDir: filepath.Join(root, "decisions"),
+		LedgerPath:   filepath.Join(root, "ledger.jsonl"),
+		Answerer:     loopAnswerer,
+		Repo:         loopRepo,
+		Baseline:     time.Hour,
+		Factor:       DefaultStallFactor,
+		Limits:       map[string]int{"cpu": 1, "gpu": 1},
+		Once:         true,
+		Logf:         e.logs.logf,
+	}
+	return e
+}
+
+// queue writes an intent file per item and fills in repo and lane.
+func (e *loopEnv) queue(t *testing.T, items ...QueueItem) []QueueItem {
+	t.Helper()
+	dir := filepath.Join(e.root, "intents")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i := range items {
+		p := filepath.Join(dir, fmt.Sprintf("%d.md", items[i].Issue))
+		if err := os.WriteFile(p, []byte(fmt.Sprintf("intent for %d", items[i].Issue)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		items[i].IntentPath = p
+		if items[i].Repo == "" {
+			items[i].Repo = loopRepo
+		}
+		if items[i].Lane == "" {
+			items[i].Lane = "cpu"
+		}
+	}
+	return items
+}
+
+// park writes a decision that was opened an hour ago, stamped as notified
+// when notified is set (a park an earlier run already announced).
+func (e *loopEnv) park(t *testing.T, issue int32, kind, stage string, notified bool) time.Time {
+	t.Helper()
+	opened := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	if _, err := ParkDecision(e.cfg.DecisionsDir, Decision{
+		Issue: issue, Workload: plannedWorkloadName(issue), Stage: stage, Kind: kind, Opened: opened,
+		Reason: "stalled", Options: optionsFor(kind),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if notified {
+		if err := MarkNotified(e.cfg.DecisionsDir, issue, kind, opened.Add(time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return opened
+}
+
+func (e *loopEnv) run(t *testing.T, items []QueueItem) {
+	t.Helper()
+	if err := e.runErr(t, context.Background(), items); err != nil {
+		t.Fatalf("run: %v\nlog:\n%s", err, e.logs)
+	}
+}
+
+func (e *loopEnv) runErr(t *testing.T, ctx context.Context, items []QueueItem) error {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- runQueueLoop(ctx, e.cfg, items) }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(20 * time.Second):
+		t.Fatalf("run did not return\nlog:\n%s", e.logs)
+		return nil
+	}
+}
+
+func (e *loopEnv) decision(t *testing.T, issue int32, kind string) (Decision, bool) {
+	t.Helper()
+	ds, err := ListDecisions(e.cfg.DecisionsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range ds {
+		if d.Issue == issue && d.Kind == kind {
+			return d, true
+		}
+	}
+	return Decision{}, false
+}
+
+func (e *loopEnv) ledger(t *testing.T) map[int32][]LedgerRecord {
+	t.Helper()
+	out := map[int32][]LedgerRecord{}
+	for _, l := range ledgerLines(t, e.cfg.LedgerPath) {
+		n := int32(l["issue"].(float64))
+		out[n] = append(out[n], LedgerRecord{
+			Issue: n, FinalStage: l["finalStage"].(string), ParkKind: l["parkKind"].(string),
+			Reason: l["reason"].(string), Workload: l["workload"].(string),
+		})
+	}
+	return out
+}
+
+// neutralTemplate is a one-gate template with no GPU lane.
+func neutralTemplate() WorkloadTemplate {
+	return WorkloadTemplate{Spec: meithealv1alpha1.WorkloadSpec{
+		Intent:        "template placeholder",
+		Repo:          loopRepo,
+		CoderAgentRef: &corev1.LocalObjectReference{Name: "example-coder"},
+		GateProfile: &meithealv1alpha1.GateProfile{
+			Language: meithealv1alpha1.GateLanguageGeneric,
+			Image:    "example/gate:1",
+			Commands: meithealv1alpha1.GateCommands{Test: "make test"},
+		},
+	}}
+}
+
+// --- tests -----------------------------------------------------------------
+
+// Review Focus 1: the loop restarts mid-run. 52 has a parked decision file
+// and stays parked; 56's Workload is already in the cluster, so 56 resumes at
+// watch against the real cluster Effects instead of dispatching a duplicate.
+func TestRun_RestartResumes(t *testing.T) {
+	env := newLoopEnv(t)
+	env.park(t, 52, ParkEscalate, string(StageWatch), true)
+
+	existing := &meithealv1alpha1.Workload{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: plannedWorkloadName(56), Namespace: effNS,
+			Annotations: map[string]string{runAttemptAnnotation: "1"},
+		},
+		Spec:   meithealv1alpha1.WorkloadSpec{Intent: "the first run's intent", Repo: loopRepo, Issues: []int32{56}},
+		Status: meithealv1alpha1.WorkloadStatus{Phase: meithealv1alpha1.WorkloadPhaseCompleted},
+	}
+	var mu sync.Mutex
+	var writes []string
+	note := func(s string) { mu.Lock(); defer mu.Unlock(); writes = append(writes, s) }
+	funcs := &interceptor.Funcs{
+		Create: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.CreateOption) error {
+			note("create " + o.GetName())
+			return c.Create(ctx, o, opts...)
+		},
+		Update: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.UpdateOption) error {
+			note("update " + o.GetName())
+			return c.Update(ctx, o, opts...)
+		},
+		Delete: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.DeleteOption) error {
+			note("delete " + o.GetName())
+			return c.Delete(ctx, o, opts...)
+		},
+	}
+	c := newEffectsClient(t, funcs, existing)
+	forge := newFakeRunForge()
+	branch56 := taskBranch(plannedWorkloadName(56), 56)
+	forge.prs[branch56] = "https://example.test/pr/56"
+	gate := &fakeGateRunner{}
+	env.cfg.Effects = NewClusterEffects(c, effNS, forge, neutralTemplate(), gate, fastOpts())
+	env.cfg.Forge = forge
+	env.cfg.Answerer = ""
+
+	items := env.queue(t, QueueItem{Issue: 52}, QueueItem{Issue: 56})
+	env.run(t, items)
+
+	if len(writes) != 0 {
+		t.Fatalf("cluster writes = %v, want none: 52 is parked and 56 resumes its Workload", writes)
+	}
+	if w := getWorkload(t, c, plannedWorkloadName(56)); w.Spec.Intent != "the first run's intent" {
+		t.Fatalf("56's Workload was replaced: intent %q", w.Spec.Intent)
+	}
+	if len(gate.calls) != 1 || gate.calls[0].branch != branch56 {
+		t.Fatalf("gate calls = %+v, want one verify of %s", gate.calls, branch56)
+	}
+	if _, ok := env.decision(t, 52, ParkEscalate); !ok {
+		t.Fatal("52's parked decision is gone; it must stay parked")
+	}
+	led := env.ledger(t)
+	if len(led) != 1 || len(led[56]) != 1 || led[56][0].FinalStage != ledgerDone || led[56][0].Workload != "wl-56" {
+		t.Fatalf("ledger = %+v, want one done record for 56 on wl-56", led)
+	}
+	for _, cm := range forge.comments {
+		if cm.issue == 52 {
+			t.Fatalf("52 got a comment %q; its park was announced by the earlier run", cm.body)
+		}
+	}
+}
+
+func TestRun_AnswerRequeueRedrives(t *testing.T) {
+	env := newLoopEnv(t)
+	opened := env.park(t, 52, ParkEscalate, string(StageWatch), true)
+	env.forge.comments[52] = []IssueComment{
+		{Author: "someone-else", Body: "/meitheal drop", Created: opened.Add(time.Minute)},
+	}
+	env.forge.answer(52, "/meitheal requeue", opened.Add(2*time.Minute))
+	items := env.queue(t, QueueItem{Issue: 52}, QueueItem{Issue: 53, Lane: "gpu", After: []int32{52}})
+
+	env.run(t, items)
+
+	if got := env.effects.preflighted(); !reflect.DeepEqual(got, []int32{52, 53}) {
+		t.Fatalf("driven = %v, want 52 again from preflight, then 53 which runs after it", got)
+	}
+	if _, ok := env.decision(t, 52, ParkEscalate); ok {
+		t.Fatal("the requeued decision file is still there")
+	}
+	if got := env.effects.intents[52]; !reflect.DeepEqual(got, []string{"intent for 52"}) {
+		t.Fatalf("dispatched intents = %v", got)
+	}
+	led := env.ledger(t)
+	if led[52][0].FinalStage != ledgerDone || led[53][0].FinalStage != ledgerDone {
+		t.Fatalf("ledger = %+v, want 52 and 53 done", led)
+	}
+	if got := env.forge.postedTo(52); len(got) != 0 {
+		t.Fatalf("posted to 52: %v; a non-answerer's drop must not count", got)
+	}
+}
+
+// replanEnv wires the real planner path with a stub model.
+func replanEnv(t *testing.T, env *loopEnv, answer string) *stubPlanner {
+	t.Helper()
+	env.forge.issues[53] = IssueDetail{Title: "Add a widget parser", Body: "The parser goes in src/lib.rs."}
+	stub := &stubPlanner{answers: map[int32]string{53: answer}}
+	env.cfg.Replan = newReplanner(env.forge, stub.call, loopRepo, gitRepo(t, defaultRepoFiles()),
+		filepath.Join(env.root, "out"), env.cfg.DecisionsDir, PlanConfig{DecisionLabel: "decision"})
+	env.cfg.QueueFile = filepath.Join(env.root, "out", queueFileName)
+	return stub
+}
+
+func TestRun_AnswerDecideReplans(t *testing.T) {
+	env := newLoopEnv(t)
+	opened := env.park(t, 53, ParkNeedsDecision, intentsStage, true)
+	env.forge.answer(53, "thanks\n/meitheal decide use the existing tokenizer, not a new one", opened.Add(time.Minute))
+	stub := replanEnv(t, env, plannedAnswer("cpu", "src/lib.rs"))
+
+	env.run(t, nil)
+
+	prompt := stub.prompts[53]
+	if !strings.Contains(prompt, maintainerDecisionHeading) ||
+		!strings.Contains(prompt, "use the existing tokenizer, not a new one") {
+		t.Fatalf("planner prompt lacks the maintainer decision:\n%s", prompt)
+	}
+	if _, ok := env.decision(t, 53, ParkNeedsDecision); ok {
+		t.Fatal("the old decision file is still there after a successful re-plan")
+	}
+	if left, _ := filepath.Glob(filepath.Join(env.cfg.DecisionsDir, "*"+replanSuffix)); len(left) != 0 {
+		t.Fatalf("re-plan left %v behind", left)
+	}
+	want := []string{"## Intent\n\nChange the thing. Mirror `src/lib.rs`."}
+	if got := env.effects.intents[53]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("dispatched intents = %q, want the re-planned intent %q", got, want)
+	}
+	if led := env.ledger(t); len(led[53]) != 1 || led[53][0].FinalStage != ledgerDone {
+		t.Fatalf("ledger = %+v, want 53 done", led)
+	}
+	// Persisted, so a restart knows the item and its new intent.
+	b, err := os.ReadFile(env.cfg.QueueFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err := ParseQueue(b)
+	if err != nil || len(q.Items) != 1 || q.Items[0].Issue != 53 ||
+		q.Items[0].IntentPath != filepath.Join(env.root, "out", "53.intent.md") {
+		t.Fatalf("persisted queue = %+v, %v", q, err)
+	}
+}
+
+// A re-plan that parks again, under the same kind, writes a fresh park that
+// is announced; the answered one does not shadow it.
+func TestRun_AnswerDecideParkedAgainNotifies(t *testing.T) {
+	env := newLoopEnv(t)
+	opened := env.park(t, 53, ParkNeedsDecision, intentsStage, true)
+	env.forge.answer(53, "/meitheal decide keep the old format", opened.Add(time.Minute))
+	replanEnv(t, env, "VERDICT: needs-decision\nreason: still open\n")
+
+	env.run(t, nil)
+
+	d, ok := env.decision(t, 53, ParkNeedsDecision)
+	if !ok {
+		t.Fatal("no new park for 53")
+	}
+	if d.Answer != "" || !d.Opened.After(opened) || d.Notified == nil {
+		t.Fatalf("decision = %+v, want a fresh, unanswered, notified park", d)
+	}
+	if n := env.effects.notifications(); len(n) != 1 || n[0].Issue != 53 {
+		t.Fatalf("notified = %+v, want the new park announced once", n)
+	}
+	if got := env.effects.preflighted(); len(got) != 0 {
+		t.Fatalf("driven = %v, want nothing: the issue parked again", got)
+	}
+}
+
+func TestRun_AnswerDecideWithoutAPlannerWaits(t *testing.T) {
+	env := newLoopEnv(t)
+	opened := env.park(t, 53, ParkNeedsDecision, intentsStage, true)
+	env.forge.answer(53, "/meitheal decide keep the old format", opened.Add(time.Minute))
+	l := newRunLoop(env.cfg)
+	l.answerCycle(context.Background())
+	l.answerCycle(context.Background())
+	d, ok := env.decision(t, 53, ParkNeedsDecision)
+	if !ok || d.Answer != "decide: keep the old format" {
+		t.Fatalf("decision = %+v, %v; want it kept, answered", d, ok)
+	}
+	if n := env.logs.count("needs the planner"); n != 1 {
+		t.Fatalf("logged %d times, want once:\n%s", n, env.logs)
+	}
+}
+
+func TestRun_AnswerDropFinishes(t *testing.T) {
+	env := newLoopEnv(t)
+	opened := env.park(t, 54, ParkEscalate, string(StageVerify), true)
+	env.forge.answer(54, "/meitheal drop", opened.Add(time.Minute))
+	items := env.queue(t, QueueItem{Issue: 54}, QueueItem{Issue: 55, After: []int32{54}})
+
+	env.run(t, items)
+	// A restart must not comment, record or drive again.
+	env.run(t, items)
+
+	if got := env.forge.postedTo(54); !reflect.DeepEqual(got, []string{dropComment}) {
+		t.Fatalf("posted to 54 = %q, want the drop comment exactly once", got)
+	}
+	led := env.ledger(t)
+	if len(led[54]) != 1 || led[54][0].FinalStage != ledgerDropped || led[54][0].ParkKind != ParkEscalate {
+		t.Fatalf("ledger for 54 = %+v, want one dropped record", led[54])
+	}
+	if got := env.effects.preflighted(); !reflect.DeepEqual(got, []int32{55}) {
+		t.Fatalf("driven = %v, want only 55, once, released by the drop", got)
+	}
+	// Nothing else is removed: the decision stays as the record of the answer.
+	if d, ok := env.decision(t, 54, ParkEscalate); !ok || d.Answer != "drop" {
+		t.Fatalf("decision = %+v, %v; want it kept with its answer", d, ok)
+	}
+}
+
+func TestRun_AnswerHandFixFinishesWithoutAComment(t *testing.T) {
+	env := newLoopEnv(t)
+	env.park(t, 54, ParkEscalate, string(StageVerify), true)
+	if err := AnswerDecision(env.cfg.DecisionsDir, 54, ParkEscalate, "hand-fix"); err != nil {
+		t.Fatal(err)
+	}
+	items := env.queue(t, QueueItem{Issue: 54})
+	env.run(t, items)
+	if got := env.forge.postedTo(54); len(got) != 0 {
+		t.Fatalf("posted %q, want no comment for hand-fix", got)
+	}
+	if led := env.ledger(t); len(led[54]) != 1 || led[54][0].FinalStage != ledgerDone {
+		t.Fatalf("ledger = %+v, want 54 done", led)
+	}
+	if got := env.effects.preflighted(); len(got) != 0 {
+		t.Fatalf("driven = %v, want nothing", got)
+	}
+}
+
+// Decision 3: every park reaches Notify once, the planner's included, and a
+// stamped park is never announced again.
+func TestRun_EveryParkIsNotifiedOnce(t *testing.T) {
+	env := newLoopEnv(t)
+	env.park(t, 60, ParkNeedsSplit, intentsStage, false)
+	env.effects.outcomes = map[int32][]string{52: {"park"}}
+	items := env.queue(t, QueueItem{Issue: 52})
+
+	env.run(t, items)
+	env.run(t, items)
+
+	got := map[int32]int{}
+	for _, d := range env.effects.notifications() {
+		got[d.Issue]++
+	}
+	if !reflect.DeepEqual(got, map[int32]int{52: 1, 60: 1}) {
+		t.Fatalf("notifications per issue = %v, want one each for 52 and 60", got)
+	}
+	for _, k := range []struct {
+		issue int32
+		kind  string
+	}{{52, ParkEscalate}, {60, ParkNeedsSplit}} {
+		if d, ok := env.decision(t, k.issue, k.kind); !ok || d.Notified == nil {
+			t.Fatalf("decision %d/%s = %+v, want it stamped notified", k.issue, k.kind, d)
+		}
+	}
+}
+
+func TestDecision_FileWithoutNotifiedParses(t *testing.T) {
+	env := newLoopEnv(t)
+	if err := os.MkdirAll(env.cfg.DecisionsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := "issue: 61\nkind: needs-decision\nstage: plan\nopened: \"2026-11-01T10:00:00Z\"\nreason: x\n" +
+		"options: [requeue, decide, drop]\n"
+	if err := os.WriteFile(filepath.Join(env.cfg.DecisionsDir, "61-needs-decision.yaml"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d, ok := env.decision(t, 61, ParkNeedsDecision)
+	if !ok || d.Notified != nil {
+		t.Fatalf("old decision = %+v, %v; want it parsed with no notified stamp", d, ok)
+	}
+	env.run(t, nil)
+	if n := env.effects.notifications(); len(n) != 1 || n[0].Issue != 61 {
+		t.Fatalf("notified = %+v, want the old park announced once", n)
+	}
+}
+
+func TestRun_RejectedAnswerIsLoggedOnce(t *testing.T) {
+	env := newLoopEnv(t)
+	opened := env.park(t, 7, ParkAdjudicate, string(StageVerify), true)
+	env.forge.answer(7, "/meitheal requeue", opened.Add(time.Minute))
+	l := newRunLoop(env.cfg)
+	for range 3 {
+		l.answerCycle(context.Background())
+	}
+	if n := env.logs.count("issue 7"); n != 1 {
+		t.Fatalf("rejection logged %d times, want once:\n%s", n, env.logs)
+	}
+}
+
+// Decision 6: a dependent of an item that parks during the run waits, and a
+// --once run still ends.
+func TestRun_DependentOfAParkWaitsAndTheRunEnds(t *testing.T) {
+	env := newLoopEnv(t)
+	env.effects.outcomes = map[int32][]string{52: {"park"}}
+	items := env.queue(t, QueueItem{Issue: 52}, QueueItem{Issue: 53, After: []int32{52}})
+	env.run(t, items)
+	if got := env.effects.preflighted(); !reflect.DeepEqual(got, []int32{52}) {
+		t.Fatalf("driven = %v, want only 52", got)
+	}
+}
+
+func TestRun_PollingPicksUpALaterAnswer(t *testing.T) {
+	env := newLoopEnv(t)
+	env.cfg.Once = false
+	env.cfg.PollEvery = 5 * time.Millisecond
+	env.effects.outcomes = map[int32][]string{52: {"park", "done"}}
+	items := env.queue(t, QueueItem{Issue: 52})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- runQueueLoop(ctx, env.cfg, items) }()
+
+	waitFor(t, func() bool { _, ok := env.decision(t, 52, ParkEscalate); return ok })
+	env.forge.answer(52, "/meitheal requeue", time.Now().Add(time.Second))
+	waitFor(t, func() bool {
+		_, err := os.Stat(env.cfg.LedgerPath)
+		return err == nil && len(env.ledger(t)[52]) == 2
+	})
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if led := env.ledger(t)[52]; led[0].FinalStage != ledgerParked || led[1].FinalStage != ledgerDone {
+		t.Fatalf("ledger for 52 = %+v, want parked then done", led)
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatal("condition never held")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+// Decision 8: a signal stops in-flight items at their next poll, without a
+// park, a kill or a ledger record, so a restart resumes them.
+func TestRun_CancelStopsWithoutParking(t *testing.T) {
+	env := newLoopEnv(t)
+	env.cfg.Once = false
+	env.cfg.PollEvery = time.Hour
+	env.effects.outcomes = map[int32][]string{52: {"block"}}
+	items := env.queue(t, QueueItem{Issue: 52})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runQueueLoop(ctx, env.cfg, items) }()
+	select {
+	case <-env.effects.blocked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("52 never reached watch")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run = %v, want a clean stop", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not stop on cancel")
+	}
+	if ds, _ := ListDecisions(env.cfg.DecisionsDir); len(ds) != 0 {
+		t.Fatalf("decisions = %+v, want no park on a stop", ds)
+	}
+	if env.effects.kills != 0 {
+		t.Fatalf("kills = %d, want the Workload left alone", env.effects.kills)
+	}
+	if _, err := os.Stat(env.cfg.LedgerPath); !os.IsNotExist(err) {
+		t.Fatalf("ledger written on a stop (stat err %v)", err)
+	}
+}
+
+func TestRun_RefusesAQueueItCannotSchedule(t *testing.T) {
+	env := newLoopEnv(t)
+	cases := map[string][]QueueItem{
+		"duplicate": env.queue(t, QueueItem{Issue: 52}, QueueItem{Issue: 52}),
+		"cycle":     env.queue(t, QueueItem{Issue: 52, After: []int32{53}}, QueueItem{Issue: 53, After: []int32{52}}),
+		"two repos": env.queue(t, QueueItem{Issue: 52}, QueueItem{Issue: 53, Repo: "example/other"}),
+	}
+	for name, items := range cases {
+		t.Run(name, func(t *testing.T) {
+			if err := env.runErr(t, context.Background(), items); err == nil {
+				t.Fatal("run = nil, want the queue refused")
+			}
+			if got := env.effects.preflighted(); len(got) != 0 {
+				t.Fatalf("driven = %v before the queue was refused", got)
+			}
+		})
+	}
+}
+
+func TestRun_EmptyQueueSaysSo(t *testing.T) {
+	env := newLoopEnv(t)
+	env.run(t, nil)
+	if env.logs.count("queue empty") != 1 {
+		t.Fatalf("log = %s, want it to say the queue is empty", env.logs)
+	}
+}
+
+// A restarted --plan keeps the intents it already wrote and does not plan a
+// parked issue again (that would refresh the park and lose its answers).
+func TestPlanForRun_RestartKeepsQueueAndSkipsParked(t *testing.T) {
+	env := newLoopEnv(t)
+	out := filepath.Join(env.root, "out")
+	kept := env.queue(t, QueueItem{Issue: 52})
+	if err := writeQueueFile(filepath.Join(out, queueFileName), Queue{Repo: loopRepo, Items: kept}); err != nil {
+		t.Fatal(err)
+	}
+	env.park(t, 53, ParkNeedsDecision, intentsStage, true)
+	if err := NewLedger(env.cfg.LedgerPath).Append(LedgerRecord{Issue: 54, FinalStage: ledgerDone}); err != nil {
+		t.Fatal(err)
+	}
+	env.forge.issues[55] = IssueDetail{Title: "Add a widget", Body: "In src/lib.rs."}
+	stub := &stubPlanner{answers: map[int32]string{55: plannedAnswer("gpu", "src/lib.rs")}}
+	opts := &runOptions{decisionsDir: env.cfg.DecisionsDir, ledgerPath: env.cfg.LedgerPath}
+	opts.planner.out = out
+	opts.planner.repoDir = gitRepo(t, defaultRepoFiles())
+
+	var w strings.Builder
+	items, err := planForRun(context.Background(), &w, env.forge, stub.call, loopRepo,
+		[]int32{52, 53, 54, 55}, opts, PlanConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stub.calls != 1 {
+		t.Fatalf("planner called %d times, want once (for 55 only)", stub.calls)
+	}
+	got := make([]int32, 0, len(items))
+	for _, it := range items {
+		got = append(got, it.Issue)
+		if it.Repo != loopRepo {
+			t.Errorf("issue %d has repo %q", it.Issue, it.Repo)
+		}
+	}
+	if !reflect.DeepEqual(got, []int32{52, 55}) {
+		t.Fatalf("items = %v, want the kept 52 and the newly planned 55", got)
+	}
+	if items[0].IntentPath != kept[0].IntentPath {
+		t.Fatalf("52's intent moved to %s", items[0].IntentPath)
+	}
+	b, err := os.ReadFile(filepath.Join(out, queueFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q, err := ParseQueue(b); err != nil || len(q.Items) != 2 {
+		t.Fatalf("written queue = %+v, %v; want both items", q, err)
+	}
+	if _, ok := env.decision(t, 53, ParkNeedsDecision); !ok {
+		t.Fatal("53's park is gone")
+	}
+}
+
+func TestSetCoderAgent(t *testing.T) {
+	tpl := neutralTemplate()
+	if err := setCoderAgent(&tpl, "example-coder"); err != nil {
+		t.Fatalf("same agent: %v", err)
+	}
+	if err := setCoderAgent(&tpl, "other-coder"); err == nil {
+		t.Fatal("a template naming another coder must be refused")
+	}
+	tpl.Spec.CoderAgentRef = nil
+	if err := setCoderAgent(&tpl, "other-coder"); err != nil || tpl.Spec.CoderAgentRef.Name != "other-coder" {
+		t.Fatalf("empty template coder: %v, %+v", err, tpl.Spec.CoderAgentRef)
+	}
+}
+
+// The template in docs/run-loop.md is one LoadWorkloadTemplate accepts, so
+// the page cannot drift into a file the run refuses.
+func TestRunLoopDoc_TemplateLoads(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "run-loop.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rest, ok := strings.Cut(string(b), "## The template")
+	if !ok {
+		t.Fatal("no template section")
+	}
+	_, rest, ok = strings.Cut(rest, "```yaml\n")
+	block, _, closed := strings.Cut(rest, "```")
+	if !ok || !closed {
+		t.Fatal("no yaml block in the template section")
+	}
+	p := filepath.Join(t.TempDir(), "template.yaml")
+	if err := os.WriteFile(p, []byte(block), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tpl, err := LoadWorkloadTemplate(p)
+	if err != nil {
+		t.Fatalf("the documented template does not load: %v", err)
+	}
+	if tpl.GPUGate == nil || tpl.GPUNode == "" || len(tpl.Spec.ReviewerAgentRefs) != 1 {
+		t.Fatalf("template = %+v", tpl)
+	}
+}
