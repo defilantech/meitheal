@@ -39,6 +39,7 @@ heterogeneous executors. These subcommands create and watch those tasks.`,
 	cmd.AddCommand(newRunCommand())
 	cmd.AddCommand(newDecisionsCommand())
 	cmd.AddCommand(NewAuditCommand())
+	cmd.AddCommand(newGitHubAppTokenCommand())
 	cmd.AddCommand(newVersionCommand())
 	return cmd
 }

@@ -326,3 +326,32 @@ func TestSetRemote_IdempotentAndAdds(t *testing.T) {
 		t.Errorf("remote url not updated; got: %s", out)
 	}
 }
+
+// A rotated token file reaches the next NewAuth call: the lookup is per call,
+// not cached per process, so the GitHub App minter's refresh is picked up by
+// the next task's clone and push.
+func TestNewAuth_RotatedTokenFileSeenByNextCall(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GITHUB_TOKEN", "")
+	dir := filepath.Join(home, ".config", "meitheal")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "github-token")
+	seen := make([]string, 0, 2)
+	for _, tok := range []string{"first-token", "second-token"} {
+		if err := os.WriteFile(path, []byte(tok+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		a, err := NewAuth("")
+		if err != nil {
+			t.Fatalf("NewAuth: %v", err)
+		}
+		seen = append(seen, a.Token)
+		_ = a.Close()
+	}
+	if seen[0] == seen[1] || seen[1] != "second-token" {
+		t.Fatalf("rotation not observed: %v", seen)
+	}
+}
