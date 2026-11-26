@@ -105,34 +105,46 @@ type GateProfile struct {
 // environment, and volumes the gate needs there (for example a GPU node
 // that carries a taint). Every field is optional; the zero value changes
 // nothing about the rendered Job.
+//
+// A placement is honored only from a GateProfile on the deterministic gate
+// path. run_gate_job rejects a placement supplied in a model's tool-call
+// arguments, and a placement that violates the rules on each field, or
+// the agent's allowlists, fails the gate with no Job created.
 type GatePlacement struct {
 	// NodeSelector constrains the gate pod to nodes with these labels.
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 
-	// Tolerations lets the gate pod schedule onto tainted nodes.
+	// Tolerations lets the gate pod schedule onto tainted nodes. Every
+	// toleration must set a non-empty key (an empty key tolerates all taints).
 	// +optional
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 
 	// Resources are merged by resource name over the gate container's
 	// default CPU and memory requests and limits. A name set here replaces
-	// the default for that name; other defaults stay.
+	// the default for that name; other defaults stay. Claims must be empty.
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// PriorityClassName sets the gate pod's priority class.
+	// PriorityClassName sets the gate pod's priority class. It must be in the
+	// meitheal-agent's --gate-allowed-priority-classes list; empty list allows none.
 	// +optional
 	PriorityClassName string `json:"priorityClassName,omitempty"`
 
-	// Env is appended to the gate container's environment.
+	// Env is appended to the gate container's environment. valueFrom is not
+	// allowed, and a name the gate container already sets is rejected.
 	// +optional
 	Env []corev1.EnvVar `json:"env,omitempty"`
 
-	// Volumes is appended to the gate pod's volumes.
+	// Volumes is appended to the gate pod's volumes. Only hostPath and
+	// persistentVolumeClaim sources are allowed. A hostPath must equal or sit
+	// under an entry of the meitheal-agent's --gate-allowed-host-paths list
+	// (empty allows none; ".." is rejected). A claim must be readOnly.
 	// +optional
 	Volumes []corev1.Volume `json:"volumes,omitempty"`
 
-	// VolumeMounts is appended to the gate container's volume mounts.
+	// VolumeMounts is appended to the gate container's volume mounts. Each
+	// must name a volume declared here and be readOnly.
 	// +optional
 	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
 }

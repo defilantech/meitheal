@@ -1990,7 +1990,15 @@ func (e *NativeAgentLoopExecutor) executeDeterministic(
 	// payload.repo where the branch does not yet exist.
 	args := buildDeterministicArgs(task, branch, cloneURL, e.resolveUpstreamForRun(task))
 
-	result, dispatchErr := registry.Dispatch(ctx, toolName, args)
+	// A GateProfile placement (node, tolerations, GPU, env, volumes) reaches
+	// the gate tool through the context, never through the args: run_gate_job
+	// rejects a `placement` in model-visible args, so only this deterministic
+	// path, which reads the operator-declared profile, can set one.
+	dispatchCtx := ctx
+	if task.Spec.GateProfile != nil {
+		dispatchCtx = WithGatePlacement(ctx, task.Spec.GateProfile.Resolve().Placement)
+	}
+	result, dispatchErr := registry.Dispatch(dispatchCtx, toolName, args)
 	if dispatchErr != nil {
 		return e.failResult(start, meithealv1alpha1.FailureToolFailed,
 			fmt.Sprintf("%s: %s", toolName, dispatchErr.Error()))
@@ -2197,13 +2205,6 @@ func buildDeterministicArgs(task *meithealv1alpha1.AgenticTask, branch, cloneURL
 		}
 		args["generic"] = true
 		args["commands"] = cmds
-	}
-
-	// A GateProfile placement (node, tolerations, GPU, env, volumes) rides
-	// along only when declared, so a profile without one leaves the args
-	// byte-identical.
-	if resolved.Placement != nil {
-		args["placement"] = resolved.Placement
 	}
 
 	// Sliced-workload steps (#1033) carry the slice plan for the integrate /

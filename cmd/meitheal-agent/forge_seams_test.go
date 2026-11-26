@@ -53,7 +53,7 @@ func (r *recordingWorkItems) Get(_ context.Context, repoSlug, id string) (*workt
 func TestRegistryFactoryThreadsForgeSeamsIntoTools(t *testing.T) {
 	items := &recordingWorkItems{}
 	factory := makeRegistryFactory(fake.NewClientBuilder().Build(), k8sfake.NewClientset(), "meitheal", "",
-		forgeSeams{workItems: items})
+		forgeSeams{workItems: items}, nil, nil)
 	ag := &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{Tools: []string{"fetch_issue"}}}
 	reg, err := factory(context.Background(), t.TempDir(), ag, false)
 	if err != nil {
@@ -154,7 +154,7 @@ func TestNewForgeSeamsSelection(t *testing.T) {
 // a forge without a reader is reported, not served from GitHub.
 func TestRegistryFactoryThreadsForgePullRequests(t *testing.T) {
 	factory := makeRegistryFactory(fake.NewClientBuilder().Build(), k8sfake.NewClientset(), "meitheal", "",
-		forgeSeams{name: "gitea", workItems: &recordingWorkItems{}})
+		forgeSeams{name: "gitea", workItems: &recordingWorkItems{}}, nil, nil)
 	ag := &meithealv1alpha1.Agent{Spec: meithealv1alpha1.AgentSpec{Tools: []string{"fetch_pull_request"}}}
 	reg, err := factory(context.Background(), t.TempDir(), ag, false)
 	if err != nil {

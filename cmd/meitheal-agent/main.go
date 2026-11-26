@@ -186,13 +186,15 @@ func main() {
 		inferenceURLHostOverride string
 
 		// M4 gate-tool flags
-		meithealNamespace    string
-		gateCachePVC         string
-		commitAuthorName     string
-		commitAuthorEmail    string
-		commitCommitterName  string
-		commitCommitterEmail string
-		keepWorkspace        bool
+		meithealNamespace          string
+		gateCachePVC               string
+		gateAllowedHostPaths       string
+		gateAllowedPriorityClasses string
+		commitAuthorName           string
+		commitAuthorEmail          string
+		commitCommitterName        string
+		commitCommitterEmail       string
+		keepWorkspace              bool
 
 		// #620 coder-Job git Secret selection
 		coderGitSecret    string
@@ -313,6 +315,11 @@ func main() {
 		"Name of the gate-cache PVC the run_gate_job tool mounts at /cache. Empty disables the "+
 			"volume mount. The chart renders the per-agent claim (meitheal.gateCache.pvcName) here "+
 			"so named agent pools mount the PVC that actually exists (#1538).")
+	flag.StringVar(&gateAllowedHostPaths, "gate-allowed-host-paths", "",
+		"Comma-separated host directories a GateProfile placement may mount as hostPath volumes "+
+			"(a placement path must equal or sit under one). Empty allows none.")
+	flag.StringVar(&gateAllowedPriorityClasses, "gate-allowed-priority-classes", "",
+		"Comma-separated priority classes a GateProfile placement may request. Empty allows none.")
 	flag.StringVar(&coderGitSecret, "coder-git-secret", "meitheal-git-credentials",
 		"Name of the Secret the coder Job projects as GITHUB_TOKEN for the clone + push (#620). "+
 			"Point this at an existing git Secret (e.g. meitheal-github) to reuse it instead of "+
@@ -525,11 +532,12 @@ func main() {
 				Name:  committerName(commitCommitterName, commitAuthorName),
 				Email: committerEmail(commitCommitterEmail, commitAuthorEmail),
 			},
-			KeepWorkspace:   keepWorkspace,
-			RegistryFactory: makeRegistryFactory(kc, kcs, meithealNamespace, gateCachePVC, seams),
-			CodeHost:        seams.codeHost,
-			WorkItems:       seams.workItems,
-			ChangePolicy:    changepolicy.NewDefaultPolicy(),
+			KeepWorkspace: keepWorkspace,
+			RegistryFactory: makeRegistryFactory(kc, kcs, meithealNamespace, gateCachePVC, seams,
+				splitCSV(gateAllowedHostPaths), splitCSV(gateAllowedPriorityClasses)),
+			CodeHost:     seams.codeHost,
+			WorkItems:    seams.workItems,
+			ChangePolicy: changepolicy.NewDefaultPolicy(),
 			// CoderJobSubmitter routes Job-mode Agents to an ephemeral
 			// per-task Job (#620). Wired ONLY on the watcher executor: the
 			// run-task path (which the Job itself runs) builds its executor
@@ -642,23 +650,25 @@ func main() {
 func runTaskCommand(args []string) {
 	fs := flag.NewFlagSet("run-task", flag.ExitOnError)
 	var (
-		attemptKey               string
-		taskName                 string
-		namespace                string
-		workspaceDir             string
-		kubeContext              string
-		gitRemoteURL             string
-		forgeName                string
-		forgeAPIBaseURL          string
-		inferenceURLOverride     string
-		inferenceURLHostOverride string
-		commitAuthorName         string
-		commitAuthorEmail        string
-		commitCommitterName      string
-		commitCommitterEmail     string
-		meithealNamespace        string
-		gateCachePVC             string
-		keepWorkspace            bool
+		attemptKey                 string
+		taskName                   string
+		namespace                  string
+		workspaceDir               string
+		kubeContext                string
+		gitRemoteURL               string
+		forgeName                  string
+		forgeAPIBaseURL            string
+		inferenceURLOverride       string
+		inferenceURLHostOverride   string
+		commitAuthorName           string
+		commitAuthorEmail          string
+		commitCommitterName        string
+		commitCommitterEmail       string
+		meithealNamespace          string
+		gateCachePVC               string
+		gateAllowedHostPaths       string
+		gateAllowedPriorityClasses string
+		keepWorkspace              bool
 	)
 	fs.StringVar(&taskName, "task", "",
 		"Name of the AgenticTask to run. Required.")
@@ -694,6 +704,11 @@ func runTaskCommand(args []string) {
 	fs.StringVar(&gateCachePVC, "gate-cache-pvc", "",
 		"Name of the gate-cache PVC the run_gate_job tool mounts at /cache. Empty disables the "+
 			"volume mount (#1538).")
+	fs.StringVar(&gateAllowedHostPaths, "gate-allowed-host-paths", "",
+		"Comma-separated host directories a GateProfile placement may mount as hostPath volumes "+
+			"(a placement path must equal or sit under one). Empty allows none.")
+	fs.StringVar(&gateAllowedPriorityClasses, "gate-allowed-priority-classes", "",
+		"Comma-separated priority classes a GateProfile placement may request. Empty allows none.")
 	fs.BoolVar(&keepWorkspace, "keep-workspace", false,
 		"Preserve the per-task clone workspace after the run.")
 
@@ -743,11 +758,12 @@ func runTaskCommand(args []string) {
 			Name:  committerName(commitCommitterName, commitAuthorName),
 			Email: committerEmail(commitCommitterEmail, commitAuthorEmail),
 		},
-		KeepWorkspace:   keepWorkspace,
-		RegistryFactory: makeRegistryFactory(kc, kcs, meithealNamespace, gateCachePVC, seams),
-		CodeHost:        seams.codeHost,
-		WorkItems:       seams.workItems,
-		ChangePolicy:    changepolicy.NewDefaultPolicy(),
+		KeepWorkspace: keepWorkspace,
+		RegistryFactory: makeRegistryFactory(kc, kcs, meithealNamespace, gateCachePVC, seams,
+			splitCSV(gateAllowedHostPaths), splitCSV(gateAllowedPriorityClasses)),
+		CodeHost:     seams.codeHost,
+		WorkItems:    seams.workItems,
+		ChangePolicy: changepolicy.NewDefaultPolicy(),
 	})
 	if err != nil {
 		// System / execution failure: the result line + ERROR sentinel
@@ -922,6 +938,7 @@ func assembleAgentRegistry(
 // before MCP existed.
 func makeRegistryFactory(
 	kc client.Client, kcs kubernetes.Interface, meithealNamespace, gateCachePVC string, seams forgeSeams,
+	gateAllowedHostPaths, gateAllowedPriorityClasses []string,
 ) func(
 	ctx context.Context, workspace string, ag *meithealv1alpha1.Agent, workloadMCPEnabled bool,
 ) (meithealagent.ToolRegistry, error) {
@@ -945,14 +962,16 @@ func makeRegistryFactory(
 			gateDeadline = gateActiveDeadlineSeconds(ag.Spec.Execution.ActiveDeadlineSeconds)
 		}
 		native := meithealtools.BuildAll(meithealtools.ToolDeps{
-			Workspace:                 workspace,
-			BashTimeout:               bashTimeout,
-			Client:                    kc,
-			MeithealNamespace:         meithealNamespace,
-			GateCachePVC:              gateCachePVC,
-			LogTailFn:                 logTail,
-			Token:                     repo.TokenFromEnvOrFile,
-			GateActiveDeadlineSeconds: gateDeadline,
+			Workspace:                  workspace,
+			BashTimeout:                bashTimeout,
+			Client:                     kc,
+			MeithealNamespace:          meithealNamespace,
+			GateCachePVC:               gateCachePVC,
+			GateAllowedHostPaths:       gateAllowedHostPaths,
+			GateAllowedPriorityClasses: gateAllowedPriorityClasses,
+			LogTailFn:                  logTail,
+			Token:                      repo.TokenFromEnvOrFile,
+			GateActiveDeadlineSeconds:  gateDeadline,
 			// The tools reach the same forge as the executor; nil here left
 			// fetch_issue and the gate's clone URL on their GitHub defaults
 			// whatever seam the executor was given (#1298).

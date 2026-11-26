@@ -139,7 +139,9 @@ spec:
                       Job spec unchanged.
                     properties:
                       env:
-                        description: Env is appended to the gate container's environment.
+                        description: |-
+                          Env is appended to the gate container's environment. valueFrom is not
+                          allowed, and a name the gate container already sets is rejected.
                         items:
                           description: EnvVar represents an environment variable present
                             in a Container.
@@ -305,14 +307,15 @@ spec:
                           with these labels.
                         type: object
                       priorityClassName:
-                        description: PriorityClassName sets the gate pod's priority
-                          class.
+                        description: |-
+                          PriorityClassName sets the gate pod's priority class. It must be in the
+                          meitheal-agent's --gate-allowed-priority-classes list; empty list allows none.
                         type: string
                       resources:
                         description: |-
                           Resources are merged by resource name over the gate container's
                           default CPU and memory requests and limits. A name set here replaces
-                          the default for that name; other defaults stay.
+                          the default for that name; other defaults stay. Claims must be empty.
                         properties:
                           claims:
                             description: |-
@@ -371,8 +374,9 @@ spec:
                             type: object
                         type: object
                       tolerations:
-                        description: Tolerations lets the gate pod schedule onto tainted
-                          nodes.
+                        description: |-
+                          Tolerations lets the gate pod schedule onto tainted nodes. Every
+                          toleration must set a non-empty key (an empty key tolerates all taints).
                         items:
                           description: |-
                             The pod this Toleration is attached to tolerates any taint that matches
@@ -412,8 +416,9 @@ spec:
                           type: object
                         type: array
                       volumeMounts:
-                        description: VolumeMounts is appended to the gate container's
-                          volume mounts.
+                        description: |-
+                          VolumeMounts is appended to the gate container's volume mounts. Each
+                          must name a volume declared here and be readOnly.
                         items:
                           description: VolumeMount describes a mounting of a Volume
                             within a container.
@@ -488,7 +493,11 @@ spec:
                           type: object
                         type: array
                       volumes:
-                        description: Volumes is appended to the gate pod's volumes.
+                        description: |-
+                          Volumes is appended to the gate pod's volumes. Only hostPath and
+                          persistentVolumeClaim sources are allowed. A hostPath must equal or sit
+                          under an entry of the meitheal-agent's --gate-allowed-host-paths list
+                          (empty allows none; ".." is rejected). A claim must be readOnly.
                         items:
                           description: Volume represents a named volume in a pod that
                             may be accessed by any container in the pod.

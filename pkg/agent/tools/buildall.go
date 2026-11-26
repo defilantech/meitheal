@@ -57,11 +57,13 @@ func BuildAll(deps ToolDeps) []Tool {
 		&RunGateJobTool{
 			Client: deps.Client,
 			Cfg: RunGateJobToolConfig{
-				Namespace:             deps.MeithealNamespace,
-				PVCName:               deps.GateCachePVC,
-				LogTailFn:             deps.LogTailFn,
-				CodeHost:              deps.CodeHost,
-				ActiveDeadlineSeconds: deps.GateActiveDeadlineSeconds,
+				Namespace:              deps.MeithealNamespace,
+				PVCName:                deps.GateCachePVC,
+				LogTailFn:              deps.LogTailFn,
+				CodeHost:               deps.CodeHost,
+				ActiveDeadlineSeconds:  deps.GateActiveDeadlineSeconds,
+				AllowedHostPaths:       deps.GateAllowedHostPaths,
+				AllowedPriorityClasses: deps.GateAllowedPriorityClasses,
 			},
 		},
 		// fetch_issue: read-only GitHub issue surface for the reviewer. The
@@ -127,6 +129,12 @@ type ToolDeps struct {
 	// pass can be given more than the 1800 s default (#1748). Zero keeps
 	// the default via applyConfigDefaults.
 	GateActiveDeadlineSeconds int32
+
+	// GateAllowedHostPaths and GateAllowedPriorityClasses bound what a gate
+	// profile's placement may request (--gate-allowed-host-paths,
+	// --gate-allowed-priority-classes). Empty allows none.
+	GateAllowedHostPaths       []string
+	GateAllowedPriorityClasses []string
 
 	// LogTailFn reads a finished gate Job's pod logs back for the model.
 	LogTailFn func(ctx context.Context, namespace, jobName string) string
