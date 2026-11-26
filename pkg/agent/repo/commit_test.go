@@ -124,6 +124,7 @@ func TestCommit_CommitterAuthorSplit(t *testing.T) {
 		Message:   "fix: demonstrate committer/author split\n\nFixes #1281",
 		Author:    bot,
 		Committer: human,
+		SignOff:   true,
 	})
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
@@ -162,5 +163,54 @@ func TestCommit_CommitterAuthorSplit(t *testing.T) {
 	botSignoff := "Signed-off-by: " + bot.Name + " <" + bot.Email + ">"
 	if strings.Contains(body, botSignoff) {
 		t.Errorf("bot DCO trailer must not appear; commit body was:\n%s", body)
+	}
+}
+
+// commitWithSignOff makes one change in a fresh clone, commits it with the
+// given SignOff setting, and returns the full commit message.
+func commitWithSignOff(t *testing.T, signOff bool, id Identity) string {
+	t.Helper()
+	gitOrSkip(t)
+	root := t.TempDir()
+	bare := initBareOrigin(t, root)
+	seedOrigin(t, bare)
+
+	ctx := context.Background()
+	dest := filepath.Join(root, "work")
+	if err := Clone(ctx, CloneOptions{RemoteURL: bare, Dest: dest}); err != nil {
+		t.Fatalf("Clone: %v", err)
+	}
+	if err := CreateAndCheckoutBranch(ctx, dest, "meitheal/issue-signoff"); err != nil {
+		t.Fatalf("CreateAndCheckoutBranch: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "change.txt"), []byte("change\n"), 0o644); err != nil {
+		t.Fatalf("write change: %v", err)
+	}
+	sha, err := Commit(ctx, CommitOptions{
+		Workspace: dest,
+		Message:   "feat: a change",
+		Author:    id,
+		Committer: id,
+		SignOff:   signOff,
+	})
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	return gitOut(t, dest, "log", "-1", "--format=%B", sha)
+}
+
+func TestCommit_SignOffFalse_NoTrailer(t *testing.T) {
+	body := commitWithSignOff(t, false, Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"})
+	if strings.Contains(body, "Signed-off-by") {
+		t.Errorf("SignOff=false must not add a trailer; message was:\n%s", body)
+	}
+}
+
+func TestCommit_SignOffTrue_HasTrailer(t *testing.T) {
+	id := Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"}
+	body := commitWithSignOff(t, true, id)
+	want := "Signed-off-by: " + id.Name + " <" + id.Email + ">"
+	if !strings.Contains(body, want) {
+		t.Errorf("missing %q; message was:\n%s", want, body)
 	}
 }

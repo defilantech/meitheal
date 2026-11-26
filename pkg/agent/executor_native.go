@@ -1230,7 +1230,7 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 		// rejected, or push failed); it is byte-identical to the linear path
 		// on the first push.
 		attemptSHA, envtestTouched, done := e.commitPushAttempt(
-			ctx, log, task, workspace, branch, baseBranch, auth,
+			ctx, log, agent, task, workspace, branch, baseBranch, auth,
 			envtestAttempt > 0 || scanAttempt > 0, task.Spec.Payload.AllowOverwrite,
 			start, transcriptRef, loopRes)
 		if done != nil {
@@ -1555,7 +1555,8 @@ func (e *NativeAgentLoopExecutor) retryCoderWithFeedback(
 // replaceOnReject, which flips ReplaceOnReject on for a retry from EITHER
 // gate that supersedes its predecessor push).
 func (e *NativeAgentLoopExecutor) commitPushAttempt(
-	ctx context.Context, log logr.Logger, task *meithealv1alpha1.AgenticTask,
+	ctx context.Context, log logr.Logger,
+	agent *meithealv1alpha1.Agent, task *meithealv1alpha1.AgenticTask,
 	workspace, branch, baseBranch string, auth *repo.Auth,
 	replaceOnReject bool, allowOverwrite bool,
 	start time.Time, tref corev1.ObjectReference, lr *LoopResult,
@@ -1624,6 +1625,7 @@ func (e *NativeAgentLoopExecutor) commitPushAttempt(
 		Message:   commitMessage,
 		Author:    e.CommitAuthor,
 		Committer: e.CommitCommitter,
+		SignOff:   agent.Spec.SignsOffCommits(),
 	})
 	if errors.Is(commitErr, repo.ErrNothingToCommit) {
 		// Model said GO but never edited anything. Honest report: this is a
@@ -3031,6 +3033,7 @@ func (e *NativeAgentLoopExecutor) maybePreserveGateFailedBranch(
 		Message:   msg,
 		Author:    e.CommitAuthor,
 		Committer: e.CommitCommitter,
+		SignOff:   agent.Spec.SignsOffCommits(),
 	})
 	if err != nil {
 		log.Error(err, "gate-failed preserve: commit failed; not preserving branch")
@@ -3139,6 +3142,7 @@ func (e *NativeAgentLoopExecutor) preserveUnsuccessfulLoopBranch(
 		Message:   msg,
 		Author:    e.CommitAuthor,
 		Committer: e.CommitCommitter,
+		SignOff:   agent.Spec.SignsOffCommits(),
 	})
 	if errors.Is(commitErr, repo.ErrNothingToCommit) {
 		// The model wrote nothing between the HasChanges check and the

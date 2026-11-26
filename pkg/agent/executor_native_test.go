@@ -2479,6 +2479,7 @@ func TestExecutorNative_SelfCommittedWorkIsRecovered(t *testing.T) {
 		Message:   "fix: resolve issue #982",
 		Author:    repo.Identity{Name: "meitheal", Email: "meitheal@test.com"},
 		Committer: repo.Identity{Name: "meitheal", Email: "meitheal@test.com"},
+		SignOff:   true,
 	})
 	if err != nil {
 		t.Fatalf("repo.Commit after soft reset failed: %v", err)

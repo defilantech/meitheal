@@ -187,3 +187,24 @@ func TestAgentRoleConstantsMatchEnum(t *testing.T) {
 		}
 	}
 }
+
+func TestAgentSpec_SignsOffCommits(t *testing.T) {
+	f, tr := false, true
+	cases := []struct {
+		name string
+		in   *bool
+		want bool
+	}{
+		{"nil defaults to true", nil, true},
+		{"explicit false", &f, false},
+		{"explicit true", &tr, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &AgentSpec{SignOffCommits: tc.in}
+			if got := s.SignsOffCommits(); got != tc.want {
+				t.Errorf("got %v want %v", got, tc.want)
+			}
+		})
+	}
+}

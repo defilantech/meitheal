@@ -623,6 +623,13 @@ spec:
                 - reviewer
                 - planner
                 type: string
+              signOffCommits:
+                description: |-
+                  SignOffCommits controls whether the commits this agent makes carry a
+                  DCO `Signed-off-by` trailer (git commit -s). Nil means true, preserving
+                  today's behaviour. Set false for repositories whose rules forbid
+                  bot-signed commits; a maintainer then adds the sign-off themselves.
+                type: boolean
               stuckLoopDetection:
                 description: |-
                   StuckLoopDetection configures the per-Agent stuck-loop detector

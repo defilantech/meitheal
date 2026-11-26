@@ -447,6 +447,13 @@ type AgentSpec struct {
 	// +optional
 	OpenPullRequestsAsDraft *bool `json:"openPullRequestsAsDraft,omitempty"`
 
+	// SignOffCommits controls whether the commits this agent makes carry a
+	// DCO `Signed-off-by` trailer (git commit -s). Nil means true, preserving
+	// today's behaviour. Set false for repositories whose rules forbid
+	// bot-signed commits; a maintainer then adds the sign-off themselves.
+	// +optional
+	SignOffCommits *bool `json:"signOffCommits,omitempty"`
+
 	// Tools is the tool whitelist surfaced to the model on every turn.
 	// Unknown names are rejected at agent startup so a typo in an Agent
 	// CR fails loud rather than silently disabling a tool.
@@ -579,4 +586,10 @@ type AgentList struct {
 
 func init() {
 	SchemeBuilder.Register(&Agent{}, &AgentList{})
+}
+
+// SignsOffCommits reports whether commits made by this agent carry a DCO
+// sign-off trailer. Nil (unset) means true.
+func (s *AgentSpec) SignsOffCommits() bool {
+	return s.SignOffCommits == nil || *s.SignOffCommits
 }
