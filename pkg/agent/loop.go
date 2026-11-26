@@ -31,6 +31,7 @@ import (
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
@@ -202,6 +203,16 @@ type LoopConfig struct {
 	// omits the field on the wire so the request is byte-identical to today
 	// for any agent that does not set it.
 	ChatTemplateKwargs map[string]apiextensionsv1.JSON
+
+	// ToolOutputRewrites are literal substring rewrites applied to every
+	// tool result's final content string before it enters the transcript,
+	// so chat-template marker strings in tool output (e.g. a Qwen
+	// "<|im_start|>" inside a source file) reach the model defused. Each
+	// From is matched literally and in its json.Marshal-escaped form. The
+	// executor maps Agent.spec.toolOutputRewrites here. Nil or empty leaves
+	// content byte-identical to today. Unrelated to maskTranscriptForWire,
+	// which elides old tool results from the wire.
+	ToolOutputRewrites []meithealv1alpha1.ToolOutputRewrite
 
 	// MaxTruncationRetries bounds the streak of turns truncated by the token
 	// cap (finish_reason=="length") before the loop gives up with
@@ -1332,7 +1343,7 @@ func (l *Loop) runOneTurn(
 	// one tool call (the no-tool-call paths returned above), so one
 	// increment per turn cannot over-count (#1628 turn accounting).
 	res.TurnsWithToolCall++
-	terminal, editSucceeded := l.dispatchToolCalls(ctx, msg.ToolCalls, res)
+	terminal, editSucceeded := l.dispatchToolCalls(ctx, msg.ToolCalls, res, cfg.ToolOutputRewrites)
 	span.SetAttributes(
 		attribute.Int("tool_calls", len(msg.ToolCalls)),
 		attribute.Int64("elapsed_ms", time.Since(start).Milliseconds()),
@@ -1360,6 +1371,7 @@ func (l *Loop) runOneTurn(
 // phase without ever landing a fix.
 func (l *Loop) dispatchToolCalls(
 	ctx context.Context, calls []oai.ToolCall, res *LoopResult,
+	rewrites []meithealv1alpha1.ToolOutputRewrite,
 ) (terminal *ToolResult, editSucceeded bool) {
 	for _, tc := range calls {
 		argsRaw := json.RawMessage(tc.Function.Arguments)
@@ -1395,10 +1407,36 @@ func (l *Loop) dispatchToolCalls(
 			Role:       oai.RoleTool,
 			ToolCallID: tc.ID,
 			Name:       tc.Function.Name,
-			Content:    content,
+			Content:    rewriteToolOutput(content, rewrites),
 		})
 	}
 	return terminal, editSucceeded
+}
+
+// jsonHTMLEscaper mirrors the characters encoding/json escapes by default
+// (json.Marshal runs with HTML escaping on): <, >, & and the U+2028/U+2029
+// line separators.
+var jsonHTMLEscaper = strings.NewReplacer(
+	"<", `\u003c`, ">", `\u003e`, "&", `\u0026`,
+	"\u2028", `\u2028`, "\u2029", `\u2029`,
+)
+
+// rewriteToolOutput applies each rule's From -> To to content, matching From
+// literally and in its JSON-escaped form (tool results are json.Marshal'ed
+// before they reach here, so "<|im_end|>" appears as "\u003c|im_end|\u003e").
+// To is substituted as written in both cases. Rules with an empty From are
+// skipped; no rules returns content unchanged.
+func rewriteToolOutput(content string, rules []meithealv1alpha1.ToolOutputRewrite) string {
+	for _, r := range rules {
+		if r.From == "" {
+			continue
+		}
+		content = strings.ReplaceAll(content, r.From, r.To)
+		if esc := jsonHTMLEscaper.Replace(r.From); esc != r.From {
+			content = strings.ReplaceAll(content, esc, r.To)
+		}
+	}
+	return content
 }
 
 // maskTranscriptForWire returns a copy of transcript with older tool

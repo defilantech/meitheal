@@ -332,6 +332,15 @@ type AgentSpec struct {
 	// +optional
 	ChatTemplateKwargs map[string]apiextensionsv1.JSON `json:"chatTemplateKwargs,omitempty"`
 
+	// ToolOutputRewrites are literal string rewrites applied to every tool
+	// result before it enters the transcript. Use them to defuse
+	// chat-template marker strings (for example a Qwen "<|im_start|>" in
+	// source or fixtures) that a model would otherwise read as its own
+	// special tokens. Each From matches literally and in its JSON-escaped
+	// form. Unset leaves tool output untouched.
+	// +optional
+	ToolOutputRewrites []ToolOutputRewrite `json:"toolOutputRewrites,omitempty"`
+
 	// ContextWindowTokens is the soft token budget for the wire payload
 	// the loop sends on every turn. When the running message list
 	// approximately exceeds this size, older tool result messages are
@@ -593,4 +602,14 @@ func init() {
 // receiver, means true.
 func (s *AgentSpec) SignsOffCommits() bool {
 	return s == nil || s.SignOffCommits == nil || *s.SignOffCommits
+}
+
+// ToolOutputRewrite replaces every occurrence of From with To in tool output.
+type ToolOutputRewrite struct {
+	// From is the literal string to find.
+	// +kubebuilder:validation:MinLength=1
+	From string `json:"from"`
+
+	// To is the replacement text. May be empty to delete From.
+	To string `json:"to"`
 }

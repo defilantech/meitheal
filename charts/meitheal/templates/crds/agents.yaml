@@ -697,6 +697,31 @@ spec:
                   anything outside.
                 pattern: ^[0-2](\.[0-9]+)?$
                 type: string
+              toolOutputRewrites:
+                description: |-
+                  ToolOutputRewrites are literal string rewrites applied to every tool
+                  result before it enters the transcript. Use them to defuse
+                  chat-template marker strings (for example a Qwen "<|im_start|>" in
+                  source or fixtures) that a model would otherwise read as its own
+                  special tokens. Each From matches literally and in its JSON-escaped
+                  form. Unset leaves tool output untouched.
+                items:
+                  description: ToolOutputRewrite replaces every occurrence of From
+                    with To in tool output.
+                  properties:
+                    from:
+                      description: From is the literal string to find.
+                      minLength: 1
+                      type: string
+                    to:
+                      description: To is the replacement text. May be empty to delete
+                        From.
+                      type: string
+                  required:
+                  - from
+                  - to
+                  type: object
+                type: array
               tools:
                 description: |-
                   Tools is the tool whitelist surfaced to the model on every turn.

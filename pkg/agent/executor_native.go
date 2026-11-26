@@ -910,6 +910,8 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 		// template. Nil/empty omits the field on the wire so the request
 		// is byte-identical to today for agents that do not set it.
 		ChatTemplateKwargs: agent.Spec.ChatTemplateKwargs,
+		// Literal rewrites of marker strings in tool output; nil is a no-op.
+		ToolOutputRewrites: agent.Spec.ToolOutputRewrites,
 		// Live turn streaming, opt-in. A method rather than an inline nil
 		// check because this function sits at the gocyclo ceiling; see
 		// turnHook for why the nil case must stay a nil hook.
