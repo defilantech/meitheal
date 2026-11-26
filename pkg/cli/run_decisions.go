@@ -208,6 +208,10 @@ func ListDecisions(dir string) ([]Decision, error) {
 	return out, errors.Join(bad...)
 }
 
+// errAnswerNotOffered marks an answer the decision's options do not allow, as
+// opposed to a read or write failure.
+var errAnswerNotOffered = errors.New("answer not offered")
+
 // AnswerDecision records a human's answer. The answer must be one of the
 // options the decision offered, so a typo cannot silently become an action.
 //
@@ -255,7 +259,7 @@ func AnswerDecision(dir string, issue int32, kind, answer string) error {
 		}
 	}
 	if !ok {
-		return fmt.Errorf("answer %q is not one of %v", answer, d.Options)
+		return fmt.Errorf("%w: answer %q is not one of %v", errAnswerNotOffered, answer, d.Options)
 	}
 	d.Answer = answer
 	out, err := yaml.Marshal(d)

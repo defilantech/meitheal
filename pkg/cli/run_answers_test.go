@@ -115,7 +115,7 @@ func TestPollAnswers_OnlyAnswererCounts(t *testing.T) {
 		{Author: "someone-else", Body: "/meitheal requeue", Created: at(1)},
 		{Author: "", Body: "/meitheal requeue", Created: at(2)},
 	}})
-	got, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	got, _, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestPollAnswers_OnlyAnswererCounts(t *testing.T) {
 	}
 	// The answerer matches case-insensitively.
 	f.byIssue[7] = append(f.byIssue[7], IssueComment{Author: "defilan", Body: "/meitheal drop", Created: at(3)})
-	got, err = PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	got, _, err = PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
 	if err != nil || len(got) != 1 || got[0].Answer != "drop" {
 		t.Fatalf("got %v, %v, want one drop answer", got, err)
 	}
@@ -134,7 +134,7 @@ func TestPollAnswers_EmptyAnswererMatchesNobody(t *testing.T) {
 	dir := t.TempDir()
 	parkForAnswers(t, dir, answersT0)
 	f := newAnswersForge(map[int32][]IssueComment{7: {{Author: "", Body: "/meitheal drop", Created: at(1)}}})
-	got, err := PollAnswers(context.Background(), f, dir, "o/r", "")
+	got, _, err := PollAnswers(context.Background(), f, dir, "o/r", "")
 	if err != nil || len(got) != 0 {
 		t.Fatalf("got %v, %v, want nothing", got, err)
 	}
@@ -147,7 +147,7 @@ func TestPollAnswers_FirstValidCommandWins(t *testing.T) {
 		{Author: "Defilan", Body: "hmm\n/meitheal bogus\n/meitheal decide use #46's window", Created: at(1)},
 		{Author: "Defilan", Body: "/meitheal drop", Created: at(2)},
 	}})
-	got, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	got, _, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestPollAnswers_FirstValidCommandWinsRegardlessOfOrder(t *testing.T) {
 		{Author: "Defilan", Body: "/meitheal drop", Created: at(5)},
 		{Author: "Defilan", Body: "/meitheal requeue", Created: at(1)},
 	}})
-	got, _ := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	got, _, _ := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
 	if len(got) != 1 || got[0].Answer != "requeue" {
 		t.Fatalf("got %v, want the earliest comment's command", got)
 	}
@@ -178,7 +178,7 @@ func TestPollAnswers_CommentsBeforeParkIgnored(t *testing.T) {
 	f := newAnswersForge(map[int32][]IssueComment{7: {
 		{Author: "Defilan", Body: "/meitheal drop", Created: at(-5)},
 	}})
-	got, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	got, _, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
 	if err != nil || len(got) != 0 {
 		t.Fatalf("got %v, %v, want the pre-park comment ignored", got, err)
 	}
@@ -187,7 +187,7 @@ func TestPollAnswers_CommentsBeforeParkIgnored(t *testing.T) {
 	}
 	// A forge that ignores since must not leak old comments either.
 	g := &sinceBlindForge{answersForge: f}
-	got, _ = PollAnswers(context.Background(), g, dir, "o/r", "Defilan")
+	got, _, _ = PollAnswers(context.Background(), g, dir, "o/r", "Defilan")
 	if len(got) != 0 {
 		t.Fatalf("got %v from a forge that ignores since", got)
 	}
@@ -207,7 +207,7 @@ func TestPollAnswers_ZeroOpenedSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := newAnswersForge(map[int32][]IssueComment{8: {{Author: "Defilan", Body: "/meitheal drop", Created: at(1)}}})
-	got, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	got, _, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
 	if err != nil || len(got) != 0 {
 		t.Fatalf("got %v, %v, want skipped", got, err)
 	}
@@ -223,7 +223,7 @@ func TestPollAnswers_AlreadyAnsweredSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := newAnswersForge(map[int32][]IssueComment{7: {{Author: "Defilan", Body: "/meitheal drop", Created: at(1)}}})
-	got, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	got, _, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
 	if err != nil || len(got) != 0 {
 		t.Fatalf("got %v, %v, want skipped", got, err)
 	}
@@ -239,7 +239,7 @@ func TestPollAnswers_PostsNothing(t *testing.T) {
 	dir := t.TempDir()
 	parkForAnswers(t, dir, answersT0)
 	f := newAnswersForge(map[int32][]IssueComment{7: {{Author: "Defilan", Body: "/meitheal drop", Created: at(1)}}})
-	if _, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan"); err != nil {
+	if _, _, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan"); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.comments) != 0 {
@@ -271,5 +271,79 @@ func TestAnswerDecision_DecideFreeText(t *testing.T) {
 	}
 	if err := AnswerDecision(d3, 9, "adjudicate", "decide: x"); err == nil {
 		t.Error("decide accepted although not among the options")
+	}
+}
+
+func TestPollAnswers_RejectedCommandSkippedThenValidOneWins(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := ParkDecision(dir, Decision{
+		Issue: 7, Kind: "needs-decision", Opened: answersT0, Options: []string{"requeue", "drop"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f := newAnswersForge(map[int32][]IssueComment{7: {
+		{Author: "Defilan", Body: "/meitheal decide x", Created: at(1)},
+		{Author: "Defilan", Body: "/meitheal drop", Created: at(2)},
+	}})
+	got, rej, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	if err != nil || len(got) != 1 || got[0].Answer != "drop" {
+		t.Fatalf("got %v, %v, want the later valid drop", got, err)
+	}
+	r := RejectedAnswer{}
+	if len(rej) == 1 {
+		r = rej[0]
+	}
+	if r.Issue != 7 || r.Command != "decide" || !r.Created.Equal(at(1)) || r.Reason == "" {
+		t.Fatalf("rejected = %+v, want the decide at minute 1", rej)
+	}
+}
+
+func TestPollAnswers_OnlyRejectedStaysUnansweredWithNilError(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := ParkDecision(dir, Decision{
+		Issue: 7, Kind: "needs-decision", Opened: answersT0, Options: []string{"requeue", "drop"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f := newAnswersForge(map[int32][]IssueComment{7: {{Author: "Defilan", Body: "/meitheal decide x", Created: at(1)}}})
+	got, rej, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	if err != nil || len(got) != 0 || len(rej) != 1 || answerOf(t, dir) != "" {
+		t.Fatalf("got %v, rej %v, err %v, want unanswered, one rejection, nil error", got, rej, err)
+	}
+}
+
+type failingIssueForge struct {
+	*answersForge
+	failIssue int32
+}
+
+func (f *failingIssueForge) CommentsSince(
+	ctx context.Context, repo string, issue int32, since time.Time,
+) ([]IssueComment, error) {
+	if issue == f.failIssue {
+		return nil, context.DeadlineExceeded
+	}
+	return f.answersForge.CommentsSince(ctx, repo, issue, since)
+}
+
+func TestPollAnswers_ForgeErrorDoesNotStopOtherDecisions(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []int32{5, 7} {
+		if _, err := ParkDecision(dir, Decision{
+			Issue: n, Kind: "needs-decision", Opened: answersT0, Options: []string{"requeue", "decide", "drop"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base := newAnswersForge(map[int32][]IssueComment{
+		7: {{Author: "Defilan", Body: "/meitheal drop", Created: at(1)}},
+	})
+	f := &failingIssueForge{answersForge: base, failIssue: 5}
+	got, _, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	if err == nil {
+		t.Error("want the forge error returned")
+	}
+	if len(got) != 1 || got[0].Issue != 7 {
+		t.Fatalf("got %v, want issue 7 answered", got)
 	}
 }

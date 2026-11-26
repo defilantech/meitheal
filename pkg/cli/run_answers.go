@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 const answerPrefix = "/meitheal "
@@ -50,17 +51,31 @@ func ParseAnswer(body string) (cmd, text string, ok bool) {
 	return "", "", false
 }
 
+// RejectedAnswer is a well-formed command from the answerer that the decision
+// cannot take, for instance `decide` on a decision whose options lack it.
+type RejectedAnswer struct {
+	Issue   int32
+	Kind    string
+	Created time.Time
+	Command string
+	Reason  string
+}
+
 // PollAnswers reads the issue comments of every unanswered decision and
 // records the first valid command from answerer made at or after the park.
-// It returns the decisions it newly answered and never posts to the forge.
-// A failure on one decision does not stop the others; the errors come back
-// joined alongside whatever was answered.
-func PollAnswers(ctx context.Context, f RunForge, dir, repo, answerer string) ([]Decision, error) {
+// A command the decision rejects is not valid for it: it is skipped, reported
+// in rejected, and later comments are still tried. It returns the decisions it
+// newly answered and never posts to the forge. err is reserved for forge and
+// I/O failures, so one stale comment cannot fail every poll; a failure on one
+// decision does not stop the others, and the errors come back joined alongside
+// whatever was answered.
+func PollAnswers(
+	ctx context.Context, f RunForge, dir, repo, answerer string,
+) (answered []Decision, rejected []RejectedAnswer, err error) {
 	decisions, listErr := ListDecisions(dir)
 	errs := []error{listErr}
-	var answered []Decision
 	if answerer == "" {
-		return nil, errors.Join(errs...)
+		return nil, nil, errors.Join(errs...)
 	}
 	for _, d := range decisions {
 		// Without a park time there is no way to tell this park's comments
@@ -68,9 +83,9 @@ func PollAnswers(ctx context.Context, f RunForge, dir, repo, answerer string) ([
 		if d.Answer != "" || d.Opened.IsZero() {
 			continue
 		}
-		comments, err := f.CommentsSince(ctx, repo, d.Issue, d.Opened)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("comments for issue %d: %w", d.Issue, err))
+		comments, cerr := f.CommentsSince(ctx, repo, d.Issue, d.Opened)
+		if cerr != nil {
+			errs = append(errs, fmt.Errorf("comments for issue %d: %w", d.Issue, cerr))
 			continue
 		}
 		sort.SliceStable(comments, func(i, j int) bool { return comments[i].Created.Before(comments[j].Created) })
@@ -88,14 +103,21 @@ func PollAnswers(ctx context.Context, f RunForge, dir, repo, answerer string) ([
 			if cmd == "decide" {
 				answer = "decide: " + text
 			}
-			if err := AnswerDecision(dir, d.Issue, d.Kind, answer); err != nil {
-				errs = append(errs, fmt.Errorf("answer issue %d: %w", d.Issue, err))
-			} else {
-				d.Answer = answer
-				answered = append(answered, d)
+			aerr := AnswerDecision(dir, d.Issue, d.Kind, answer)
+			if errors.Is(aerr, errAnswerNotOffered) {
+				rejected = append(rejected, RejectedAnswer{
+					Issue: d.Issue, Kind: d.Kind, Created: c.Created, Command: cmd, Reason: aerr.Error(),
+				})
+				continue
 			}
+			if aerr != nil {
+				errs = append(errs, fmt.Errorf("answer issue %d: %w", d.Issue, aerr))
+				break
+			}
+			d.Answer = answer
+			answered = append(answered, d)
 			break
 		}
 	}
-	return answered, errors.Join(errs...)
+	return answered, rejected, errors.Join(errs...)
 }
