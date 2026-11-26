@@ -3215,7 +3215,18 @@ func (e *NativeAgentLoopExecutor) modelDecidedResult(
 		"modelExtra":    lr.Terminal.Extra,
 	}
 	promoteTerminalOutcome(ctx, r.Extra, lr.Terminal.Extra, workspace, execCommandRunner, baseBranch)
+	promoteTerminalConcerns(r.Extra, lr.Terminal.Extra)
 	return r
+}
+
+// promoteTerminalConcerns lifts submit_result's structured concerns from the
+// terminal's Extra (nested under "modelExtra") to the Result's top-level
+// Extra["concerns"], i.e. status.result.extra.concerns, where a run loop
+// reads them. Nothing is added when none were raised.
+func promoteTerminalConcerns(extra, terminalExtra map[string]any) {
+	if c, ok := terminalExtra["concerns"]; ok && c != nil {
+		extra["concerns"] = c
+	}
 }
 
 // promoteTerminalOutcome lifts a terminal, non-escalating machine outcome
@@ -3676,6 +3687,7 @@ func (e *NativeAgentLoopExecutor) goResult(
 		"turnCount":     lr.Turns,
 		"modelExtra":    lr.Terminal.Extra,
 	}
+	promoteTerminalConcerns(r.Extra, lr.Terminal.Extra)
 	return r
 }
 
