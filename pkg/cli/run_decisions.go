@@ -244,6 +244,16 @@ func AnswerDecision(dir string, issue int32, kind, answer string) error {
 			break
 		}
 	}
+	// "decide: TEXT" carries free text, so it cannot match an option exactly.
+	// It is valid when decide is offered and the text is not blank.
+	if rest, found := strings.CutPrefix(answer, "decide:"); found && strings.TrimSpace(rest) != "" {
+		for _, o := range d.Options {
+			if o == "decide" {
+				ok = true
+				break
+			}
+		}
+	}
 	if !ok {
 		return fmt.Errorf("answer %q is not one of %v", answer, d.Options)
 	}
