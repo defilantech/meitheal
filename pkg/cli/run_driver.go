@@ -30,12 +30,10 @@ type WatchResult struct {
 	Stalled bool
 	// BranchPushed reports whether the coder pushed anything.
 	//
-	// Nothing writes or reads it yet. The wiring it is waiting for belongs to
-	// the production Effects: a real Watch would feed it, with the elapsed
-	// time and the baseline, into IsStalled via StallInput.BranchPushed, and
-	// report the verdict as Stalled above. The driver never reads this field,
-	// and the separate StallInput.BranchPushed is the one the predicate
-	// actually uses today.
+	// The production Watch (run_effects.go) sets it from the coder tasks'
+	// recorded branch and feeds it, with the time since the coder's claim and
+	// the baseline, into IsStalled via StallInput.BranchPushed; Stalled above
+	// is that verdict. The driver never reads this field.
 	BranchPushed bool
 	// WorkloadFailed reports that review rounds were exhausted or a task
 	// failed terminally.
@@ -49,12 +47,12 @@ type WatchResult struct {
 
 // Effects are the side-effecting operations the driver performs. Kept behind
 // an interface so DriveItem's control flow is testable without a cluster;
-// the production implementation wraps the controller-runtime client and is a
-// follow-up to this plan.
+// the production implementation, NewClusterEffects (run_effects.go), wraps the
+// controller-runtime client, a GateRunner and a RunForge.
 //
 // Effects.Preflight is a METHOD and is not the package-level Preflight
 // function: that one takes a PreflightProbe and does the forge reads, and the
-// production implementation of this method is what will call it.
+// production implementation of this method calls it.
 type Effects interface {
 	Preflight(ctx context.Context, item QueueItem, branch string) (string, error)
 	Dispatch(ctx context.Context, item QueueItem, intent string) (workload string, err error)
