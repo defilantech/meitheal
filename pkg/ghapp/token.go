@@ -90,7 +90,7 @@ func MintInstallationToken(
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("ghapp: request failed: %w", errors.Unwrap(err))
+		return "", time.Time{}, errors.New("ghapp: request to GitHub failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
@@ -103,8 +103,8 @@ func MintInstallationToken(
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&out); err != nil {
 		return "", time.Time{}, errors.New("ghapp: decode installation token response")
 	}
-	if out.Token == "" {
-		return "", time.Time{}, errors.New("ghapp: response carried no token")
+	if out.Token == "" || out.ExpiresAt.IsZero() {
+		return "", time.Time{}, errors.New("ghapp: response carried no token or expiry")
 	}
 	return out.Token, out.ExpiresAt, nil
 }

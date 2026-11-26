@@ -72,7 +72,11 @@ func Clone(ctx context.Context, opts CloneOptions) error {
 
 	env := baseEnv()
 	if opts.Auth != nil {
-		env = append(env, opts.Auth.Env()...)
+		authEnv, aerr := opts.Auth.Env()
+		if aerr != nil {
+			return fmt.Errorf("resolve git token: %w", aerr)
+		}
+		env = append(env, authEnv...)
 	}
 
 	if _, err := runGit(ctx, "", env, "clone", opts.RemoteURL, opts.Dest); err != nil {

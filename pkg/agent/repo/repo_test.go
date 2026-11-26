@@ -135,7 +135,10 @@ func TestNewAuth_ExplicitTokenAndCloseRemovesFile(t *testing.T) {
 	if _, err := os.Stat(a.askpassPath); err != nil {
 		t.Errorf("askpass file not present: %v", err)
 	}
-	env := a.Env()
+	env, err := a.Env()
+	if err != nil {
+		t.Fatalf("Env: %v", err)
+	}
 	var sawAskpass, sawTokenEnv, sawNoPrompt bool
 	for _, kv := range env {
 		switch {
@@ -327,10 +330,25 @@ func TestSetRemote_IdempotentAndAdds(t *testing.T) {
 	}
 }
 
-// A rotated token file reaches the next NewAuth call: the lookup is per call,
-// not cached per process, so the GitHub App minter's refresh is picked up by
-// the next task's clone and push.
-func TestNewAuth_RotatedTokenFileSeenByNextCall(t *testing.T) {
+func tokenInEnv(t *testing.T, a *Auth) string {
+	t.Helper()
+	env, err := a.Env()
+	if err != nil {
+		t.Fatalf("Env: %v", err)
+	}
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "MEITHEAL_GIT_TOKEN="); ok {
+			return v
+		}
+	}
+	t.Fatal("no MEITHEAL_GIT_TOKEN in env")
+	return ""
+}
+
+// An Auth built from the env/file lookup re-resolves the token on every Env()
+// call, so one Auth (one task) sees a rotation for its later pushes; a static
+// token stays constant; a failed resolution is an error, not an empty token.
+func TestAuthEnv_ResolvesTokenPerCall(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("GITHUB_TOKEN", "")
@@ -339,19 +357,39 @@ func TestNewAuth_RotatedTokenFileSeenByNextCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "github-token")
-	seen := make([]string, 0, 2)
-	for _, tok := range []string{"first-token", "second-token"} {
+	write := func(tok string) {
+		t.Helper()
 		if err := os.WriteFile(path, []byte(tok+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		a, err := NewAuth("")
-		if err != nil {
-			t.Fatalf("NewAuth: %v", err)
-		}
-		seen = append(seen, a.Token)
-		_ = a.Close()
 	}
-	if seen[0] == seen[1] || seen[1] != "second-token" {
-		t.Fatalf("rotation not observed: %v", seen)
+
+	write("t1")
+	dyn, err := NewAuth("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = dyn.Close() }()
+	static, err := NewAuth("fixed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = static.Close() }()
+
+	if got := tokenInEnv(t, dyn); got != "t1" {
+		t.Fatalf("first Env token = %q", got)
+	}
+	write("t2")
+	if got := tokenInEnv(t, dyn); got != "t2" {
+		t.Fatalf("later Env token = %q, want t2", got)
+	}
+	if got := tokenInEnv(t, static); got != "fixed" {
+		t.Fatalf("static token changed: %q", got)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dyn.Env(); err == nil {
+		t.Fatal("expected error when the token can no longer be resolved")
 	}
 }

@@ -110,7 +110,9 @@ func (t *RunReconcileTool) Execute(ctx context.Context, raw json.RawMessage) (*a
 	if t.Token != nil {
 		if tok, err := t.Token(); err == nil && tok != "" {
 			if auth, aerr := repo.NewAuth(tok); aerr == nil {
-				authEnv = auth.Env()
+				if env, eerr := auth.Env(); eerr == nil {
+					authEnv = env
+				}
 			}
 		}
 	}

@@ -127,3 +127,15 @@ func TestMint_Non201IsError(t *testing.T) {
 		t.Fatalf("error should carry status: %v", err)
 	}
 }
+
+func TestMint_ZeroExpiryIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"token":"ghs_abc"}`))
+	}))
+	defer srv.Close()
+	_, _, err := MintInstallationToken(context.Background(), srv.Client(), srv.URL, 7, 42, testKey(t), time.Now())
+	if err == nil {
+		t.Fatal("expected error for missing expires_at")
+	}
+}

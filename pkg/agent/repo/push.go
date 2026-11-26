@@ -75,7 +75,11 @@ func Push(ctx context.Context, opts PushOptions) error {
 
 	env := baseEnv()
 	if opts.Auth != nil {
-		env = append(env, opts.Auth.Env()...)
+		authEnv, aerr := opts.Auth.Env()
+		if aerr != nil {
+			return fmt.Errorf("resolve git token: %w", aerr)
+		}
+		env = append(env, authEnv...)
 	}
 
 	_, err := runGit(ctx, opts.Workspace, env,
