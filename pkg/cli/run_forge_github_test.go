@@ -102,6 +102,8 @@ func TestRunForge_PRForBranch(t *testing.T) {
 func TestRunForge_BranchExists(t *testing.T) {
 	f, _ := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/repos/o/r":
+			_, _ = w.Write([]byte(`{}`))
 		case "/repos/o/r/git/ref/heads/b":
 			_, _ = w.Write([]byte(`{}`))
 		case "/repos/o/r/git/ref/heads/boom":
@@ -122,24 +124,101 @@ func TestRunForge_BranchExists(t *testing.T) {
 }
 
 func TestRunForge_OpenPRForIssue(t *testing.T) {
-	f, _ := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/search/issues" {
-			t.Errorf("path %s", r.URL.Path)
-		}
-		q := r.URL.Query().Get("q")
-		if !strings.Contains(q, "repo:o/r") || !strings.Contains(q, "is:pr") || !strings.Contains(q, "is:open") {
-			t.Errorf("q = %q", q)
-		}
-		_, _ = w.Write([]byte(`{"items":[
-		 {"html_url":"https://github.com/o/r/pull/50","title":"fix #50","body":""},
-		 {"html_url":"https://github.com/o/r/pull/9","title":"fix","body":"Closes #5."}]}`))
-	})
-	u, err := f.OpenPRForIssue(context.Background(), "o/r", 5)
-	if err != nil || u != "https://github.com/o/r/pull/9" {
-		t.Fatalf("got %q, %v (must skip #50)", u, err)
+	cases := []struct {
+		name, title, body, want string
+	}{
+		{"hash", "fix", "Closes #5.", "m"},
+		{"not #50", "fix #50", "", ""},
+		{"url", "x", "see https://github.com/o/r/issues/5", "m"},
+		{"fixes", "Fixes #5", "", "m"},
+		{"resolved lower", "x", "resolved #5", "m"},
+		{"other issue url", "x", "https://github.com/o/r/issues/50", ""},
 	}
-	if u, err = f.OpenPRForIssue(context.Background(), "o/r", 7); err != nil || u != "" {
-		t.Fatalf("none: %q %v", u, err)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f, _ := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/repos/o/r/pulls" || r.URL.Query().Get("state") != "open" ||
+					r.URL.Query().Get("per_page") != "100" {
+					t.Errorf("bad request %s", r.URL)
+				}
+				b, _ := json.Marshal([]map[string]string{{"html_url": "m", "title": c.title, "body": c.body}})
+				_, _ = w.Write(b)
+			})
+			u, err := f.OpenPRForIssue(context.Background(), "o/r", 5)
+			if err != nil || u != c.want {
+				t.Fatalf("got %q, %v want %q", u, err, c.want)
+			}
+		})
+	}
+}
+
+func TestRunForge_OpenPRForIssue_SecondPage(t *testing.T) {
+	var srvURL string
+	f, srv := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") == "2" {
+			_, _ = w.Write([]byte(`[{"html_url":"p2","title":"x","body":"Fixes #5"}]`))
+			return
+		}
+		w.Header().Set("Link", fmt.Sprintf(`<%s/repos/o/r/pulls?state=open&per_page=100&page=2>; rel="next"`, srvURL))
+		_, _ = w.Write([]byte(`[{"html_url":"p1","title":"unrelated","body":""}]`))
+	})
+	srvURL = srv.URL
+	u, err := f.OpenPRForIssue(context.Background(), "o/r", 5)
+	if err != nil || u != "p2" {
+		t.Fatalf("got %q, %v", u, err)
+	}
+}
+
+func TestRunForge_OpenPRForIssue_PageCapAndForbidden(t *testing.T) {
+	var srvURL string
+	f, srv := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Link", fmt.Sprintf(`<%s/repos/o/r/pulls?state=open&per_page=100>; rel="next"`, srvURL))
+		_, _ = w.Write([]byte(`[]`))
+	})
+	srvURL = srv.URL
+	if u, err := f.OpenPRForIssue(context.Background(), "o/r", 5); err == nil || u != "" {
+		t.Fatalf("page cap must error, got %q, %v", u, err)
+	}
+	g, _ := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) })
+	if u, err := g.OpenPRForIssue(context.Background(), "o/r", 5); err == nil || u != "" {
+		t.Fatalf("403 must error, got %q, %v", u, err)
+	}
+}
+
+func TestRunForge_BranchExists_AmbiguousNotFound(t *testing.T) {
+	for _, tc := range []struct {
+		repoStatus int
+		wantErr    bool
+	}{{http.StatusNotFound, true}, {http.StatusOK, false}} {
+		f, _ := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/repos/o/r" {
+				w.WriteHeader(tc.repoStatus)
+				_, _ = w.Write([]byte(`{}`))
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		})
+		ok, err := f.BranchExists(context.Background(), "o/r", "meitheal/wl/x")
+		if ok || (err != nil) != tc.wantErr {
+			t.Errorf("repo %d: got %v, %v", tc.repoStatus, ok, err)
+		}
+	}
+}
+
+func TestRunForge_EmptyTokenErrors(t *testing.T) {
+	f := NewGitHubRunForge("http://127.0.0.1:1", func() (string, error) { return "", nil })
+	if _, err := f.PRForBranch(context.Background(), "o/r", "b"); err == nil {
+		t.Error("empty token must error")
+	}
+}
+
+func TestRunForge_CommentAtSinceKept(t *testing.T) {
+	f, _ := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"user":{"login":"a"},"body":"at","created_at":"2026-01-02T00:00:00Z"}]`))
+	})
+	cs, err := f.CommentsSince(context.Background(), "o/r", 5, time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC))
+	if err != nil || len(cs) != 1 {
+		t.Fatalf("got %+v, %v", cs, err)
 	}
 }
 
@@ -309,5 +388,4 @@ func TestRunForge_BadSlugAndTokenErrors(t *testing.T) {
 	if _, err := bad.PRForBranch(ctx, "o/r", "b"); err == nil {
 		t.Error("token error must surface")
 	}
-	_ = json.Marshal
 }

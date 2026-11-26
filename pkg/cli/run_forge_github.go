@@ -43,6 +43,14 @@ const (
 	forgeErrCap   = 512
 )
 
+// statusError is a non-success HTTP status from the API.
+type statusError struct {
+	Code int
+	msg  string
+}
+
+func (e *statusError) Error() string { return e.msg }
+
 type githubRunForge struct {
 	apiBase string
 	token   func() (string, error)
@@ -85,6 +93,9 @@ func (f *githubRunForge) do(
 	if err != nil {
 		return nil, nil, fmt.Errorf("run forge: token: %w", err)
 	}
+	if tok == "" {
+		return nil, nil, errors.New("run forge: token func returned an empty token")
+	}
 	req, err := http.NewRequestWithContext(ctx, method, target, rdr)
 	if err != nil {
 		return nil, nil, errors.New("run forge: build request failed")
@@ -114,13 +125,16 @@ func (f *githubRunForge) do(
 	}
 	if !ok {
 		msg := string(raw)
-		if len(msg) > forgeErrCap {
-			msg = msg[:forgeErrCap]
-		}
 		if tok != "" {
 			msg = strings.ReplaceAll(msg, tok, "[redacted]")
 		}
-		return nil, nil, fmt.Errorf("run forge: %s %s: status %d: %s", method, req.URL.Path, resp.StatusCode, msg)
+		if len(msg) > forgeErrCap {
+			msg = msg[:forgeErrCap]
+		}
+		return nil, nil, &statusError{
+			Code: resp.StatusCode,
+			msg:  fmt.Sprintf("run forge: %s %s: status %d: %s", method, req.URL.Path, resp.StatusCode, msg),
+		}
 	}
 	return raw, resp.Header, nil
 }
@@ -151,42 +165,88 @@ type ghComment struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// OpenPRForIssue searches open PRs that mention the issue. Search is fuzzy
-// on "#5" versus "#50", so each hit is re-checked for an exact reference.
+// OpenPRForIssue lists every open PR (paginated, capped; exceeding the cap is
+// an error, never a truncated answer) and returns the first whose title or
+// body references the issue: "#N" as a whole reference (not #50 for #5), the
+// issue's full URL, or a closing keyword form (fixes/closes/resolves #N).
 func (f *githubRunForge) OpenPRForIssue(ctx context.Context, repo string, issue int32) (string, error) {
 	owner, name, err := splitSlug(repo)
 	if err != nil {
 		return "", err
 	}
-	q := fmt.Sprintf("repo:%s/%s is:pr is:open \"#%d\"", owner, name, issue)
-	raw, _, err := f.do(ctx, http.MethodGet, f.apiBase+"/search/issues?q="+url.QueryEscape(q), nil)
+	target, err := f.repoURL(repo, "/pulls?state=open&per_page=%d", forgePageSize)
 	if err != nil {
 		return "", err
 	}
-	var out struct {
-		Items []struct {
+	n := strconv.Itoa(int(issue))
+	ref := regexp.MustCompile(`(?i)(^|[^\w#])#` + n + `\b|` +
+		regexp.QuoteMeta("https://github.com/"+owner+"/"+name+"/issues/"+n) + `\b|` +
+		`\b(fix(e[sd])?|close[sd]?|resolve[sd]?)\s*:?\s+#` + n + `\b`)
+	found := ""
+	err = f.eachPage(ctx, target, func(raw []byte) (bool, error) {
+		var prs []struct {
 			HTMLURL string `json:"html_url"`
 			Title   string `json:"title"`
 			Body    string `json:"body"`
-		} `json:"items"`
+		}
+		if err := json.Unmarshal(raw, &prs); err != nil {
+			return false, fmt.Errorf("run forge: decode pulls: %w", err)
+		}
+		for _, pr := range prs {
+			if ref.MatchString(pr.Title) || ref.MatchString(pr.Body) {
+				found = pr.HTMLURL
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
+		return "", err
 	}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", fmt.Errorf("run forge: decode search: %w", err)
+	return found, nil
+}
+
+// eachPage GETs target and follows rel="next" Link headers, calling fn with
+// each page body until fn reports done. Exceeding forgeMaxPages is an error.
+// A next link that leaves apiBase's host is refused so the token never goes
+// to another origin.
+func (f *githubRunForge) eachPage(ctx context.Context, target string, fn func([]byte) (bool, error)) error {
+	base, err := url.Parse(f.apiBase)
+	if err != nil {
+		return fmt.Errorf("run forge: bad api base: %w", err)
 	}
-	ref := regexp.MustCompile(`(^|[^\w#])#` + strconv.Itoa(int(issue)) + `\b`)
-	for _, it := range out.Items {
-		if ref.MatchString(it.Title) || ref.MatchString(it.Body) {
-			return it.HTMLURL, nil
+	for page := 0; target != ""; page++ {
+		if page >= forgeMaxPages {
+			return fmt.Errorf("run forge: more than %d pages of results", forgeMaxPages)
+		}
+		raw, hdr, err := f.do(ctx, http.MethodGet, target, nil)
+		if err != nil {
+			return err
+		}
+		done, err := fn(raw)
+		if err != nil || done {
+			return err
+		}
+		target = nextLink(hdr.Get("Link"))
+		if target != "" {
+			u, err := url.Parse(target)
+			if err != nil || u.Scheme != base.Scheme || u.Host != base.Host {
+				return errors.New("run forge: pagination left the API host")
+			}
 		}
 	}
-	return "", nil
+	return nil
 }
 
 func (f *githubRunForge) BranchExists(ctx context.Context, repo, branch string) (bool, error) {
 	if branch == "" {
 		return false, errors.New("run forge: empty branch")
 	}
-	target, err := f.repoURL(repo, "/git/ref/heads/%s", branch)
+	segs := strings.Split(branch, "/")
+	for i := range segs {
+		segs[i] = url.PathEscape(segs[i])
+	}
+	target, err := f.repoURL(repo, "/git/ref/heads/%s", strings.Join(segs, "/"))
 	if err != nil {
 		return false, err
 	}
@@ -194,10 +254,20 @@ func (f *githubRunForge) BranchExists(ctx context.Context, repo, branch string) 
 	if err == nil {
 		return true, nil
 	}
-	if strings.Contains(err.Error(), ": status 404:") {
-		return false, nil
+	var se *statusError
+	if !errors.As(err, &se) || se.Code != http.StatusNotFound {
+		return false, err
 	}
-	return false, err
+	// A 404 on the ref is ambiguous with a repo the token cannot see; only
+	// "repo visible, ref missing" is a definite no.
+	repoURL, err := f.repoURL(repo, "")
+	if err != nil {
+		return false, err
+	}
+	if _, _, err := f.do(ctx, http.MethodGet, repoURL, nil); err != nil {
+		return false, fmt.Errorf("run forge: ref %s not found and repo not readable: %w", branch, err)
+	}
+	return false, nil
 }
 
 func (f *githubRunForge) CommentIssue(ctx context.Context, repo string, issue int32, body string) error {
@@ -209,9 +279,10 @@ func (f *githubRunForge) CommentIssue(ctx context.Context, repo string, issue in
 	return err
 }
 
-// comments reads the issue's comment thread, following the Link header up to
-// forgeMaxPages. A next link that leaves apiBase's host is refused so the
-// token never goes to another origin.
+// comments reads the issue's comment thread, following the Link header. A
+// non-zero since keeps comments created at or after it (filtering is on
+// created_at; the API's own since parameter is on updated_at and only narrows
+// the fetch).
 func (f *githubRunForge) comments(
 	ctx context.Context, repo string, issue int32, since time.Time,
 ) ([]IssueComment, error) {
@@ -222,36 +293,22 @@ func (f *githubRunForge) comments(
 	if !since.IsZero() {
 		target += "&since=" + url.QueryEscape(since.UTC().Format(time.RFC3339))
 	}
-	base, err := url.Parse(f.apiBase)
-	if err != nil {
-		return nil, fmt.Errorf("run forge: bad api base: %w", err)
-	}
 	var all []IssueComment
-	for page := 0; target != ""; page++ {
-		if page >= forgeMaxPages {
-			return nil, fmt.Errorf("run forge: issue %d has more than %d comment pages", issue, forgeMaxPages)
-		}
-		raw, hdr, err := f.do(ctx, http.MethodGet, target, nil)
-		if err != nil {
-			return nil, err
-		}
+	err = f.eachPage(ctx, target, func(raw []byte) (bool, error) {
 		var cs []ghComment
 		if err := json.Unmarshal(raw, &cs); err != nil {
-			return nil, fmt.Errorf("run forge: decode comments: %w", err)
+			return false, fmt.Errorf("run forge: decode comments: %w", err)
 		}
 		for _, c := range cs {
-			if !since.IsZero() && !c.CreatedAt.After(since) {
+			if !since.IsZero() && c.CreatedAt.Before(since) {
 				continue
 			}
 			all = append(all, IssueComment{Author: c.User.Login, Body: c.Body, Created: c.CreatedAt})
 		}
-		target = nextLink(hdr.Get("Link"))
-		if target != "" {
-			u, err := url.Parse(target)
-			if err != nil || u.Scheme != base.Scheme || u.Host != base.Host {
-				return nil, errors.New("run forge: comment pagination left the API host")
-			}
-		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return all, nil
 }
