@@ -605,11 +605,19 @@ func (s *AgentSpec) SignsOffCommits() bool {
 }
 
 // ToolOutputRewrite replaces every occurrence of From with To in tool output.
+// Rules apply in slice order, each to the output of the previous one.
 type ToolOutputRewrite struct {
 	// From is the literal string to find.
+	// Must not contain a double quote, a backslash or an ASCII control
+	// character: tool output is JSON-encoded, and those bytes would match
+	// or break the JSON envelope.
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^[^"\\\x00-\x1f]*$`
 	From string `json:"from"`
 
-	// To is the replacement text. May be empty to delete From.
+	// To is the replacement text. May be empty to delete From. The same
+	// character restriction as From applies, so a rewrite cannot corrupt
+	// the JSON-encoded tool result.
+	// +kubebuilder:validation:Pattern=`^[^"\\\x00-\x1f]*$`
 	To string `json:"to"`
 }

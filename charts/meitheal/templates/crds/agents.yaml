@@ -706,16 +706,25 @@ spec:
                   special tokens. Each From matches literally and in its JSON-escaped
                   form. Unset leaves tool output untouched.
                 items:
-                  description: ToolOutputRewrite replaces every occurrence of From
-                    with To in tool output.
+                  description: |-
+                    ToolOutputRewrite replaces every occurrence of From with To in tool output.
+                    Rules apply in slice order, each to the output of the previous one.
                   properties:
                     from:
-                      description: From is the literal string to find.
+                      description: |-
+                        From is the literal string to find.
+                        Must not contain a double quote, a backslash or an ASCII control
+                        character: tool output is JSON-encoded, and those bytes would match
+                        or break the JSON envelope.
                       minLength: 1
+                      pattern: ^[^"\\\x00-\x1f]*$
                       type: string
                     to:
-                      description: To is the replacement text. May be empty to delete
-                        From.
+                      description: |-
+                        To is the replacement text. May be empty to delete From. The same
+                        character restriction as From applies, so a rewrite cannot corrupt
+                        the JSON-encoded tool result.
+                      pattern: ^[^"\\\x00-\x1f]*$
                       type: string
                   required:
                   - from

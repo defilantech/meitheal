@@ -1421,14 +1421,21 @@ var jsonHTMLEscaper = strings.NewReplacer(
 	"\u2028", `\u2028`, "\u2029", `\u2029`,
 )
 
+// unsafeRewriteText reports whether s holds a character that would match or
+// break the JSON string envelope: a quote, a backslash or a control character.
+// Admission rejects these; this is the runtime backstop.
+func unsafeRewriteText(s string) bool {
+	return strings.ContainsAny(s, `"\`) || strings.IndexFunc(s, func(r rune) bool { return r < 0x20 }) >= 0
+}
+
 // rewriteToolOutput applies each rule's From -> To to content, matching From
 // literally and in its JSON-escaped form (tool results are json.Marshal'ed
 // before they reach here, so "<|im_end|>" appears as "\u003c|im_end|\u003e").
-// To is substituted as written in both cases. Rules with an empty From are
-// skipped; no rules returns content unchanged.
+// To is substituted as written in both cases. Rules apply in order. Rules with an empty From, or a From or To that
+// holds a quote, backslash or control character, are skipped; no rules returns content unchanged.
 func rewriteToolOutput(content string, rules []meithealv1alpha1.ToolOutputRewrite) string {
 	for _, r := range rules {
-		if r.From == "" {
+		if r.From == "" || unsafeRewriteText(r.From) || unsafeRewriteText(r.To) {
 			continue
 		}
 		content = strings.ReplaceAll(content, r.From, r.To)

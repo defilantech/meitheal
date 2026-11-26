@@ -1992,3 +1992,45 @@ func TestLoop_NoRewrites_ContentUnchanged(t *testing.T) {
 		t.Errorf("got %q want %q", got, want)
 	}
 }
+
+func TestRewriteToolOutput_UnsafeRulesSkipped(t *testing.T) {
+	b, _ := json.Marshal(`say "hi" \ <x> & y`)
+	in := string(b)
+	for _, r := range []meithealv1alpha1.ToolOutputRewrite{
+		{From: "hi", To: `a"b`},
+		{From: "hi", To: `a\b`},
+		{From: "hi", To: "a\nb"},
+		{From: `"`, To: "q"},
+		{From: `\`, To: "q"},
+	} {
+		got := rewriteToolOutput(in, []meithealv1alpha1.ToolOutputRewrite{r})
+		if got != in || !json.Valid([]byte(got)) {
+			t.Errorf("rule %+v changed content or broke JSON: %q", r, got)
+		}
+	}
+}
+
+func TestRewriteToolOutput_AppliedInOrder(t *testing.T) {
+	got := rewriteToolOutput("a", []meithealv1alpha1.ToolOutputRewrite{
+		{From: "a", To: "b"}, {From: "b", To: "c"},
+	})
+	if got != "c" {
+		t.Errorf("got %q want c", got)
+	}
+	got = rewriteToolOutput("a", []meithealv1alpha1.ToolOutputRewrite{
+		{From: "b", To: "c"}, {From: "a", To: "b"},
+	})
+	if got != "b" {
+		t.Errorf("got %q want b", got)
+	}
+}
+
+func TestRewriteToolOutput_EscapedAmpersandAndGT(t *testing.T) {
+	b, _ := json.Marshal("x && y -> z")
+	got := rewriteToolOutput(string(b), []meithealv1alpha1.ToolOutputRewrite{
+		{From: "&&", To: "AND"}, {From: "->", To: "TO"},
+	})
+	if got != `"x AND y TO z"` || !json.Valid([]byte(got)) {
+		t.Errorf("got %q", got)
+	}
+}
