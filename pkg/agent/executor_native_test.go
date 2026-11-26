@@ -2479,7 +2479,6 @@ func TestExecutorNative_SelfCommittedWorkIsRecovered(t *testing.T) {
 		Message:   "fix: resolve issue #982",
 		Author:    repo.Identity{Name: "meitheal", Email: "meitheal@test.com"},
 		Committer: repo.Identity{Name: "meitheal", Email: "meitheal@test.com"},
-		SignOff:   true,
 	})
 	if err != nil {
 		t.Fatalf("repo.Commit after soft reset failed: %v", err)
@@ -3025,5 +3024,80 @@ func TestNativeExecutor_TransportErrorAfterWritesDoesNotPanic(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "meitheal/issue-9999") {
 		t.Errorf("branch not preserved after a transport failure: %s", out)
+	}
+}
+
+// TestNativeExecutor_SignOffFollowsAgentSetting drives the full commit path
+// and pins that Agent.spec.signOffCommits reaches repo.Commit: an unset field
+// keeps the DCO trailer (today's behaviour), false drops it.
+func TestNativeExecutor_SignOffFollowsAgentSetting(t *testing.T) {
+	falseV := false
+	for _, tc := range []struct {
+		name        string
+		signOff     *bool
+		wantTrailer bool
+	}{
+		{"default keeps sign-off", nil, true},
+		{"false drops sign-off", &falseV, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gitOrSkip(t)
+			root := t.TempDir()
+			bare := initBareWithSeed(t, root)
+			oaiSrv := scriptedOAI(t, []string{submitGoBody})
+
+			agent, task := taskAndAgent("signoff")
+			agent.Spec.SignOffCommits = tc.signOff
+			c := fake.NewClientBuilder().
+				WithScheme(newScheme(t)).
+				WithObjects(agent, task).
+				Build()
+
+			reg := &fakeRegistry{
+				results: map[string]*meithealagent.ToolResult{
+					"submit_result": {
+						Terminal: true, Verdict: "GO",
+						Summary:       "A change",
+						CommitMessage: "fix: a change",
+					},
+				},
+				touch: func(name string, ws string) {
+					if name == "submit_result" {
+						_ = os.WriteFile(filepath.Join(ws, "fix.txt"), []byte("work\n"), 0o644)
+					}
+				},
+			}
+			ident := repo.Identity{Name: "Meitheal Bot", Email: "bot@meitheal.test"}
+			e := &meithealagent.NativeAgentLoopExecutor{
+				Client:                   c,
+				WorkspaceRoot:            filepath.Join(root, "ws"),
+				GitRemoteURL:             bare,
+				UpstreamURLForRepo:       func(string) string { return bare },
+				InferenceBaseURLOverride: oaiSrv.URL + "/v1",
+				CommitAuthor:             ident,
+				CommitCommitter:          ident,
+				RegistryFactory: func(
+					_ context.Context, ws string, _ *meithealv1alpha1.Agent, _ bool,
+				) (meithealagent.ToolRegistry, error) {
+					reg.workspace = ws
+					return reg, nil
+				},
+				AuthFactory: fakeAuth(t),
+			}
+
+			res, err := execWithAgent(t, e, task)
+			if err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			branch, _ := res.Extra["branch"].(string)
+			out, err := exec.Command("git", "-C", bare, "log", "-1", "--format=%B", branch).CombinedOutput()
+			if err != nil {
+				t.Fatalf("read commit message from %q: %v: %s", branch, err, out)
+			}
+			got := strings.Contains(string(out), "Signed-off-by: "+ident.Name+" <"+ident.Email+">")
+			if got != tc.wantTrailer {
+				t.Errorf("sign-off trailer present=%v want %v; message:\n%s", got, tc.wantTrailer, out)
+			}
+		})
 	}
 }

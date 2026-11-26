@@ -227,7 +227,6 @@ func TestRepoRoundTrip_CloneBranchCommitPush(t *testing.T) {
 		Message:   "fix: add greeting\n\nFixes #1",
 		Author:    repoIdent(),
 		Committer: repoIdent(),
-		SignOff:   true,
 	})
 	if err != nil {
 		t.Fatalf("Commit: %v", err)

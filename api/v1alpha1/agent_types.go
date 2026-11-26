@@ -589,7 +589,8 @@ func init() {
 }
 
 // SignsOffCommits reports whether commits made by this agent carry a DCO
-// sign-off trailer. Nil (unset) means true.
+// sign-off trailer. Nil (unset), or a nil
+// receiver, means true.
 func (s *AgentSpec) SignsOffCommits() bool {
-	return s.SignOffCommits == nil || *s.SignOffCommits
+	return s == nil || s.SignOffCommits == nil || *s.SignOffCommits
 }

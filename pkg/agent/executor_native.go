@@ -1545,7 +1545,8 @@ func (e *NativeAgentLoopExecutor) retryCoderWithFeedback(
 }
 
 // commitPushAttempt settles the working tree, commits the current terminal's
-// change with the executor's identity + DCO sign-off, and pushes the branch.
+// change with the executor's identity (plus a DCO sign-off unless the Agent
+// sets signOffCommits=false), and pushes the branch.
 // It returns the commit SHA, whether the change touched an envtest-backed
 // package (captured before the commit clears the working-tree status), and a
 // non-nil done Result when the attempt terminates the task early (no diff,
@@ -1621,11 +1622,11 @@ func (e *NativeAgentLoopExecutor) commitPushAttempt(
 	}
 
 	sha, commitErr := repo.Commit(ctx, repo.CommitOptions{
-		Workspace: workspace,
-		Message:   commitMessage,
-		Author:    e.CommitAuthor,
-		Committer: e.CommitCommitter,
-		SignOff:   agent.Spec.SignsOffCommits(),
+		Workspace:   workspace,
+		Message:     commitMessage,
+		Author:      e.CommitAuthor,
+		Committer:   e.CommitCommitter,
+		SkipSignOff: !agent.Spec.SignsOffCommits(),
 	})
 	if errors.Is(commitErr, repo.ErrNothingToCommit) {
 		// Model said GO but never edited anything. Honest report: this is a
@@ -3029,11 +3030,11 @@ func (e *NativeAgentLoopExecutor) maybePreserveGateFailedBranch(
 			"for a human to finish. Do not merge as-is.\n\nRefs #%d",
 		task.Spec.Payload.Issue, task.Spec.Payload.Issue)
 	sha, err := repo.Commit(ctx, repo.CommitOptions{
-		Workspace: workspace,
-		Message:   msg,
-		Author:    e.CommitAuthor,
-		Committer: e.CommitCommitter,
-		SignOff:   agent.Spec.SignsOffCommits(),
+		Workspace:   workspace,
+		Message:     msg,
+		Author:      e.CommitAuthor,
+		Committer:   e.CommitCommitter,
+		SkipSignOff: !agent.Spec.SignsOffCommits(),
 	})
 	if err != nil {
 		log.Error(err, "gate-failed preserve: commit failed; not preserving branch")
@@ -3138,11 +3139,11 @@ func (e *NativeAgentLoopExecutor) preserveUnsuccessfulLoopBranch(
 			"finish or discard. Do not merge as-is.\n\nRefs #%d",
 		task.Spec.Payload.Issue, task.Spec.Payload.Issue)
 	sha, commitErr := repo.Commit(ctx, repo.CommitOptions{
-		Workspace: workspace,
-		Message:   msg,
-		Author:    e.CommitAuthor,
-		Committer: e.CommitCommitter,
-		SignOff:   agent.Spec.SignsOffCommits(),
+		Workspace:   workspace,
+		Message:     msg,
+		Author:      e.CommitAuthor,
+		Committer:   e.CommitCommitter,
+		SkipSignOff: !agent.Spec.SignsOffCommits(),
 	})
 	if errors.Is(commitErr, repo.ErrNothingToCommit) {
 		// The model wrote nothing between the HasChanges check and the

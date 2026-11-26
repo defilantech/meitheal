@@ -48,11 +48,10 @@ type CommitOptions struct {
 	Author    Identity
 	Committer Identity
 
-	// SignOff adds a DCO `Signed-off-by` trailer (git commit -s) derived
-	// from Committer. The zero value commits without one; callers that
-	// want the historical behaviour must set it true (see
-	// AgentSpec.SignsOffCommits).
-	SignOff bool
+	// SkipSignOff suppresses the DCO `Signed-off-by` trailer. The zero
+	// value keeps the historical behaviour: `git commit -s`, derived from
+	// Committer. Callers opt out explicitly (see AgentSpec.SignsOffCommits).
+	SkipSignOff bool
 }
 
 // ErrNothingToCommit is returned when the workspace has no staged or
@@ -214,7 +213,7 @@ func Commit(ctx context.Context, opts CommitOptions) (string, error) {
 	}
 
 	commitArgs := []string{"commit"}
-	if opts.SignOff {
+	if !opts.SkipSignOff {
 		commitArgs = append(commitArgs, "-s")
 	}
 	commitArgs = append(commitArgs, "-m", opts.Message)
