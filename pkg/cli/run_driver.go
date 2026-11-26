@@ -19,6 +19,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -36,6 +37,14 @@ type WatchResult struct {
 	// and the separate StallInput.BranchPushed is the one the predicate
 	// actually uses today.
 	BranchPushed bool
+	// WorkloadFailed reports that review rounds were exhausted or a task
+	// failed terminally.
+	WorkloadFailed bool
+	// Concern is the first structured concern text from any child task, ""
+	// when none.
+	Concern string
+	// PRURL is the pull request the run opened, when there is one.
+	PRURL string
 }
 
 // Effects are the side-effecting operations the driver performs. Kept behind
@@ -52,6 +61,15 @@ type Effects interface {
 	Watch(ctx context.Context, workload string, baseline time.Duration, factor float64) (WatchResult, error)
 	Kill(ctx context.Context, workload string) error
 	Verify(ctx context.Context, workload, branch string) (clean bool, evidence string, err error)
+	// Redispatch starts the one feedback pass on an existing Workload. evidence
+	// is the previous Verify's evidence string, unmodified; truncating it for
+	// the coder is the implementation's job.
+	Redispatch(ctx context.Context, item QueueItem, workload, intent, evidence string) error
+	// Finalize opens the pull request for a clean verify.
+	Finalize(ctx context.Context, item QueueItem, workload, branch string) error
+	// Notify tells a human a decision was parked. A failure is logged by the
+	// driver and never unparks the item.
+	Notify(ctx context.Context, item QueueItem, d Decision) error
 }
 
 // taskBranch is the branch Meitheal's coder pushes for a Workload. It mirrors
@@ -84,25 +102,32 @@ func plannedWorkloadName(issue int32) string {
 // AnswerDecision accepts arbitrary text when a decision offers no options and
 // `meitheal decisions` renders that as "any", so an option-less park hands the
 // human a free-text prompt instead of the answers the loop understands.
+//
+// Every park kind offers the answer commands requeue, decide and drop;
+// escalate keeps hand-fix on top, which stays a CLI-only answer.
 func optionsFor(kind string) []string {
-	if kind == ParkEscalate {
-		return []string{"requeue", "hand-fix", "drop"}
+	switch kind {
+	case ParkEscalate:
+		return []string{"requeue", "decide", "hand-fix", "drop"}
+	case ParkNeedsDecision, ParkNeedsSplit:
+		return []string{"requeue", "decide", "drop"}
 	}
 	// A literal, NOT ParkEscalate. These are answers a human may type, not park
 	// kinds, and the two vocabularies coincide on "escalate" by coincidence.
 	// Coupling them would make renaming the park kind silently change the
 	// option set that already-parked decisions were written with, and
 	// AnswerDecision validates a typed answer against exactly that stored set.
+	// Only the retired adjudicate kind reaches here.
 	return []string{"accept", "revise", "escalate", "drop"}
 }
 
 // maxStageTransitions bounds one item's trip through the loop.
 //
-// The real machine's longest path is five transitions (preflight, dispatch,
-// watch, verify, finalize), or eight once a feedback pass exists, so a healthy
-// run never comes near this. It is a backstop against a cycle: NextStage
-// already maps StageFeedback back to StageWatch, so the loop below has a cycle
-// in it today and is saved only by nothing routing INTO feedback. A hang is
+// The real machine's longest path is eight transitions (preflight, dispatch,
+// watch, verify, feedback, watch, verify, finalize), so a healthy run never
+// comes near this. It is a backstop against a cycle: NextStage maps
+// StageFeedback back to StageWatch, so the loop below has a cycle in it and is
+// saved by the one-pass rule (feedback increments attempts). A hang is
 // the worst failure mode a human-facing loop has, because it is
 // indistinguishable from a slow agent and the CLI never says otherwise.
 const maxStageTransitions = 64
@@ -110,11 +135,6 @@ const maxStageTransitions = 64
 // DriveItem advances one queue item until it reaches a terminal stage: done,
 // or parked. Parking is terminal for this pass by design, so the caller
 // proceeds to the next item rather than blocking on a human.
-//
-// StageFinalize runs no effect. The Effects interface has no Finalize, because
-// opening the PR is scripts/finalize.sh and belongs with the rest of
-// the cluster-backed implementation; until that lands a clean verify falls
-// straight through finalize to done.
 //
 // NOTHING IN PRODUCTION CALLS THIS YET. The Effects implementation that would
 // is deferred to a follow-up plan, and no lint catches the gap: golangci-lint's
@@ -151,16 +171,12 @@ func driveLoop(
 	// the name Dispatch reported.
 	branch := taskBranch(plannedWorkloadName(item.Issue), item.Issue)
 	var workload, evidence string
-	// attempts is inert in v1: nothing routes to StageFeedback, so verify is
-	// only ever reached on the first attempt and NextStage's one-pass rule is
-	// never the deciding fact. It is counted anyway because the moment the
-	// feedback effect lands, that rule depends on it.
-	//
-	// READ THIS BEFORE ADDING `case StageFeedback:` BELOW. The increment lives
-	// in case StageDispatch and nowhere else. A feedback case that re-dispatches
-	// is fine. A feedback case that does anything else must increment attempts
-	// itself, or watch -> verify -> feedback -> watch spins with Attempts frozen
-	// at 1, maxAttempts never fires, and only maxStageTransitions stops it.
+	// attempts drives NextStage's one-pass rule: a dirty verify at attempts 1
+	// goes to feedback, at maxAttempts it escalates. The increments live in
+	// case StageDispatch and case StageFeedback and nowhere else. A feedback
+	// case that did not increment would spin watch -> verify -> feedback ->
+	// watch with Attempts frozen, maxAttempts would never fire, and only
+	// maxStageTransitions would stop it.
 	attempts := 0
 	stage := StagePreflight
 
@@ -209,12 +225,23 @@ func driveLoop(
 				}
 			}
 			facts.Stalled = res.Stalled
+			facts.WorkloadFailed = res.WorkloadFailed
+			facts.Concern = res.Concern
 		case StageVerify:
 			clean, ev, err := e.Verify(ctx, workload, branch)
 			if err != nil {
 				return stage, err
 			}
 			facts.VerifyClean, evidence = clean, ev
+		case StageFeedback:
+			if err := e.Redispatch(ctx, item, workload, intent, evidence); err != nil {
+				return stage, err
+			}
+			attempts++
+		case StageFinalize:
+			if err := e.Finalize(ctx, item, workload, branch); err != nil {
+				return stage, err
+			}
 		}
 
 		t := next(stage, facts)
@@ -234,11 +261,23 @@ func driveLoop(
 			if evidence != "" {
 				d.Evidence = map[string]string{"verify": evidence}
 			}
+			if facts.Concern != "" {
+				if d.Evidence == nil {
+					d.Evidence = map[string]string{}
+				}
+				d.Evidence["concern"] = facts.Concern
+			}
 			// A park that could not be written is not a park. Returning
 			// StageParked here would tell the caller a human has been asked
 			// when there is nothing on disk to answer.
 			if _, err := ParkDecision(decisionsDir, d); err != nil {
 				return stage, err
+			}
+			// Told after the decision is on disk: a ping about a park that was
+			// never written would send a human to nothing. A failed ping is a
+			// missed notification, not a missed park, so it never unparks.
+			if err := e.Notify(ctx, item, d); err != nil {
+				log.Printf("notify for issue %d (%s) failed: %v", item.Issue, d.Kind, err)
 			}
 			return StageParked, nil
 		case StageDone:

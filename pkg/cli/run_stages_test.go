@@ -16,7 +16,10 @@ limitations under the License.
 
 package cli
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestNextStage(t *testing.T) {
 	cases := []struct {
@@ -35,8 +38,15 @@ func TestNextStage(t *testing.T) {
 		{"a terminal run verifies", StageWatch, Facts{}, StageVerify, ""},
 		{"clean verify on the first attempt finalizes", StageVerify,
 			Facts{VerifyClean: true, Attempts: 1}, StageFinalize, ""},
-		{"dirty verify on the first attempt parks to adjudicate", StageVerify,
-			Facts{VerifyClean: false, Attempts: 1}, StageParked, "adjudicate"},
+		{"dirty verify on the first attempt goes to feedback", StageVerify,
+			Facts{VerifyClean: false, Attempts: 1}, StageFeedback, ""},
+		{"dirty verify after the feedback pass escalates", StageVerify,
+			Facts{VerifyClean: false, Attempts: 2}, StageParked, "escalate"},
+		{"feedback goes back to watch", StageFeedback, Facts{Attempts: 2}, StageWatch, ""},
+		{"a concern parks needs-decision", StageWatch,
+			Facts{Concern: "the issue contradicts the spec"}, StageParked, "needs-decision"},
+		{"a failed workload parks escalate", StageWatch,
+			Facts{WorkloadFailed: true}, StageParked, "escalate"},
 		{"clean verify after the one feedback pass finalizes", StageVerify,
 			Facts{VerifyClean: true, Attempts: 2}, StageFinalize, ""},
 		{"finalize ends the item", StageFinalize, Facts{}, StageDone, ""},
@@ -66,6 +76,31 @@ func TestNextStage_NeverMakesASecondFeedbackAttempt(t *testing.T) {
 		g := NextStage(StageVerify, Facts{VerifyClean: false, Attempts: n})
 		if g.Next != StageParked || g.Park != "escalate" {
 			t.Fatalf("attempts=%d = (%q,%q), want (parked,escalate)", n, g.Next, g.Park)
+		}
+	}
+}
+
+func TestNextStage_WatchParkReasons(t *testing.T) {
+	got := NextStage(StageWatch, Facts{WorkloadFailed: true})
+	if got.Reason != "review did not converge" {
+		t.Errorf("Reason = %q, want %q", got.Reason, "review did not converge")
+	}
+	// A stall is the more specific fact and keeps its own reason.
+	got = NextStage(StageWatch, Facts{Stalled: true, WorkloadFailed: true, Concern: "x"})
+	if got.Park != ParkEscalate || got.Reason != "stalled" {
+		t.Errorf("stalled+failed+concern = (%q,%q), want (escalate,stalled)", got.Park, got.Reason)
+	}
+}
+
+func TestOptionsFor_EveryParkOffersTheAnswerCommands(t *testing.T) {
+	cases := map[string][]string{
+		ParkEscalate:      {"requeue", "decide", "hand-fix", "drop"},
+		ParkNeedsDecision: {"requeue", "decide", "drop"},
+		ParkNeedsSplit:    {"requeue", "decide", "drop"},
+	}
+	for kind, want := range cases {
+		if got := optionsFor(kind); !slices.Equal(got, want) {
+			t.Errorf("optionsFor(%q) = %q, want %q", kind, got, want)
 		}
 	}
 }

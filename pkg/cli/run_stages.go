@@ -37,8 +37,13 @@ const (
 // kind introduced here that optionsFor does not recognise silently gets the
 // adjudicate answer set instead of its own.
 const (
-	ParkEscalate   = "escalate"
-	ParkAdjudicate = "adjudicate"
+	ParkEscalate = "escalate"
+	// ParkAdjudicate is no longer produced by NextStage (a first dirty verify
+	// goes to feedback), but optionsFor and decision files already on disk
+	// still know the kind.
+	ParkAdjudicate    = "adjudicate"
+	ParkNeedsDecision = "needs-decision"
+	ParkNeedsSplit    = "needs-split"
 )
 
 // maxAttempts is the structural one-pass rule: one original attempt plus at
@@ -55,6 +60,11 @@ type Facts struct {
 	Stalled bool
 	// VerifyClean reports whether the independent verify stage found nothing.
 	VerifyClean bool
+	// WorkloadFailed reports that review rounds were exhausted or a task failed
+	// terminally.
+	WorkloadFailed bool
+	// Concern is the first structured concern text from any child task.
+	Concern string
 	// Attempts counts coder attempts made so far, starting at 1.
 	Attempts int
 }
@@ -82,6 +92,12 @@ func NextStage(cur Stage, f Facts) Transition {
 		if f.Stalled {
 			return Transition{Next: StageParked, Park: ParkEscalate, Reason: "stalled"}
 		}
+		if f.Concern != "" {
+			return Transition{Next: StageParked, Park: ParkNeedsDecision, Reason: "a task raised a concern"}
+		}
+		if f.WorkloadFailed {
+			return Transition{Next: StageParked, Park: ParkEscalate, Reason: "review did not converge"}
+		}
 		return Transition{Next: StageVerify}
 	case StageVerify:
 		if f.VerifyClean {
@@ -90,7 +106,7 @@ func NextStage(cur Stage, f Facts) Transition {
 		if f.Attempts >= maxAttempts {
 			return Transition{Next: StageParked, Park: ParkEscalate, Reason: "verify failed after the feedback pass"}
 		}
-		return Transition{Next: StageParked, Park: ParkAdjudicate, Reason: "verify found issues"}
+		return Transition{Next: StageFeedback}
 	case StageFeedback:
 		return Transition{Next: StageWatch}
 	case StageFinalize:
