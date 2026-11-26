@@ -132,6 +132,25 @@ func (e *clusterEffects) Dispatch(ctx context.Context, item QueueItem, intent st
 	return name, attempt, nil
 }
 
+// HasRound reports whether the issue's own Workload or its own task branch
+// exists. A Workload under the reserved name that runs another issue is not
+// this issue's round.
+func (e *clusterEffects) HasRound(ctx context.Context, item QueueItem) (bool, error) {
+	name := plannedWorkloadName(item.Issue)
+	w, err := e.existing(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	if w != nil && slices.Contains(w.Spec.Issues, item.Issue) {
+		return true, nil
+	}
+	pushed, err := e.forge.BranchExists(ctx, e.repoFor(item), taskBranch(name, item.Issue))
+	if err != nil {
+		return false, fmt.Errorf("branch probe: %w", err)
+	}
+	return pushed, nil
+}
+
 // Restart begins a new round for an item a maintainer answered. The live
 // Workload under the reserved name is deleted in the foreground and waited
 // out (bounded by deleteWaitTimeout); its branch and draft PR stay. The

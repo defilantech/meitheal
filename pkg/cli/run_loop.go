@@ -118,6 +118,9 @@ type runLoop struct {
 	restarts map[int32]string
 	// skips holds preflight skip reasons a drive reported, for finish.
 	skips map[int32]string
+	// stale holds answered files a new round consumed but could not remove,
+	// by path; the answer cycle retries them and never acts on them again.
+	stale map[string]int32
 }
 
 func newRunLoop(cfg runLoopConfig) *runLoop {
@@ -140,6 +143,7 @@ func newRunLoop(cfg runLoopConfig) *runLoop {
 		skipReason: map[int32]string{},
 		restarts:   map[int32]string{},
 		skips:      map[int32]string{},
+		stale:      map[string]int32{},
 	}
 	l.sched = newLaneScheduler(cfg.Limits, l.drive)
 	return l
@@ -350,7 +354,8 @@ func (l *runLoop) drive(ctx context.Context, item QueueItem) (Stage, error) {
 	delete(l.restarts, item.Issue)
 	l.mu.Unlock()
 	rec := &recordingEffects{
-		Effects: l.cfg.Effects, dir: l.cfg.DecisionsDir, now: l.cfg.Now, logf: l.cfg.Logf, answered: answered,
+		Effects: l.cfg.Effects, dir: l.cfg.DecisionsDir, now: l.cfg.Now, logf: l.cfg.Logf,
+		answered: answered, stale: l.markStale,
 	}
 	started := l.cfg.Now()
 	stage := StagePreflight
@@ -401,18 +406,38 @@ type recordingEffects struct {
 	dir  string
 	now  func() time.Time
 	logf func(format string, a ...any)
-	// answered is the answer file a Restart consumes: removed once the new
-	// round's Workload exists.
+	// answered is the answer file the new round consumes: removed once the
+	// round has an outcome past its start (a Workload, or a preflight
+	// skip). stale is told when that removal fails, for a retry.
 	answered string
+	stale    func(path string, issue int32)
 
 	skip, workload, prURL string
 	attempts              int
 	parked                *Decision
 }
 
+// consume removes the answer this round was started by, once.
+func (r *recordingEffects) consume(issue int32) {
+	if r.answered == "" {
+		return
+	}
+	path := r.answered
+	r.answered = ""
+	if err := removeAnswered(path); err != nil {
+		r.logf("issue %d: remove the answered decision (retried next cycle): %v", issue, err)
+		if r.stale != nil {
+			r.stale(path, issue)
+		}
+	}
+}
+
 func (r *recordingEffects) Preflight(ctx context.Context, item QueueItem, branch string) (string, error) {
 	skip, err := r.Effects.Preflight(ctx, item, branch)
 	r.skip = skip
+	if err == nil && skip != "" {
+		r.consume(item.Issue)
+	}
 	return skip, err
 }
 
@@ -420,6 +445,7 @@ func (r *recordingEffects) Dispatch(ctx context.Context, item QueueItem, intent 
 	w, attempt, err := r.Effects.Dispatch(ctx, item, intent)
 	if err == nil {
 		r.workload, r.attempts = w, attempt
+		r.consume(item.Issue)
 	}
 	return w, attempt, err
 }
@@ -430,11 +456,7 @@ func (r *recordingEffects) Restart(ctx context.Context, item QueueItem, intent s
 		return w, attempt, err
 	}
 	r.workload, r.attempts = w, attempt
-	if r.answered != "" {
-		if rerr := removeAnswered(r.answered); rerr != nil {
-			r.logf("issue %d: remove the answered decision: %v", item.Issue, rerr)
-		}
-	}
+	r.consume(item.Issue)
 	return w, attempt, nil
 }
 
@@ -495,6 +517,7 @@ func (l *runLoop) answerCycle(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
+	l.retryStale()
 	if l.cfg.Answerer != "" && l.cfg.Forge != nil {
 		_, rejected, err := pollAnswers(ctx, l.cfg.Forge, l.cfg.DecisionsDir, l.cfg.Repo, l.cfg.Answerer, l.owns)
 		if err != nil {
@@ -514,7 +537,7 @@ func (l *runLoop) answerCycle(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if d.Answer == "" || l.finished[d.Issue] || !l.owns(d) {
+		if d.Answer == "" || l.finished[d.Issue] || !l.owns(d) || l.isStale(d) {
 			continue
 		}
 		// Only a parked item, or a park outside the queue, takes an answer
@@ -525,6 +548,50 @@ func (l *runLoop) answerCycle(ctx context.Context) {
 		l.act(ctx, d)
 	}
 	l.notifyParked(ctx)
+}
+
+func (l *runLoop) markStale(path string, issue int32) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.stale[path] = issue
+}
+
+// retryStale removes the answered files a new round consumed but could not
+// remove. Left in place, one would be acted on as a fresh answer, or keep
+// the round's own park of the same kind from being written. When it held
+// back such a park, the item has nothing on disk to answer, so it is driven
+// again: preflight finds its Workload and the round parks afresh.
+func (l *runLoop) retryStale() {
+	l.mu.Lock()
+	stale := make(map[string]int32, len(l.stale))
+	for p, n := range l.stale {
+		stale[p] = n
+	}
+	l.mu.Unlock()
+	for path, issue := range stale {
+		if err := removeAnswered(path); err != nil {
+			l.logf("issue %d: remove the answered decision (retried next cycle): %v", issue, err)
+			continue
+		}
+		l.mu.Lock()
+		delete(l.stale, path)
+		l.mu.Unlock()
+		if l.state[issue] != stateParked {
+			continue
+		}
+		if parked, err := parkedIssues(l.cfg.DecisionsDir, l.cfg.Repo); err == nil && !parked[issue] {
+			l.state[issue] = statePending
+		}
+	}
+}
+
+// isStale reports whether a decision file is a consumed answer awaiting
+// removal.
+func (l *runLoop) isStale(d Decision) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, ok := l.stale[decisionPath(l.cfg.DecisionsDir, d.Issue, d.Kind)]
+	return ok
 }
 
 func (l *runLoop) act(ctx context.Context, d Decision) {

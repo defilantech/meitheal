@@ -67,6 +67,11 @@ type Effects interface {
 	// as attempt 1, revising the branch when one was pushed. The attempt cap
 	// is per round, and only a maintainer's answer starts a round.
 	Restart(ctx context.Context, item QueueItem, intent string) (workload string, attempt int, err error)
+	// HasRound reports whether the issue has a round of this loop's to
+	// restart: its own Workload (the reserved name, with the issue in
+	// Spec.Issues) or its own task branch. Without either, nothing the
+	// forge shows for the issue is this loop's.
+	HasRound(ctx context.Context, item QueueItem) (bool, error)
 	Watch(ctx context.Context, workload string, baseline time.Duration, factor float64) (WatchResult, error)
 	Kill(ctx context.Context, workload string) error
 	Verify(ctx context.Context, workload, branch string) (clean bool, evidence string, err error)
@@ -162,9 +167,12 @@ func DriveItem(
 }
 
 // RestartItem is DriveItem for a new round a maintainer's answer started.
-// It skips preflight (the open draft PR and the branch are this loop's own,
-// and preflight would read them as work already in flight) and starts from
-// Effects.Restart instead of Dispatch. Everything after is DriveItem's.
+// When the issue has a round of this loop's (Effects.HasRound: its own
+// Workload or task branch), preflight is skipped, because the open draft PR
+// and the branch it would find are the loop's own, and the drive starts from
+// Effects.Restart instead of Dispatch. Without one (a planner park that was
+// never dispatched) it is DriveItem: preflight runs, so a PR someone else
+// opened meanwhile still skips the issue. Everything after is DriveItem's.
 func RestartItem(
 	ctx context.Context,
 	e Effects,
@@ -173,7 +181,11 @@ func RestartItem(
 	baseline time.Duration,
 	factor float64,
 ) (Stage, error) {
-	return driveLoop(ctx, e, item, intent, decisionsDir, baseline, factor, NextStage, true)
+	own, err := e.HasRound(ctx, item)
+	if err != nil {
+		return StagePreflight, fmt.Errorf("restart issue %d: %w", item.Issue, err)
+	}
+	return driveLoop(ctx, e, item, intent, decisionsDir, baseline, factor, NextStage, own)
 }
 
 // driveLoop is DriveItem's body with the stage machine as a parameter.

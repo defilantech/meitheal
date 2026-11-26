@@ -107,6 +107,8 @@ func (s *scriptEffects) Preflight(_ context.Context, item QueueItem, _ string) (
 	return "", nil
 }
 
+func (s *scriptEffects) HasRound(context.Context, QueueItem) (bool, error) { return true, nil }
+
 func (s *scriptEffects) Restart(ctx context.Context, item QueueItem, intent string) (string, int, error) {
 	s.mu.Lock()
 	s.restarted = append(s.restarted, item.Issue)
@@ -1211,6 +1213,25 @@ func TestNotify_ParkCommentAlreadyThereIsNotPostedAgain(t *testing.T) {
 	}
 }
 
+// The forge's clock may run behind the host's: a park comment stamped up to
+// two minutes before the park opened still counts as this park's.
+func TestNotify_ParkCommentWithinClockSkewCounts(t *testing.T) {
+	forge := newLoopForge()
+	opened := time.Now().Add(-time.Hour)
+	forge.comments[60] = []IssueComment{
+		{Author: "meitheal-bot", Body: parkCommentPrefix + "stalled.", Created: opened.Add(-time.Minute)},
+	}
+	e := NewClusterEffects(newEffectsClient(t, nil), effNS, forge, neutralTemplate(), &fakeGateRunner{}, fastOpts())
+	d := Decision{Issue: 60, Kind: ParkEscalate, Reason: "stalled", Opened: opened, Repo: loopRepo}
+	n, err := e.Notify(context.Background(), QueueItem{Issue: 60, Repo: loopRepo}, d)
+	if err != nil || n.Comment == nil {
+		t.Fatalf("Notify = %+v, %v", n, err)
+	}
+	if got := forge.postedTo(60); len(got) != 0 {
+		t.Fatalf("posted %q, want the skewed comment counted", got)
+	}
+}
+
 // writeRawDecision writes a decision file as another run, or an older
 // release, would have.
 func writeRawDecision(t *testing.T, dir string, d Decision) {
@@ -1307,5 +1328,81 @@ func TestRun_ParksNameTheirRepository(t *testing.T) {
 	env.run(t, env.queue(t, QueueItem{Issue: 52}))
 	if d, ok := env.decision(t, 52, ParkEscalate); !ok || d.Repo != loopRepo {
 		t.Fatalf("decision = %+v, want repo %q", d, loopRepo)
+	}
+}
+
+// Fix round 2: a planner park never dispatched has no round of the loop's.
+// A decide answer on it runs preflight, which skips on someone else's open
+// PR, and nothing is dispatched.
+func TestRun_AnswerOnANeverDispatchedParkRunsPreflight(t *testing.T) {
+	env := newLoopEnv(t)
+	c := newEffectsClient(t, nil)
+	forge := newFakeRunForge()
+	forge.openPR = "https://example.test/pr/someone-elses"
+	env.cfg.Effects = NewClusterEffects(c, effNS, forge, neutralTemplate(), &fakeGateRunner{}, fastOpts())
+	opened := env.park(t, 53, ParkNeedsDecision, intentsStage, true)
+	env.forge.answer(53, "/meitheal decide keep the old wire format", opened.Add(time.Minute))
+	replanEnv(t, env, plannedAnswer("cpu", "src/lib.rs"))
+
+	env.run(t, nil)
+
+	var ws meithealv1alpha1.WorkloadList
+	if err := c.List(context.Background(), &ws); err != nil {
+		t.Fatal(err)
+	}
+	if len(ws.Items) != 0 {
+		t.Fatalf("Workloads = %d, want none: preflight found another open PR", len(ws.Items))
+	}
+	led := env.ledger(t)[53]
+	if len(led) != 1 || led[0].FinalStage != ledgerSkipped || !strings.Contains(led[0].Reason, "someone-elses") {
+		t.Fatalf("ledger for 53 = %+v, want one skipped record naming the PR", led)
+	}
+	// The answer was consumed by the skip: a restart does not re-plan it.
+	if _, ok := env.decision(t, 53, ParkNeedsDecision); ok {
+		t.Fatal("the answered decision is still there")
+	}
+	if left, _ := filepath.Glob(filepath.Join(env.cfg.DecisionsDir, "*"+replanSuffix)); len(left) != 0 {
+		t.Fatalf("left behind: %v", left)
+	}
+}
+
+// Fix round 2: a consumed answer that could not be removed is retried next
+// cycle, and is never acted on as a fresh answer meanwhile.
+func TestRun_StaleAnswerIsRemovedNextCycleAndNotActedOn(t *testing.T) {
+	env := newLoopEnv(t)
+	env.park(t, 54, ParkEscalate, string(StageVerify), true)
+	if err := AnswerDecision(env.cfg.DecisionsDir, 54, ParkEscalate, "drop"); err != nil {
+		t.Fatal(err)
+	}
+	l := newRunLoop(env.cfg)
+	l.put(env.queue(t, QueueItem{Issue: 54})[0])
+	l.state[54] = stateParked
+	l.markStale(decisionPath(env.cfg.DecisionsDir, 54, ParkEscalate), 54)
+
+	// A directory that cannot be written blocks the removal.
+	if err := os.Chmod(env.cfg.DecisionsDir, 0o500); err != nil { //nolint:gosec // G302: a directory
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(env.cfg.DecisionsDir, 0o755) }) //nolint:gosec // G302: a directory
+	l.answerCycle(context.Background())
+	if err := os.Chmod(env.cfg.DecisionsDir, 0o755); err != nil { //nolint:gosec // G302: a directory
+		t.Fatal(err)
+	}
+	if got := env.forge.postedTo(54); len(got) != 0 {
+		t.Fatalf("acted on a consumed answer: posted %q", got)
+	}
+	if _, ok := env.decision(t, 54, ParkEscalate); !ok {
+		t.Fatal("the file went away although removal was blocked")
+	}
+
+	l.answerCycle(context.Background())
+	if _, ok := env.decision(t, 54, ParkEscalate); ok {
+		t.Fatal("the stale answer was not removed on the next cycle")
+	}
+	if got := env.forge.postedTo(54); len(got) != 0 {
+		t.Fatalf("acted on a consumed answer: posted %q", got)
+	}
+	if l.state[54] != statePending {
+		t.Fatalf("state = %v, want the item driven again: nothing on disk parks it", l.state[54])
 	}
 }

@@ -111,7 +111,8 @@ A park is answered by a comment from --answerer, one line:
 
 or with 'meitheal decisions answer', which also takes hand-fix. A new round
 recreates the issue's Workload at attempt 1 on the same branch and draft
-PR. A decide answer asks the planner again, so it needs --repo-dir and
+PR; an issue the loop never dispatched goes through preflight first. A
+decide answer asks the planner again, so it needs --repo-dir and
 --planner-url, with or without --plan.
 
 Each drive's end is appended to --ledger (JSONL). On a restart, an item the

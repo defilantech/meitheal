@@ -115,6 +115,7 @@ type fakeEffects struct {
 	verifyErr    error
 
 	calls      map[string]driveCall
+	noRound    bool
 	restarted  int
 	dispatched int
 	killed     int
@@ -160,6 +161,8 @@ func (f *fakeEffects) Restart(ctx context.Context, item QueueItem, intent string
 	}
 	return driveWorkload, 1, nil
 }
+
+func (f *fakeEffects) HasRound(context.Context, QueueItem) (bool, error) { return !f.noRound, nil }
 
 func (f *fakeEffects) Watch(ctx context.Context, workload string, baseline time.Duration,
 	factor float64) (WatchResult, error) {
@@ -798,5 +801,21 @@ func TestRestartItem_SkipsPreflightAndStartsAtAttemptOne(t *testing.T) {
 	}
 	if len(e.redispatched) != 1 {
 		t.Fatalf("feedback passes = %d, want the round's one", len(e.redispatched))
+	}
+}
+
+// Without a round of the loop's (no own Workload, no own branch), a new
+// round is an ordinary drive: preflight runs, and its skip stops it.
+func TestRestartItem_WithoutARoundRunsPreflight(t *testing.T) {
+	e := &fakeEffects{noRound: true, skip: "an open PR already references it: x"}
+	end, err := RestartItem(context.Background(), e,
+		QueueItem{Issue: driveIssue, Repo: driveRepo, IntentPath: "intent.md"},
+		driveIntent, t.TempDir(), driveBaseline, driveFactor)
+	if err != nil || end != StageDone {
+		t.Fatalf("RestartItem = %s, %v", end, err)
+	}
+	if _, ran := e.calls["preflight"]; !ran || e.dispatched != 0 || e.restarted != 0 {
+		t.Fatalf("preflight ran %v, dispatched %d, restarted %d; want preflight and nothing else",
+			ran, e.dispatched, e.restarted)
 	}
 }

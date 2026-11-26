@@ -1462,3 +1462,35 @@ func TestFinalize_AttributionComesFromTheTemplate(t *testing.T) {
 		t.Fatalf("PR body lacks %q, or carries the default:\n%s", want, body)
 	}
 }
+
+func TestHasRound(t *testing.T) {
+	name := plannedWorkloadName(effIssue)
+	own := &meithealv1alpha1.Workload{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: effNS},
+		Spec:       meithealv1alpha1.WorkloadSpec{Intent: "x", Issues: []int32{effIssue}},
+	}
+	foreign := own.DeepCopy()
+	foreign.Spec.Issues = []int32{7}
+	cases := []struct {
+		name   string
+		objs   []client.Object
+		branch bool
+		want   bool
+	}{
+		{"nothing", nil, false, false},
+		{"own workload", []client.Object{own}, false, true},
+		{"own branch", nil, true, true},
+		{"another issue's workload", []client.Object{foreign}, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeRunForge()
+			f.branches[taskBranch(name, effIssue)] = tc.branch
+			e := NewClusterEffects(newEffectsClient(t, nil, tc.objs...), effNS, f, testTemplate(), &fakeGateRunner{}, fastOpts())
+			got, err := e.HasRound(context.Background(), effItem("cpu"))
+			if err != nil || got != tc.want {
+				t.Fatalf("HasRound = %v, %v; want %v", got, err, tc.want)
+			}
+		})
+	}
+}

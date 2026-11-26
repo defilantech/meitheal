@@ -157,6 +157,11 @@ func publicReason(r string) string {
 // parkCommentPrefix starts every public park comment.
 const parkCommentPrefix = "Meitheal parked this issue: "
 
+// parkCommentSkew is how far before a park's open time an existing park
+// comment still counts as this park's: clock skew between the run's host and
+// the forge.
+const parkCommentSkew = 2 * time.Minute
+
 // Notify posts the public one-line park comment, labels the draft PR when
 // there is one, and POSTs the full decision to NotifyURL when set. A channel
 // d.Notices already shows as done is skipped, and each one is recorded in
@@ -216,12 +221,14 @@ func (e *clusterEffects) Notify(ctx context.Context, item QueueItem, d Decision)
 // postParkComment posts the park's public line unless this park's line is
 // already on the issue: a comment since the park opened that starts with the
 // same reason counts, with or without the PR link, so a retry after a lost
-// response or a failed lookup does not post it twice. A park with no open
-// time cannot be told from an earlier one's and is always posted.
+// response or a failed lookup does not post it twice. "Since the park
+// opened" reaches back parkCommentSkew, because the open time is this
+// host's clock and the comment's is the forge's. A park with no open time
+// cannot be told from an earlier one's and is always posted.
 func (e *clusterEffects) postParkComment(ctx context.Context, repo string, d Decision, prURL string) error {
 	line := parkCommentPrefix + publicReason(d.Reason) + "."
 	if !d.Opened.IsZero() {
-		comments, err := e.forge.CommentsSince(ctx, repo, d.Issue, d.Opened)
+		comments, err := e.forge.CommentsSince(ctx, repo, d.Issue, d.Opened.Add(-parkCommentSkew))
 		if err != nil {
 			return fmt.Errorf("read comments: %w", err)
 		}

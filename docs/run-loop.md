@@ -109,7 +109,8 @@ and the draft PR link when there is one; never logs or evidence), the
 decision file records each notice that went out (`notices`) and when all of
 them had (`notified`). A notice that failed is retried on every answer
 cycle without repeating the ones that went out, and the comment is not
-posted again when this park's line is already on the issue.
+posted again when this park's line is already on the issue (from up to two
+minutes before the park opened, to allow for clock skew).
 
 ## Answering a park
 
@@ -143,9 +144,14 @@ at most one feedback pass. Only a maintainer's `requeue` or `decide` starts
 a new round. It deletes the issue's Workload if one is still there (the
 branch and the draft PR stay), creates it again as attempt 1, revising the
 branch when one was pushed so the coder continues the same draft PR, and
-drives it. The new round skips preflight: the open draft PR is the loop's
-own. The answered decision is removed once the new Workload exists, so a
-restart in between acts on the answer again.
+drives it. When the issue has a round of the loop's (its own Workload, or
+its own `meitheal/<workload>/issue-<n>` branch), the new round skips
+preflight, because the open draft PR and branch preflight would find are
+the loop's own. Without one, as for a planner park that was never
+dispatched, preflight runs as usual: an open PR someone else made skips the
+issue, recorded as `skipped`. The answered decision is removed once the
+round has a Workload or a preflight skip, so a restart in between acts on
+the answer again.
 
 ## The ledger
 
