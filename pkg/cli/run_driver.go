@@ -55,7 +55,12 @@ type WatchResult struct {
 // production implementation of this method calls it.
 type Effects interface {
 	Preflight(ctx context.Context, item QueueItem, branch string) (string, error)
-	Dispatch(ctx context.Context, item QueueItem, intent string) (workload string, err error)
+	// Dispatch creates the item's Workload or resumes the one already there,
+	// and reports which coder attempt that Workload is: 1 for a first
+	// dispatch, 2 for a Workload that is already the feedback pass. The
+	// attempt is read back from the cluster on a resume, so the one-pass cap
+	// survives a loop restart.
+	Dispatch(ctx context.Context, item QueueItem, intent string) (workload string, attempt int, err error)
 	Watch(ctx context.Context, workload string, baseline time.Duration, factor float64) (WatchResult, error)
 	Kill(ctx context.Context, workload string) error
 	Verify(ctx context.Context, workload, branch string) (clean bool, evidence string, err error)
@@ -170,11 +175,13 @@ func driveLoop(
 	branch := taskBranch(plannedWorkloadName(item.Issue), item.Issue)
 	var workload, evidence string
 	// attempts drives NextStage's one-pass rule: a dirty verify at attempts 1
-	// goes to feedback, at maxAttempts it escalates. The increments live in
-	// case StageDispatch and case StageFeedback and nowhere else. A feedback
-	// case that did not increment would spin watch -> verify -> feedback ->
-	// watch with Attempts frozen, maxAttempts would never fire, and only
-	// maxStageTransitions would stop it.
+	// goes to feedback, at maxAttempts it escalates. case StageDispatch SETS
+	// it to the attempt Dispatch reports (2 when a restarted loop resumes a
+	// Workload that is already the feedback pass), and case StageFeedback
+	// increments it; nothing else touches it. A feedback case that did not
+	// increment would spin watch -> verify -> feedback -> watch with Attempts
+	// frozen, maxAttempts would never fire, and only maxStageTransitions would
+	// stop it.
 	attempts := 0
 	stage := StagePreflight
 
@@ -194,9 +201,13 @@ func driveLoop(
 			}
 			facts.SkipReason = skip
 		case StageDispatch:
-			w, err := e.Dispatch(ctx, item, intent)
+			w, attempt, err := e.Dispatch(ctx, item, intent)
 			if err != nil {
 				return stage, err
+			}
+			// An attempt below 1 would buy the item an extra feedback pass.
+			if attempt < 1 {
+				return stage, fmt.Errorf("dispatch for issue %d reported attempt %d", item.Issue, attempt)
 			}
 			// An empty name is the one answer the "trust what Dispatch
 			// returns" contract cannot absorb: it makes the branch
@@ -211,7 +222,7 @@ func driveLoop(
 			// The branch follows the Workload that actually exists, not the
 			// name reserved for the probe above.
 			branch = taskBranch(workload, item.Issue)
-			attempts++
+			attempts = attempt
 		case StageWatch:
 			res, err := e.Watch(ctx, workload, baseline, factor)
 			if err != nil {
@@ -231,6 +242,7 @@ func driveLoop(
 				return stage, err
 			}
 			facts.VerifyClean, evidence = clean, ev
+			facts.GPUBusy = !clean && ev == GPUBusyEvidence
 		case StageFeedback:
 			if err := e.Redispatch(ctx, item, workload, intent, evidence); err != nil {
 				return stage, err

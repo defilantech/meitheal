@@ -96,6 +96,8 @@ type fakeEffects struct {
 	// dispatchNoName makes Dispatch report ("", nil): it claims to have
 	// created a Workload and does not say which.
 	dispatchNoName bool
+	// dispatchAttempt is the attempt Dispatch reports. Zero means 1.
+	dispatchAttempt int
 
 	redispatchErr error
 	finalizeErr   error
@@ -130,19 +132,23 @@ func (f *fakeEffects) Preflight(ctx context.Context, item QueueItem, branch stri
 	return f.skip, f.preflightErr
 }
 
-func (f *fakeEffects) Dispatch(ctx context.Context, item QueueItem, intent string) (string, error) {
+func (f *fakeEffects) Dispatch(ctx context.Context, item QueueItem, intent string) (string, int, error) {
 	f.record("dispatch", driveCall{ctx: ctx, item: item, intent: intent})
 	f.dispatched++
+	attempt := f.dispatchAttempt
+	if attempt == 0 {
+		attempt = 1
+	}
 	if f.dispatchErr != nil {
-		return "", f.dispatchErr
+		return "", 0, f.dispatchErr
 	}
 	if f.dispatchNoName {
-		return "", nil
+		return "", attempt, nil
 	}
 	if f.dispatchWorkload != "" {
-		return f.dispatchWorkload, nil
+		return f.dispatchWorkload, attempt, nil
 	}
-	return driveWorkload, nil
+	return driveWorkload, attempt, nil
 }
 
 func (f *fakeEffects) Watch(ctx context.Context, workload string, baseline time.Duration,
@@ -712,5 +718,53 @@ func TestDriveItem_SurfacesAParkThatCouldNotBeWritten(t *testing.T) {
 	}
 	if got != StageWatch {
 		t.Errorf("stage = %q, want %q: the item is not parked", got, StageWatch)
+	}
+}
+
+// A busy GPU node is not a verdict on the branch: it parks escalate on the
+// first attempt and never spends the feedback pass on a coder who has
+// nothing to fix.
+func TestDrive_GPUBusyParksWithoutFeedback(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{verifyClean: false, verifyEvidence: GPUBusyEvidence}
+	if got := drive(t, e, dir); got != StageParked {
+		t.Fatalf("end stage = %q, want parked", got)
+	}
+	if len(e.redispatched) != 0 {
+		t.Fatalf("redispatched %d times, want 0", len(e.redispatched))
+	}
+	if len(e.notified) != 1 {
+		t.Fatalf("notified %d times, want 1", len(e.notified))
+	}
+	d := onlyDecision(t, dir)
+	if d.Kind != ParkEscalate || d.Reason != "GPU node stayed busy" {
+		t.Fatalf("decision = (%q,%q), want (escalate, GPU node stayed busy)", d.Kind, d.Reason)
+	}
+}
+
+// A restarted loop that resumes a Workload which is already the feedback
+// pass must not grant another: the next dirty verify escalates.
+func TestDrive_ResumedSecondAttemptEscalatesWithoutRedispatch(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{dispatchAttempt: 2, verifyClean: false, verifyEvidence: driveEvidence}
+	if got := drive(t, e, dir); got != StageParked {
+		t.Fatalf("end stage = %q, want parked", got)
+	}
+	if len(e.redispatched) != 0 {
+		t.Fatalf("redispatched %d times, want 0 on a resumed attempt 2", len(e.redispatched))
+	}
+	if d := onlyDecision(t, dir); d.Kind != ParkEscalate {
+		t.Fatalf("kind = %q, want escalate", d.Kind)
+	}
+}
+
+func TestDrive_DispatchAttemptBelowOneIsAnError(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{dispatchAttempt: -1, verifyClean: false}
+	if _, err := driveItemUnderTest(context.Background(), e, dir); err == nil {
+		t.Fatal("want an error for a nonsense attempt")
+	}
+	if e.verified != 0 {
+		t.Fatalf("verified %d times after a bad dispatch", e.verified)
 	}
 }

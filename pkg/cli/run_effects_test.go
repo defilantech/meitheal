@@ -163,8 +163,16 @@ func (f *fakeRunForge) CommentIssue(_ context.Context, repo string, issue int32,
 	return nil
 }
 
-func (f *fakeRunForge) CommentsSince(context.Context, string, int32, time.Time) ([]IssueComment, error) {
-	return nil, nil
+func (f *fakeRunForge) CommentsSince(_ context.Context, repo string, issue int32, _ time.Time) ([]IssueComment, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []IssueComment
+	for _, c := range f.comments {
+		if c.repo == repo && c.issue == issue {
+			out = append(out, IssueComment{Author: "defilan-agent[bot]", Body: c.body})
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeRunForge) PRForBranch(_ context.Context, _, branch string) (string, error) {
@@ -281,10 +289,15 @@ gpuNode: gpu-box-1
 }
 
 func TestLoadWorkloadTemplate_RejectsBadShapes(t *testing.T) {
+	const spec = "spec: {repo: a/b, gateProfile: {language: generic}}\n"
 	cases := map[string]string{
-		"unknown key (a typo would silently drop the GPU gate)": "spec: {repo: a/b}\ngpugate: {language: generic}\n",
-		"gpuGate without gpuNode":                               "spec: {repo: a/b}\ngpuGate: {language: generic}\n",
-		"gpuNode without gpuGate":                               "spec: {repo: a/b}\ngpuNode: n1\n",
+		"unknown key (a typo would silently drop the GPU gate)": spec + "gpugate: {language: generic}\n",
+		"gpuGate without gpuNode":                               spec + "gpuGate: {language: generic}\n",
+		"gpuNode without gpuGate":                               spec + "gpuNode: n1\n",
+		"no spec.gateProfile":                                   "spec: {repo: a/b}\n",
+		"gpuGate placed on a host other than gpuNode": spec +
+			"gpuGate: {language: generic, placement: {nodeSelector: {kubernetes.io/hostname: other-box}}}\n" +
+			"gpuNode: gpu-box-1\n",
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -352,9 +365,12 @@ func TestDispatch_CreatesWorkloadFromTemplate(t *testing.T) {
 	tpl := testTemplate()
 	e := NewClusterEffects(c, effNS, newFakeRunForge(), tpl, &fakeGateRunner{}, fastOpts())
 
-	got, err := e.Dispatch(context.Background(), effItem("cpu"), "fix the tokenizer")
+	got, attempt, err := e.Dispatch(context.Background(), effItem("cpu"), "fix the tokenizer")
 	if err != nil {
 		t.Fatalf("Dispatch: %v", err)
+	}
+	if attempt != 1 {
+		t.Fatalf("attempt = %d, want 1 for a fresh create", attempt)
 	}
 	if got != plannedWorkloadName(effIssue) {
 		t.Fatalf("Dispatch returned %q, want %q", got, plannedWorkloadName(effIssue))
@@ -368,6 +384,9 @@ func TestDispatch_CreatesWorkloadFromTemplate(t *testing.T) {
 	if !reflect.DeepEqual(w.Spec, *want) {
 		t.Fatalf("spec mismatch:\n got %+v\nwant %+v", w.Spec, *want)
 	}
+	if got := w.Annotations["meitheal.dev/run-attempt"]; got != "1" {
+		t.Fatalf("run-attempt annotation = %q, want 1", got)
+	}
 }
 
 func TestDispatch_ItemRepoOverridesTemplate(t *testing.T) {
@@ -375,7 +394,7 @@ func TestDispatch_ItemRepoOverridesTemplate(t *testing.T) {
 	e := NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, fastOpts())
 	item := effItem("cpu")
 	item.Repo = "defilantech/other"
-	name, err := e.Dispatch(context.Background(), item, "x")
+	name, _, err := e.Dispatch(context.Background(), item, "x")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,9 +440,12 @@ func TestDispatch_ExistingWorkloadResumes(t *testing.T) {
 	c := newEffectsClient(t, funcs, existing)
 	e := NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, fastOpts())
 
-	got, err := e.Dispatch(context.Background(), effItem("cpu"), "a different intent")
+	got, attempt, err := e.Dispatch(context.Background(), effItem("cpu"), "a different intent")
 	if err != nil {
 		t.Fatalf("Dispatch: %v", err)
+	}
+	if attempt != 1 {
+		t.Fatalf("attempt = %d, want 1 for an unannotated, non-revising Workload", attempt)
 	}
 	if got != name {
 		t.Fatalf("Dispatch returned %q, want the existing %q", got, name)
@@ -474,6 +496,9 @@ func TestRedispatch_DeletesAndRecreatesWithRevise(t *testing.T) {
 	}
 	if !w.Spec.ReviseExistingBranch {
 		t.Fatal("recreated Workload must set ReviseExistingBranch")
+	}
+	if got := w.Annotations["meitheal.dev/run-attempt"]; got != "2" {
+		t.Fatalf("run-attempt annotation = %q, want 2", got)
 	}
 	wantIntent := "fix it" +
 		"\n\nThe previous attempt failed the independent gate. Fix this and nothing else:\n" + tail
@@ -804,7 +829,7 @@ func TestKill_DeletesWorkloadAndToleratesMissing(t *testing.T) {
 
 func dispatched(t *testing.T, e Effects, lane string) string {
 	t.Helper()
-	name, err := e.Dispatch(context.Background(), effItem(lane), "fix it")
+	name, _, err := e.Dispatch(context.Background(), effItem(lane), "fix it")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -980,7 +1005,7 @@ func TestFinalize_UpdatesPRBodyAndComments(t *testing.T) {
 	if strings.Index(body, "## Summary") > strings.Index(body, "## Testing") {
 		t.Error("Summary must come before Testing")
 	}
-	want := []forgeComment{{effRepo, effIssue, "Draft PR ready for review: " + url}}
+	want := []forgeComment{{effRepo, effIssue, "Draft PR ready for review: " + url + "\n\n<!-- meitheal:ready -->"}}
 	if !reflect.DeepEqual(f.comments, want) {
 		t.Fatalf("comments = %+v, want %+v", f.comments, want)
 	}
@@ -1166,7 +1191,7 @@ func TestDispatch_ExistingWorkloadForAnotherIssueIsAnError(t *testing.T) {
 	}
 	c := newEffectsClient(t, nil, other)
 	e := NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, fastOpts())
-	if _, err := e.Dispatch(context.Background(), effItem("cpu"), "x"); err == nil {
+	if _, _, err := e.Dispatch(context.Background(), effItem("cpu"), "x"); err == nil {
 		t.Fatal("want an error")
 	}
 	if got := getWorkload(t, c, name).Spec.Intent; got != "manual" {
@@ -1174,29 +1199,219 @@ func TestDispatch_ExistingWorkloadForAnotherIssueIsAnError(t *testing.T) {
 	}
 }
 
-// A Workload still being deleted after a Kill is not resumed: Dispatch waits
-// it out and creates a fresh one.
-func TestDispatch_DeletingWorkloadIsWaitedOutThenCreated(t *testing.T) {
-	name := plannedWorkloadName(effIssue)
+// deletingWorkload is a Workload with the reserved name that is going away,
+// held by a finalizer that releaseLater removes.
+func deletingWorkload() *meithealv1alpha1.Workload {
 	now := metav1.Now()
-	going := &meithealv1alpha1.Workload{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: effNS, DeletionTimestamp: &now,
-			Finalizers: []string{"test.meitheal.dev/hold"}},
-		Spec: meithealv1alpha1.WorkloadSpec{Intent: "killed run", Issues: []int32{effIssue}},
+	return &meithealv1alpha1.Workload{
+		ObjectMeta: metav1.ObjectMeta{Name: plannedWorkloadName(effIssue), Namespace: effNS,
+			DeletionTimestamp: &now, Finalizers: []string{"test.meitheal.dev/hold"}},
+		Spec: meithealv1alpha1.WorkloadSpec{Intent: "going", Issues: []int32{effIssue}},
 	}
-	c := newEffectsClient(t, nil, going)
-	e := NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, fastOpts())
+}
+
+func releaseLater(c client.Client, name string) {
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		w := getWorkload(t, c, name)
+		var w meithealv1alpha1.Workload
+		if err := c.Get(context.Background(), types.NamespacedName{Namespace: effNS, Name: name}, &w); err != nil {
+			return
+		}
 		w.Finalizers = nil
-		_ = c.Update(context.Background(), w)
+		_ = c.Update(context.Background(), &w)
 	}()
-	got, err := e.Dispatch(context.Background(), effItem("cpu"), "fresh intent")
+}
+
+// A Workload still being deleted after a Kill is not resumed: Dispatch waits
+// it out, and with no branch pushed creates a fresh first attempt.
+func TestDispatch_DeletingWorkloadWithNoBranchRecreatesAsAttemptOne(t *testing.T) {
+	name := plannedWorkloadName(effIssue)
+	c := newEffectsClient(t, nil, deletingWorkload())
+	e := NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, fastOpts())
+	releaseLater(c, name)
+	got, attempt, err := e.Dispatch(context.Background(), effItem("cpu"), "fresh intent")
 	if err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
-	if w := getWorkload(t, c, got); w.Spec.Intent != "fresh intent" || w.DeletionTimestamp != nil {
-		t.Fatalf("want a fresh Workload, got intent %q deleting=%v", w.Spec.Intent, w.DeletionTimestamp != nil)
+	w := getWorkload(t, c, got)
+	if attempt != 1 || w.Spec.Intent != "fresh intent" || w.Spec.ReviseExistingBranch || w.DeletionTimestamp != nil {
+		t.Fatalf("attempt %d, intent %q, revise %v, deleting %v; want a fresh attempt 1",
+			attempt, w.Spec.Intent, w.Spec.ReviseExistingBranch, w.DeletionTimestamp != nil)
+	}
+	if w.Annotations["meitheal.dev/run-attempt"] != "1" {
+		t.Fatalf("annotation = %q", w.Annotations["meitheal.dev/run-attempt"])
+	}
+}
+
+// The loop died between Redispatch's delete and its recreate: the Workload
+// is going away and the first attempt's branch is pushed. Dispatch recreates
+// the feedback pass, as attempt 2 revising that branch.
+func TestDispatch_DeletingWorkloadWithPushedBranchRecreatesAsAttemptTwo(t *testing.T) {
+	name := plannedWorkloadName(effIssue)
+	c := newEffectsClient(t, nil, deletingWorkload())
+	f := newFakeRunForge()
+	f.branches[taskBranch(name, effIssue)] = true
+	e := NewClusterEffects(c, effNS, f, testTemplate(), &fakeGateRunner{}, fastOpts())
+	releaseLater(c, name)
+	got, attempt, err := e.Dispatch(context.Background(), effItem("cpu"), "fix it")
+	if err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	w := getWorkload(t, c, got)
+	if attempt != 2 || !w.Spec.ReviseExistingBranch || w.Annotations["meitheal.dev/run-attempt"] != "2" {
+		t.Fatalf("attempt %d, revise %v, annotation %q; want attempt 2 revising",
+			attempt, w.Spec.ReviseExistingBranch, w.Annotations["meitheal.dev/run-attempt"])
+	}
+	want := "fix it\n\nThe previous attempt failed the independent gate. " +
+		"Run the gate commands, and fix what fails and nothing else."
+	if w.Spec.Intent != want {
+		t.Fatalf("intent = %q, want %q", w.Spec.Intent, want)
+	}
+}
+
+func TestDispatch_ResumeReportsTheWorkloadsAttempt(t *testing.T) {
+	cases := map[string]struct {
+		annotations map[string]string
+		revise      bool
+		want        int
+	}{
+		"annotated 2":                         {map[string]string{"meitheal.dev/run-attempt": "2"}, true, 2},
+		"annotated 1":                         {map[string]string{"meitheal.dev/run-attempt": "1"}, false, 1},
+		"no annotation, revising":             {nil, true, 2},
+		"no annotation, not revising":         {nil, false, 1},
+		"unreadable annotation, revising":     {map[string]string{"meitheal.dev/run-attempt": "x"}, true, 2},
+		"unreadable annotation, not revising": {map[string]string{"meitheal.dev/run-attempt": "0"}, false, 1},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			w := &meithealv1alpha1.Workload{
+				ObjectMeta: metav1.ObjectMeta{Name: plannedWorkloadName(effIssue), Namespace: effNS,
+					Annotations: tc.annotations},
+				Spec: meithealv1alpha1.WorkloadSpec{Intent: "x", Issues: []int32{effIssue},
+					ReviseExistingBranch: tc.revise},
+			}
+			c := newEffectsClient(t, nil, w)
+			e := NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, fastOpts())
+			_, got, err := e.Dispatch(context.Background(), effItem("cpu"), "x")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Fatalf("attempt = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// Review Focus 1 with the real Effects: a restarted loop resumes a Workload
+// that is already the feedback pass, the verify is dirty, and the item parks
+// escalate. The Workload is not deleted and no third attempt is made.
+func TestDriveItem_ResumedAttemptTwoParksWithoutRedispatch(t *testing.T) {
+	name := plannedWorkloadName(effIssue)
+	w := watchWorkload(name, time.Now(), meithealv1alpha1.WorkloadPhaseCompleted)
+	w.Annotations = map[string]string{"meitheal.dev/run-attempt": "2"}
+	w.Spec.ReviseExistingBranch = true
+	var deletes, creates int
+	funcs := &interceptor.Funcs{
+		Delete: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.DeleteOption) error {
+			deletes++
+			return c.Delete(ctx, o, opts...)
+		},
+		Create: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.CreateOption) error {
+			creates++
+			return c.Create(ctx, o, opts...)
+		},
+	}
+	c := newEffectsClient(t, funcs, w)
+	f := newFakeRunForge()
+	g := &fakeGateRunner{dirty: map[string]string{"rust:1": "still failing"}}
+	e := NewClusterEffects(c, effNS, f, testTemplate(), g, fastOpts())
+	dir := t.TempDir()
+
+	end, err := DriveItem(context.Background(), e, effItem("cpu"), "fix it", dir, time.Hour, 2.5)
+	if err != nil {
+		t.Fatalf("DriveItem: %v", err)
+	}
+	if end != StageParked {
+		t.Fatalf("end = %q, want parked", end)
+	}
+	if deletes != 0 || creates != 0 {
+		t.Fatalf("deletes %d, creates %d; want the resumed Workload left alone", deletes, creates)
+	}
+	ds, err := ListDecisions(dir)
+	if err != nil || len(ds) != 1 || ds[0].Kind != ParkEscalate {
+		t.Fatalf("decisions = %+v, %v; want one escalate", ds, err)
+	}
+}
+
+func TestRedispatch_RefusesAnAttemptTwoWorkload(t *testing.T) {
+	for name, w := range map[string]*meithealv1alpha1.Workload{
+		"annotated": {ObjectMeta: metav1.ObjectMeta{Name: plannedWorkloadName(effIssue), Namespace: effNS,
+			Annotations: map[string]string{"meitheal.dev/run-attempt": "2"}},
+			Spec: meithealv1alpha1.WorkloadSpec{Intent: "x", Issues: []int32{effIssue}, ReviseExistingBranch: true}},
+		"unannotated but revising": {ObjectMeta: metav1.ObjectMeta{Name: plannedWorkloadName(effIssue),
+			Namespace: effNS},
+			Spec: meithealv1alpha1.WorkloadSpec{Intent: "x", Issues: []int32{effIssue}, ReviseExistingBranch: true}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			deletes := 0
+			funcs := &interceptor.Funcs{
+				Delete: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.DeleteOption) error {
+					deletes++
+					return c.Delete(ctx, o, opts...)
+				},
+			}
+			c := newEffectsClient(t, funcs, w)
+			e := NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, fastOpts())
+			if err := e.Redispatch(context.Background(), effItem("cpu"), w.Name, "x", "ev"); err == nil {
+				t.Fatal("want a refusal")
+			}
+			if deletes != 0 {
+				t.Fatalf("deleted %d times; want nothing deleted", deletes)
+			}
+		})
+	}
+}
+
+func TestWaitGone_GivesUpAfterTheDeleteWaitTimeout(t *testing.T) {
+	old := deleteWaitTimeout
+	deleteWaitTimeout = 20 * time.Millisecond
+	defer func() { deleteWaitTimeout = old }()
+	name := plannedWorkloadName(effIssue)
+	existing := &meithealv1alpha1.Workload{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: effNS},
+		Spec: meithealv1alpha1.WorkloadSpec{Intent: "fix it"}}
+	funcs := &interceptor.Funcs{
+		Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error { return nil },
+	}
+	c := newEffectsClient(t, funcs, existing)
+	e := NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, fastOpts())
+	err := e.Redispatch(context.Background(), effItem("cpu"), name, "fix it", "ev")
+	if err == nil || !strings.Contains(err.Error(), "still exists after") {
+		t.Fatalf("err = %v, want the delete-wait timeout", err)
+	}
+}
+
+func TestFinalize_IsIdempotent(t *testing.T) {
+	c := newEffectsClient(t, nil)
+	f := newFakeRunForge()
+	e := NewClusterEffects(c, effNS, f, testTemplate(), &fakeGateRunner{}, fastOpts())
+	name := dispatched(t, e, "cpu")
+	branch := taskBranch(name, effIssue)
+	f.prs[branch] = "https://github.com/defilantech/dluth/pull/9"
+	for i := 0; i < 2; i++ {
+		if err := e.Finalize(context.Background(), effItem("cpu"), name, branch); err != nil {
+			t.Fatalf("Finalize %d: %v", i, err)
+		}
+	}
+	if len(f.comments) != 1 {
+		t.Fatalf("comments = %d, want one ready comment across two Finalizes", len(f.comments))
+	}
+	// A new PR for the same issue (after a drop and a requeue) is announced.
+	f.prs[branch] = "https://github.com/defilantech/dluth/pull/12"
+	if err := e.Finalize(context.Background(), effItem("cpu"), name, branch); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.comments) != 2 {
+		t.Fatalf("comments = %d, want the new PR announced", len(f.comments))
 	}
 }

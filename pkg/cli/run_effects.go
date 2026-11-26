@@ -28,10 +28,8 @@ import (
 	"sort"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	sigsyaml "sigs.k8s.io/yaml"
 
@@ -64,8 +62,21 @@ func LoadWorkloadTemplate(path string) (WorkloadTemplate, error) {
 	if err := sigsyaml.UnmarshalStrict(b, &t); err != nil {
 		return WorkloadTemplate{}, fmt.Errorf("parse workload template %s: %w", path, err)
 	}
+	if t.Spec.GateProfile == nil {
+		// Without it the CPU gate resolves to the Go preset, which is not a
+		// gate for anything this loop runs.
+		return WorkloadTemplate{}, fmt.Errorf("workload template %s: spec.gateProfile is required", path)
+	}
 	if (t.GPUGate == nil) != (t.GPUNode == "") {
 		return WorkloadTemplate{}, fmt.Errorf("workload template %s: gpuGate and gpuNode go together", path)
+	}
+	// The busy check looks at gpuNode; a placement pinning the gate to a
+	// different host would check one box and run on another.
+	if t.GPUGate != nil && t.GPUGate.Placement != nil {
+		if h, ok := t.GPUGate.Placement.NodeSelector[hostnameLabel]; ok && h != t.GPUNode {
+			return WorkloadTemplate{}, fmt.Errorf(
+				"workload template %s: gpuGate is placed on %s=%q but gpuNode is %q", path, hostnameLabel, h, t.GPUNode)
+		}
 	}
 	return t, nil
 }
@@ -119,12 +130,17 @@ func validFactor(f float64) bool {
 	return !math.IsNaN(f) && !math.IsInf(f, 0) && f > 0
 }
 
+// hostnameLabel is the well-known node label a placement pins a host with.
+const hostnameLabel = "kubernetes.io/hostname"
+
 // evidenceTailBytes is how much of a failed gate's evidence the feedback
 // pass hands the coder: the end of a log is where the failure is.
 const evidenceTailBytes = 4000
 
-// gpuBusyEvidence is the verify evidence for a GPU node that stayed busy.
-const gpuBusyEvidence = "gpu-box-busy"
+// GPUBusyEvidence is the verify evidence for a GPU node that stayed busy.
+// The driver matches it exactly to park instead of spending the feedback
+// pass on it.
+const GPUBusyEvidence = "gpu-box-busy"
 
 // notifyTimeout bounds the park webhook POST.
 const notifyTimeout = 10 * time.Second
@@ -211,120 +227,6 @@ func (e *clusterEffects) Preflight(ctx context.Context, item QueueItem, branch s
 		return "", nil
 	}
 	return Preflight(ctx, e.forge, item, branch)
-}
-
-func (e *clusterEffects) newWorkload(
-	name string, item QueueItem, intent string, revise bool,
-) *meithealv1alpha1.Workload {
-	spec := e.tpl.Spec.DeepCopy()
-	spec.Intent = intent
-	spec.Issues = []int32{item.Issue}
-	spec.Repo = e.repoFor(item)
-	spec.ReviseExistingBranch = revise
-	return &meithealv1alpha1.Workload{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: e.ns},
-		Spec:       *spec,
-	}
-}
-
-// Dispatch creates the item's Workload under its reserved name, or resumes
-// the one already there. A resumed Workload is never written to: not
-// updated, not deleted, not recreated.
-func (e *clusterEffects) Dispatch(ctx context.Context, item QueueItem, intent string) (string, error) {
-	name := plannedWorkloadName(item.Issue)
-	w, err := e.existing(ctx, name)
-	if err != nil {
-		return "", err
-	}
-	if w != nil && w.DeletionTimestamp == nil {
-		// Resuming a Workload that is not running this issue would watch,
-		// verify and eventually feed back (delete and recreate) somebody
-		// else's run. Refuse instead.
-		if !slices.Contains(w.Spec.Issues, item.Issue) {
-			return "", fmt.Errorf("workload %s exists but is not an issue-batch run for issue %d; leaving it alone",
-				name, item.Issue)
-		}
-		e.remember(name, item)
-		return name, nil
-	}
-	if w != nil {
-		// Still going away after a Kill; a resume would watch a corpse.
-		if err := e.waitGone(ctx, name); err != nil {
-			return "", err
-		}
-	}
-	if err := e.c.Create(ctx, e.newWorkload(name, item, intent, false)); err != nil {
-		if !apierrors.IsAlreadyExists(err) {
-			return "", fmt.Errorf("create workload %s: %w", name, err)
-		}
-		// Lost a race with another creator: that is a resume too.
-	}
-	e.remember(name, item)
-	return name, nil
-}
-
-// lastBytes returns at most the last n bytes of s, starting on a rune
-// boundary so the coder is never handed a broken character.
-func lastBytes(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	s = s[len(s)-n:]
-	for len(s) > 0 && !utf8.RuneStart(s[0]) {
-		s = s[1:]
-	}
-	return s
-}
-
-// Redispatch runs the one feedback pass: the Workload is deleted, waited
-// out, and recreated under the same name with ReviseExistingBranch, so the
-// coder resumes the branch it pushed (and its draft PR) instead of starting
-// over. Deleting a Workload removes its AgenticTasks and leaves the pushed
-// branch alone.
-func (e *clusterEffects) Redispatch(ctx context.Context, item QueueItem, workload, intent, evidence string) error {
-	e.remember(workload, item)
-	revised := intent +
-		"\n\nThe previous attempt failed the independent gate. Fix this and nothing else:\n" +
-		lastBytes(evidence, evidenceTailBytes)
-	if err := e.deleteWorkload(ctx, workload); err != nil {
-		return err
-	}
-	if err := e.waitGone(ctx, workload); err != nil {
-		return err
-	}
-	if err := e.c.Create(ctx, e.newWorkload(workload, item, revised, true)); err != nil {
-		return fmt.Errorf("recreate workload %s: %w", workload, err)
-	}
-	return nil
-}
-
-// deleteWorkload deletes in the foreground: the Workload stays visible until
-// its AgenticTasks are gone, so waiting for it to vanish also waits out its
-// children. A recreated Workload would otherwise render task names its
-// predecessor's tasks still hold.
-func (e *clusterEffects) deleteWorkload(ctx context.Context, name string) error {
-	w := &meithealv1alpha1.Workload{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: e.ns}}
-	if err := e.c.Delete(ctx, w, client.PropagationPolicy(metav1.DeletePropagationForeground)); err != nil &&
-		!apierrors.IsNotFound(err) {
-		return fmt.Errorf("delete workload %s: %w", name, err)
-	}
-	return nil
-}
-
-// waitGone polls until the Workload is gone, bounded by ctx.
-func (e *clusterEffects) waitGone(ctx context.Context, name string) error {
-	for {
-		w, err := e.existing(ctx, name)
-		if err != nil {
-			return err
-		}
-		if w == nil {
-			return nil
-		}
-		if err := sleepCtx(ctx, e.o.Poll); err != nil {
-			return fmt.Errorf("waiting for workload %s to be deleted: %w", name, err)
-		}
-	}
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {
@@ -504,7 +406,7 @@ func (e *clusterEffects) Verify(ctx context.Context, workload, branch string) (b
 			return false, "", err
 		}
 		if e.o.Now().Sub(waitStart) >= e.o.GPUGiveUp {
-			return false, gpuBusyEvidence, nil
+			return false, GPUBusyEvidence, nil
 		}
 		if err := sleepCtx(ctx, e.o.GPURetry); err != nil {
 			return false, "", err

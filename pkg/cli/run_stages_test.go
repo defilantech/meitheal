@@ -50,6 +50,10 @@ func TestNextStage(t *testing.T) {
 		{"clean verify after the one feedback pass finalizes", StageVerify,
 			Facts{VerifyClean: true, Attempts: 2}, StageFinalize, ""},
 		{"finalize ends the item", StageFinalize, Facts{}, StageDone, ""},
+		{"a busy GPU parks escalate on the first attempt, before feedback", StageVerify,
+			Facts{GPUBusy: true, Attempts: 1}, StageParked, "escalate"},
+		{"a busy GPU parks even when the rest says clean", StageVerify,
+			Facts{GPUBusy: true, VerifyClean: true, Attempts: 1}, StageParked, "escalate"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,5 +106,11 @@ func TestOptionsFor_EveryParkOffersTheAnswerCommands(t *testing.T) {
 		if got := optionsFor(kind); !slices.Equal(got, want) {
 			t.Errorf("optionsFor(%q) = %q, want %q", kind, got, want)
 		}
+	}
+}
+
+func TestNextStage_GPUBusyReason(t *testing.T) {
+	if got := NextStage(StageVerify, Facts{GPUBusy: true, Attempts: 1}); got.Reason != "GPU node stayed busy" {
+		t.Fatalf("Reason = %q", got.Reason)
 	}
 }

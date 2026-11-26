@@ -65,6 +65,10 @@ type Facts struct {
 	WorkloadFailed bool
 	// Concern is the first structured concern text from any child task.
 	Concern string
+	// GPUBusy reports that verify could not run the GPU gate because the GPU
+	// node stayed busy serving a model. It is an infrastructure condition,
+	// not a verdict on the branch, so it never spends the feedback pass.
+	GPUBusy bool
 	// Attempts counts coder attempts made so far, starting at 1.
 	Attempts int
 }
@@ -100,6 +104,11 @@ func NextStage(cur Stage, f Facts) Transition {
 		}
 		return Transition{Next: StageVerify}
 	case StageVerify:
+		// Before the clean and attempts checks: a busy GPU node judged
+		// nothing, and the coder has nothing to fix.
+		if f.GPUBusy {
+			return Transition{Next: StageParked, Park: ParkEscalate, Reason: "GPU node stayed busy"}
+		}
 		if f.VerifyClean {
 			return Transition{Next: StageFinalize}
 		}

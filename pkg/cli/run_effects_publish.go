@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 )
@@ -34,6 +35,10 @@ import (
 // of the gate commands that actually ran.
 const assistedByPrefix = "Assisted-by: Meitheal; DeepSeek V4.1 Flash on a three-GB10 LLMKube ring " +
 	"wrote the change, Qwen3.8 Flash-Next reviewed it; gates: "
+
+// readyMarker is hidden in the ready comment so a rerun of Finalize (a
+// restarted loop going round a finished item again) does not post it twice.
+const readyMarker = "<!-- meitheal:ready -->"
 
 // parkedLabel marks a draft PR whose issue is waiting on a human.
 const parkedLabel = "meitheal:parked"
@@ -119,7 +124,19 @@ func (e *clusterEffects) Finalize(ctx context.Context, item QueueItem, workload,
 	if err := e.forge.UpdatePRBody(ctx, repo, branch, e.prBody(ctx, item, workload)); err != nil {
 		return fmt.Errorf("finalize issue %d: update PR body: %w", item.Issue, err)
 	}
-	if err := e.forge.CommentIssue(ctx, repo, item.Issue, "Draft PR ready for review: "+prURL); err != nil {
+	ready := "Draft PR ready for review: " + prURL
+	comments, err := e.forge.CommentsSince(ctx, repo, item.Issue, time.Time{})
+	if err != nil {
+		return fmt.Errorf("finalize issue %d: read comments: %w", item.Issue, err)
+	}
+	for _, c := range comments {
+		// The same PR already announced. A different PR (after a drop and a
+		// requeue) gets its own comment.
+		if strings.Contains(c.Body, readyMarker) && strings.Contains(c.Body, prURL) {
+			return nil
+		}
+	}
+	if err := e.forge.CommentIssue(ctx, repo, item.Issue, ready+"\n\n"+readyMarker); err != nil {
 		return fmt.Errorf("finalize issue %d: comment: %w", item.Issue, err)
 	}
 	return nil
