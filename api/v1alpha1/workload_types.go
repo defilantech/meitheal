@@ -225,6 +225,17 @@ type WorkloadSpec struct {
 	// +optional
 	AllowOverwrite bool `json:"allowOverwrite,omitempty"`
 
+	// ReviseExistingBranch makes each synthesized issue-batch code-<N>
+	// task resume the branch an earlier run already pushed
+	// (meitheal/<workload>/issue-<n>) instead of starting fresh: the
+	// payload gets reviseFromBranch set to that branch, branchStrategy
+	// rebase, and allowOverwrite true, matching the in-review fix
+	// iteration. A re-run under the same Workload name uses it so the
+	// existing draft PR is reused. Issue-batch only; ignored in explicit
+	// Pipeline mode.
+	// +optional
+	ReviseExistingBranch bool `json:"reviseExistingBranch,omitempty"`
+
 	// MaxReviewIterations bounds how many fix iterations the
 	// WorkloadReconciler may append per issue after a reviewer NO-GO
 	// (#946). On a NO-GO, instead of failing the Workload, the

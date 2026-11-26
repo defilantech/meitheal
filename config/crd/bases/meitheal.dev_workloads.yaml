@@ -5610,6 +5610,17 @@ spec:
                   type: object
                   x-kubernetes-map-type: atomic
                 type: array
+              reviseExistingBranch:
+                description: |-
+                  ReviseExistingBranch makes each synthesized issue-batch code-<N>
+                  task resume the branch an earlier run already pushed
+                  (meitheal/<workload>/issue-<n>) instead of starting fresh: the
+                  payload gets reviseFromBranch set to that branch, branchStrategy
+                  rebase, and allowOverwrite true, matching the in-review fix
+                  iteration. A re-run under the same Workload name uses it so the
+                  existing draft PR is reused. Issue-batch only; ignored in explicit
+                  Pipeline mode.
+                type: boolean
               revisionCoderAgentRef:
                 description: |-
                   RevisionCoderAgentRef optionally names the same-namespace Agent
