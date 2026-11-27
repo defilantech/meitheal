@@ -77,7 +77,10 @@ written, with `; gates:` and the gate commands that ran appended. Without
 it the line is `Assisted-by: Meitheal, with self-hosted models`.
 
 `--gate-deadline-seconds` (default 1800) is the wall-clock limit of one
-gate Job.
+gate Job. `--gate-image-pull-secrets=name1,name2` names Secrets in
+`--namespace` that the gate Jobs pull their image with, for a gate image in
+a private registry; without it the pull uses the namespace's `default`
+ServiceAccount.
 
 `--coder-agent` fills `spec.coderAgentRef`; a template that names a
 different coder is refused. Unknown keys are an error, so a misspelt

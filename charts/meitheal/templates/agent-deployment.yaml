@@ -164,6 +164,14 @@ spec:
             {{- if $agent.gateCache.enabled }}
             - --gate-cache-pvc={{ include "meitheal.gateCache.pvcName" $ctx }}
             {{- end }}
+            {{- /* Gate Jobs pull gateProfile.image as the namespace's default ServiceAccount, so a private gate image needs the chart's imagePullSecrets on the gate pod too (#46). Every pool gets them; none set renders no flag. */}}
+            {{- $gatePullSecrets := list }}
+            {{- range $.Values.imagePullSecrets }}
+            {{- if .name }}{{ $gatePullSecrets = append $gatePullSecrets .name }}{{ end }}
+            {{- end }}
+            {{- if $gatePullSecrets }}
+            - --gate-image-pull-secrets={{ join "," $gatePullSecrets }}
+            {{- end }}
             {{- if $agent.accelerator }}
             - --accelerator={{ $agent.accelerator }}
             {{- end }}

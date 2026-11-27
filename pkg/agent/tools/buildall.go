@@ -64,6 +64,7 @@ func BuildAll(deps ToolDeps) []Tool {
 				ActiveDeadlineSeconds:  deps.GateActiveDeadlineSeconds,
 				AllowedHostPaths:       deps.GateAllowedHostPaths,
 				AllowedPriorityClasses: deps.GateAllowedPriorityClasses,
+				ImagePullSecrets:       deps.GateImagePullSecrets,
 			},
 		},
 		// fetch_issue: read-only GitHub issue surface for the reviewer. The
@@ -135,6 +136,11 @@ type ToolDeps struct {
 	// --gate-allowed-priority-classes). Empty allows none.
 	GateAllowedHostPaths       []string
 	GateAllowedPriorityClasses []string
+
+	// GateImagePullSecrets names the Secrets the gate pod pulls its image
+	// with (--gate-image-pull-secrets), so a gate profile's image can sit in
+	// a private registry (#46). Empty sets none.
+	GateImagePullSecrets []string
 
 	// LogTailFn reads a finished gate Job's pod logs back for the model.
 	LogTailFn func(ctx context.Context, namespace, jobName string) string

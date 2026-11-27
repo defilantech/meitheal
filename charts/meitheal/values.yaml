@@ -16,7 +16,13 @@ fullnameOverride: ""
 namespace: ""
 
 # imagePullSecrets are attached to BOTH the operator and agent
-# Deployments when set.
+# Deployments when set, and every agent passes their names on to the
+# gate Jobs it creates (--gate-image-pull-secrets), so a private
+# gateProfile.image pulls with them too. Gate Jobs run in the agent's
+# meithealNamespace (the release namespace by default); the Secrets
+# must exist there.
+#   imagePullSecrets:
+#     - name: registry-cred
 imagePullSecrets: []
 
 # CRD installation toggle. Set to false when installing a secondary

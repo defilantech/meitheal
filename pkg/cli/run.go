@@ -71,6 +71,7 @@ type runOptions struct {
 	once                bool
 	gateHostPaths       string
 	gatePriorityClasses string
+	gatePullSecrets     string
 	gateDeadline        int
 	planner             intentsOptions
 }
@@ -175,6 +176,8 @@ Example:
 		"Comma-separated priority classes a gate profile's placement may request; empty allows none")
 	f.IntVar(&opts.gateDeadline, "gate-deadline-seconds", defaultGateDeadlineSeconds,
 		"Wall-clock limit of one gate Job, in seconds")
+	f.StringVar(&opts.gatePullSecrets, "gate-image-pull-secrets", "",
+		"Comma-separated Secrets in --namespace that gate Jobs pull a private gate image with; empty sets none")
 	addPlannerFlags(f, &opts.planner, " (with --plan)")
 	// A queue-less run has nothing to do, and an agent-less run would have
 	// to guess which box does the work.
@@ -182,6 +185,22 @@ Example:
 	cmd.MarkFlagsOneRequired("queue", "plan")
 	cmd.MarkFlagsMutuallyExclusive("queue", "plan")
 	return cmd
+}
+
+// runGateToolConfig is the run_gate_job configuration the loop's own gate Jobs
+// are built with, from the --gate-* flags. pullSecrets is the parsed
+// --gate-image-pull-secrets.
+func runGateToolConfig(
+	opts *runOptions, pullSecrets []string, logTail func(ctx context.Context, namespace, jobName string) string,
+) tools.RunGateJobToolConfig {
+	return tools.RunGateJobToolConfig{
+		Namespace:              opts.namespace,
+		AllowedHostPaths:       splitList(opts.gateHostPaths),
+		AllowedPriorityClasses: splitList(opts.gatePriorityClasses),
+		ImagePullSecrets:       pullSecrets,
+		ActiveDeadlineSeconds:  int32(min(opts.gateDeadline, math.MaxInt32)), //nolint:gosec // G115: clamped
+		LogTailFn:              logTail,
+	}
 }
 
 // printRunPlan loads the queue the human prepared, checks every intent is
@@ -263,6 +282,10 @@ func runLive(ctx context.Context, w io.Writer, opts *runOptions) error {
 	if opts.gateDeadline <= 0 {
 		return fmt.Errorf("--gate-deadline-seconds must be greater than 0, got %d", opts.gateDeadline)
 	}
+	pullSecrets, err := tools.ParseGateImagePullSecrets(opts.gatePullSecrets)
+	if err != nil {
+		return fmt.Errorf("--gate-image-pull-secrets: %w", err)
+	}
 	var q Queue
 	if !opts.plan {
 		if q, _, err = loadRunQueue(opts.queueFile); err != nil {
@@ -320,13 +343,7 @@ func runLive(ctx context.Context, w io.Writer, opts *runOptions) error {
 	if err != nil {
 		return err
 	}
-	gate := NewGateRunner(c, tools.RunGateJobToolConfig{
-		Namespace:              opts.namespace,
-		AllowedHostPaths:       splitList(opts.gateHostPaths),
-		AllowedPriorityClasses: splitList(opts.gatePriorityClasses),
-		ActiveDeadlineSeconds:  int32(min(opts.gateDeadline, math.MaxInt32)), //nolint:gosec // G115: clamped
-		LogTailFn:              podLogTail(kcs),
-	})
+	gate := NewGateRunner(c, runGateToolConfig(opts, pullSecrets, podLogTail(kcs)))
 	notifyURL := opts.notifyURL
 	if notifyURL == "" {
 		notifyURL = os.Getenv(notifyURLEnv)

@@ -34,6 +34,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -209,6 +210,14 @@ type RunGateJobToolConfig struct {
 	// placement may request. Empty allows none. Set from
 	// --gate-allowed-priority-classes.
 	AllowedPriorityClasses []string
+
+	// ImagePullSecrets names Secrets, in Namespace, that the gate pod pulls
+	// its image with. A gate profile's image may sit in a private registry,
+	// and the gate pod runs as the namespace's default ServiceAccount, so
+	// without these the pull fails and the gate ends GATE-ERROR (#46). Set
+	// from --gate-image-pull-secrets; the chart passes its imagePullSecrets.
+	// Empty sets none, leaving pulls to the ServiceAccount.
+	ImagePullSecrets []string
 
 	// ActiveDeadlineSeconds bounds wall-clock per run. Default 1800
 	// (30 min) matches the autofix pipeline's tolerance.
@@ -421,6 +430,7 @@ func (t *RunGateJobTool) Execute(ctx context.Context, args json.RawMessage) (*ag
 		Placement:               agent.GatePlacementFromContext(ctx),
 		AllowedHostPaths:        cfg.AllowedHostPaths,
 		AllowedPriorityClasses:  cfg.AllowedPriorityClasses,
+		ImagePullSecrets:        cfg.ImagePullSecrets,
 		PVCName:                 cfg.PVCName,
 		ActiveDeadlineSeconds:   cfg.ActiveDeadlineSeconds,
 		TTLSecondsAfterFinished: cfg.TTLSecondsAfterFinished,
@@ -651,8 +661,11 @@ type rendererInput struct {
 	Placement *meithealv1alpha1.GatePlacement
 	// AllowedHostPaths and AllowedPriorityClasses bound what Placement may
 	// ask for; see validateGatePlacement. Empty means none allowed.
-	AllowedHostPaths        []string
-	AllowedPriorityClasses  []string
+	AllowedHostPaths       []string
+	AllowedPriorityClasses []string
+	// ImagePullSecrets are set on the pod spec after the template renders;
+	// see RunGateJobToolConfig.ImagePullSecrets.
+	ImagePullSecrets        []string
 	PVCName                 string
 	ActiveDeadlineSeconds   int32
 	TTLSecondsAfterFinished int32
@@ -707,7 +720,56 @@ func renderGateJob(in rendererInput) (*batchv1.Job, error) {
 		}
 	}
 	applyGatePlacement(&job, in.Placement)
+	if err := applyImagePullSecrets(&job, in.ImagePullSecrets); err != nil {
+		return nil, err
+	}
 	return &job, nil
+}
+
+// ParseGateImagePullSecrets reads the comma-separated
+// --gate-image-pull-secrets value into Secret names. Blank entries are
+// skipped and a repeated name is kept once; a name that is not a DNS-1123
+// subdomain (what a Secret name must be) is an error naming it, so a typo
+// fails at startup rather than on the first private gate pull. Empty input
+// returns nil.
+func ParseGateImagePullSecrets(csv string) ([]string, error) {
+	var out []string
+	for _, name := range strings.Split(csv, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" || containsString(out, name) {
+			continue
+		}
+		if err := validatePullSecretName(name); err != nil {
+			return nil, err
+		}
+		out = append(out, name)
+	}
+	return out, nil
+}
+
+func validatePullSecretName(name string) error {
+	if errs := validation.IsDNS1123Subdomain(name); len(errs) > 0 {
+		return fmt.Errorf("image pull secret %q is not a valid Secret name: %s", name, strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// applyImagePullSecrets sets the gate pod's imagePullSecrets in Go rather
+// than in the template, so a name can never reach the YAML as text. Each
+// name is checked again here because the config can be built in code.
+func applyImagePullSecrets(job *batchv1.Job, names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	refs := make([]corev1.LocalObjectReference, 0, len(names))
+	for _, name := range names {
+		if err := validatePullSecretName(name); err != nil {
+			return err
+		}
+		refs = append(refs, corev1.LocalObjectReference{Name: name})
+	}
+	job.Spec.Template.Spec.ImagePullSecrets = refs
+	return nil
 }
 
 // validateGatePlacement fails closed on a placement that could escape the gate
