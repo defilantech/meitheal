@@ -139,6 +139,24 @@ build: manifests generate fmt vet ## Build the meitheal CLI, operator and agent 
 	go build -o bin/meitheal-operator ./cmd/meitheal-operator
 	go build -o bin/meitheal-agent ./cmd/meitheal-agent
 
+# Every GOOS/GOARCH pair .goreleaser.yaml builds, per binary. CI builds only
+# linux, so a Unix-only call in a package the windows cli links surfaces
+# here instead of halfway through a release.
+CROSS_BUILD_TARGETS ?= \
+	meitheal:linux/amd64 meitheal:linux/arm64 meitheal:darwin/amd64 \
+	meitheal:darwin/arm64 meitheal:windows/amd64 \
+	meitheal-agent:linux/amd64 meitheal-agent:linux/arm64 \
+	meitheal-agent:darwin/amd64 meitheal-agent:darwin/arm64 \
+	meitheal-operator:linux/amd64 meitheal-operator:linux/arm64
+
+.PHONY: cross-build
+cross-build: ## Compile every binary for every OS and arch the release ships (no output kept).
+	@set -e; for t in $(CROSS_BUILD_TARGETS); do \
+		bin=$${t%%:*}; plat=$${t#*:}; \
+		echo "==> $$bin $$plat"; \
+		CGO_ENABLED=0 GOOS=$${plat%/*} GOARCH=$${plat#*/} go build -o /dev/null ./cmd/$$bin; \
+	done
+
 # Generated at build time and never committed: the tree goes stale with every
 # dependency bump. .goreleaser.yaml ships it in each archive and image.
 THIRD_PARTY_LICENSES_DIR ?= third_party_licenses

@@ -90,7 +90,7 @@ const MaxLogTailBytes = 32 * 1024
 // only. A GATE-PASS therefore does not claim the second-seed ordering
 // was exercised.
 var DefaultGateChecks = []string{
-	"fmt", "vet", "lint", "lint-deadcode", "test",
+	"fmt", "vet", "lint", "lint-deadcode", "test", "cross-build",
 	"generate", "manifests", "chart-crds", "federation-chart-crds",
 	"check-reviewer-prompts", "check-agents-md", "check-docs-reference", "check-go-version", "test-scripts", ChartCheck,
 	MetalAgentRBACCheck, B200HarnessCheck,

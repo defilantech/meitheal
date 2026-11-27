@@ -25,7 +25,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/defilantech/meitheal/pkg/agent"
@@ -153,13 +152,13 @@ func (t *BashTool) Execute(ctx context.Context, args json.RawMessage) (*agent.To
 	cmd.Env = t.scrubbedEnv()
 
 	// Run the shell in its own process group so we can kill the entire
-	// subtree (grandchildren too) when the deadline fires. Setpgid on
-	// Unix; harmless no-op on platforms that ignore it. Without this,
-	// a backgrounded grandchild (`sleep 60 &`, `docker run -d`, etc.)
-	// outlives the shell and keeps the inherited stdout/stderr pipes
-	// open, blocking Cmd.Wait forever. See defaultBashWaitDelay for
-	// the empirical case that motivated the fix.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// subtree (grandchildren too) when the deadline fires (Setpgid on
+	// Unix; see bash_procgroup_unix.go and bash_procgroup_windows.go).
+	// Without this, a backgrounded grandchild (`sleep 60 &`,
+	// `docker run -d`, etc.) outlives the shell and keeps the inherited
+	// stdout/stderr pipes open, blocking Cmd.Wait forever. See
+	// defaultBashWaitDelay for the empirical case that motivated the fix.
+	setProcessGroup(cmd)
 
 	// Cancel runs when runCtx fires (i.e. the BashTool deadline). The
 	// os/exec default SIGKILLs the leader; we SIGKILL the whole process
@@ -275,33 +274,6 @@ func (t *BashTool) scrubbedEnv() []string {
 		out = append(out, "WORKSPACE_ROOT="+t.Workspace)
 	}
 	return out
-}
-
-// killProcessGroup sends SIGKILL to the entire process group leader-ed
-// by p. Required because Cmd.Wait blocks on `awaitGoroutines` until
-// io.Copy sees EOF on the inherited stdout/stderr pipes, and those
-// pipes do not close until every descendant holding them exits. A
-// backgrounded grandchild (sleep, docker daemon, kubectl proxy, find
-// /, etc.) inherits the shell's pipes; killing only the shell leaves
-// the pipes open. Negative pid in syscall.Kill addresses the process
-// group, which (combined with Setpgid: true on the shell) catches the
-// whole subtree.
-//
-// nil p means the process never started; nothing to kill.
-//
-// Any error is ignored at the call site -- this runs from Cmd.Cancel
-// on context expiry, where the goal is best-effort cleanup. If
-// signaling the group fails (ESRCH because the leader already exited
-// cleanly, EPERM in some sandboxed containers), the WaitDelay timeout
-// will still force pipe closure as a fallback.
-func killProcessGroup(p *os.Process) error {
-	if p == nil {
-		return nil
-	}
-	// Negative pid in syscall.Kill targets the process group with that
-	// pgid. Combined with SysProcAttr.Setpgid: true on the leader,
-	// pgid == leader's pid.
-	return syscall.Kill(-p.Pid, syscall.SIGKILL)
 }
 
 // truncateBytes returns b as a string, capped at maxBytes with a
