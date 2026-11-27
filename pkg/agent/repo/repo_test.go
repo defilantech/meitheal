@@ -393,3 +393,46 @@ func TestAuthEnv_ResolvesTokenPerCall(t *testing.T) {
 		t.Fatal("expected error when the token can no longer be resolved")
 	}
 }
+
+// Current re-resolves a dynamic Auth's token on every call (the API-call
+// counterpart of Env), keeps a static one fixed, and returns a failed
+// resolution as an error.
+func TestAuthCurrent_ResolvesTokenPerCall(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GITHUB_TOKEN", "")
+	dir := filepath.Join(home, ".config", "meitheal")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "github-token")
+	if err := os.WriteFile(path, []byte("t1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dyn, err := NewAuth("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = dyn.Close() }()
+	static, err := NewAuth("fixed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = static.Close() }()
+
+	if err := os.WriteFile(path, []byte("t2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := dyn.Current(); err != nil || got != "t2" {
+		t.Fatalf("dynamic Current = %q, %v; want t2", got, err)
+	}
+	if got, err := static.Current(); err != nil || got != "fixed" {
+		t.Fatalf("static Current = %q, %v; want fixed", got, err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := dyn.Current(); err == nil {
+		t.Fatalf("Current after the token went away = %q, want an error", got)
+	}
+}

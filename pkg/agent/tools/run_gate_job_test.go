@@ -1780,3 +1780,25 @@ func TestRunGateJob_InvalidContextPlacementCreatesNoJob(t *testing.T) {
 		t.Errorf("%d Job(s) created", n)
 	}
 }
+
+// The gate pod runs the branch's own code: it must carry no API token and no
+// Service environment variables, with or without a placement.
+func TestRenderGateJob_NoTokenNoServiceLinks(t *testing.T) {
+	for name, placement := range map[string]*meithealv1alpha1.GatePlacement{"nil": nil, "gpu": gpuPlacement()} {
+		in := placementTestInput()
+		in.Placement = placement
+		in.AllowedHostPaths = []string{"/srv/models"}
+		in.AllowedPriorityClasses = []string{"batch"}
+		job, err := renderGateJob(in)
+		if err != nil {
+			t.Fatalf("%s: renderGateJob: %v", name, err)
+		}
+		pod := job.Spec.Template.Spec
+		if pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken {
+			t.Errorf("%s: automountServiceAccountToken = %v, want false", name, pod.AutomountServiceAccountToken)
+		}
+		if pod.EnableServiceLinks == nil || *pod.EnableServiceLinks {
+			t.Errorf("%s: enableServiceLinks = %v, want false", name, pod.EnableServiceLinks)
+		}
+	}
+}

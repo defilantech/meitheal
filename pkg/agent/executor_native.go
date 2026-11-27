@@ -263,14 +263,24 @@ func (e *NativeAgentLoopExecutor) workItems(token string) worktracker.WorkItems 
 	return nil
 }
 
-// authToken returns the token carried by auth, or "" when auth is nil. It
+// authToken returns the token auth carries now, or "" when auth is nil. It
 // bridges the run's repo.Auth to the token the CodeHost/WorkItems legacy
-// wraps need.
-func authToken(auth *repo.Auth) string {
-	if auth != nil {
-		return auth.Token
+// wraps need. An Auth resolved from the env/file lookup is re-resolved on
+// every call (repo.Auth.Current), so a long review that opens its PR after
+// the token rotated on disk uses the new token, not the one from the clone.
+// A failed resolution is an error: an API call is never made with an empty
+// or stale token in its place.
+func authToken(auth *repo.Auth) (string, error) {
+	if auth == nil {
+		return "", nil
 	}
-	return ""
+	return auth.Current()
+}
+
+// hasCodeHost reports whether codeHost would return one, without resolving
+// a token to find out.
+func (e *NativeAgentLoopExecutor) hasCodeHost() bool {
+	return e.CodeHost != nil || e.PREnsurer != nil
 }
 
 // changePolicy returns the effective ChangePolicy seam: the injected
@@ -847,7 +857,12 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 	// the prompt empty; without this fetch the model is asked to fix
 	// "#510" with no knowledge of what #510 is about. Best-effort: a
 	// failed fetch logs and the loop runs with the pre-#571 behavior.
-	fetchIssueBodyIfNeeded(ctx, e.workItems(authToken(auth)), task, log)
+	if tok, terr := authToken(auth); terr != nil {
+		log.Info("issue fetch: skipped, the GitHub token could not be resolved",
+			"issue", task.Spec.Payload.Issue, "error", terr.Error())
+	} else {
+		fetchIssueBodyIfNeeded(ctx, e.workItems(tok), task, log)
+	}
 	// Staleness pre-flight (#1550): before the coder starts, cheaply check
 	// whether the tree already addresses this issue. The pure check takes
 	// git-log and grep output as strings (see staleness_check.go); here we
@@ -2651,7 +2666,7 @@ func (e *NativeAgentLoopExecutor) maybeOpenPullRequest(
 	if verdict != meithealv1alpha1.AgenticTaskVerdictGo ||
 		task.Spec.Kind != meithealv1alpha1.AgenticTaskKindReview ||
 		!task.Spec.Payload.OpenPullRequest ||
-		e.codeHost(authToken(auth)) == nil {
+		!e.hasCodeHost() {
 		return
 	}
 	body := e.groundPRSummary(ctx, log, r, workspace, reviewBase, reviewDiff)
@@ -2852,13 +2867,19 @@ func (e *NativeAgentLoopExecutor) maybeRefreshPRBody(
 	branch string, r *Result, workspace, reviewBase string, reviewDiff []string,
 	cloneURL string,
 ) {
-	ch := e.codeHost(authToken(auth))
-	if ch == nil {
+	if !e.hasCodeHost() {
 		return
 	}
 	if workspace == "" || reviewBase == "" {
 		return
 	}
+	tok, err := authToken(auth)
+	if err != nil {
+		log.Error(err, "PR body refresh skipped: the GitHub token could not be resolved",
+			"repo", task.Spec.Payload.Repo, "branch", branch)
+		return
+	}
+	ch := e.codeHost(tok)
 	// Body: the coder's authored description wins when present (#1777),
 	// exactly as on the open path. Only the grounded reviewer summary,
 	// which is what the refresh replaced with a one-line verdict before,
@@ -2934,7 +2955,11 @@ func (e *NativeAgentLoopExecutor) openPullRequest(
 	if !ok {
 		return "", fmt.Errorf("openPullRequest: payload.repo %q is not a valid repo slug", p.Repo)
 	}
-	ch := e.codeHost(authToken(auth))
+	tok, err := authToken(auth)
+	if err != nil {
+		return "", fmt.Errorf("openPullRequest: resolve the GitHub token: %w", err)
+	}
+	ch := e.codeHost(tok)
 	// The coder pushed the branch to the resolved clone+push target, which may
 	// be a fork of payload.repo. For a cross-fork PR the head is qualified
 	// "forkOwner:branch" and the head commit is read from the fork (headSlug),

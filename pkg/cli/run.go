@@ -296,8 +296,8 @@ func runLive(ctx context.Context, w io.Writer, opts *runOptions) error {
 		}
 	}
 	if _, err := repo.TokenFromEnvOrFile(); err != nil {
-		return fmt.Errorf("a GitHub token is needed in $%s or ~/.config/meitheal/github-token: %w",
-			githubTokenEnv, err)
+		return fmt.Errorf("a GitHub token is needed in $%s or %s: %w",
+			githubTokenEnv, githubTokenFile, err)
 	}
 	forge := NewGitHubRunForge(githubAPIBase, repo.TokenFromEnvOrFile)
 

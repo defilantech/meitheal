@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -80,8 +81,8 @@ func MintInstallationToken(
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	url := fmt.Sprintf("%s/app/installations/%d/access_tokens", strings.TrimRight(apiBase, "/"), installationID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	target := fmt.Sprintf("%s/app/installations/%d/access_tokens", strings.TrimRight(apiBase, "/"), installationID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, nil)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("ghapp: build request: %w", err)
 	}
@@ -90,6 +91,13 @@ func MintInstallationToken(
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := hc.Do(req)
 	if err != nil {
+		// The cause (a refused connection, a timeout, a TLS failure) is what
+		// an operator needs; the *url.Error wrapping it repeats the method
+		// and URL, which add nothing and are left out.
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			return "", time.Time{}, fmt.Errorf("ghapp: request to GitHub failed: %w", ue.Err)
+		}
 		return "", time.Time{}, errors.New("ghapp: request to GitHub failed")
 	}
 	defer func() { _ = resp.Body.Close() }()

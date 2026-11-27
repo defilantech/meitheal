@@ -139,3 +139,21 @@ func TestMint_ZeroExpiryIsError(t *testing.T) {
 		t.Fatal("expected error for missing expires_at")
 	}
 }
+
+// A transport failure keeps its cause (here a refused connection) and drops
+// the URL the *url.Error wraps it in.
+func TestMint_TransportErrorKeepsCauseNotURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	base := srv.URL
+	srv.Close()
+	_, _, err := MintInstallationToken(context.Background(), http.DefaultClient, base, 7, 42, testKey(t), time.Now())
+	if err == nil {
+		t.Fatal("expected an error from a closed server")
+	}
+	if !strings.Contains(err.Error(), "request to GitHub failed: ") {
+		t.Fatalf("error lost its cause: %v", err)
+	}
+	if strings.Contains(err.Error(), "access_tokens") || strings.Contains(err.Error(), "/app/installations") {
+		t.Fatalf("error carries the URL: %v", err)
+	}
+}

@@ -191,4 +191,8 @@ and exits. Without it the loop keeps reading answers until it is stopped.
 The GitHub token is read from `$GITHUB_TOKEN`, or else from
 `~/.config/meitheal/github-token` on every request, so a token Secret
 mounted there and refreshed by `meitheal github-app-token` is picked up
-without a restart. The planner token is `$MEITHEAL_PLANNER_TOKEN`.
+without a restart. `meitheal intents` reads it the same way. The planner
+token is `$MEITHEAL_PLANNER_TOKEN`.
+
+Gate Jobs run the branch's own build and tests, so their pods mount no
+service account token and get no Service environment variables.

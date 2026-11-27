@@ -37,6 +37,8 @@ import (
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 	sigsyaml "sigs.k8s.io/yaml"
+
+	agentrepo "github.com/defilantech/meitheal/pkg/agent/repo"
 )
 
 // The verdicts a planner answer can carry.
@@ -627,6 +629,10 @@ const (
 	defaultPlannerKwargs = `{"thinking":true}`
 )
 
+// githubTokenFile is where repo.TokenFromEnvOrFile looks when $GITHUB_TOKEN is
+// empty, as the help spells it.
+const githubTokenFile = "~/.config/meitheal/github-token" //nolint:gosec // G101: a path, not a credential
+
 type intentsOptions struct {
 	repo              string
 	issues            string
@@ -668,13 +674,14 @@ Anyone can comment on a public issue: --trusted-commenters limits the comments
 the planner reads to those logins. All issue and repository text reaches the
 planner fenced as data, never as instructions.
 
-The planner token is read from $%s and the GitHub token from $%s.
+The planner token is read from $%s. The GitHub token is read from $%s,
+else from %s, on every request.
 
 Example:
 
   meitheal intents --repo example/widgets --issues 52,53 --repo-dir ../widgets \
     --planner-url http://planner:8000 --planner-model planner --rules-file rules.md`,
-			plannerTokenEnv, githubTokenEnv),
+			plannerTokenEnv, githubTokenEnv, githubTokenFile),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runIntents(cmd.Context(), cmd.OutOrStdout(), o)
@@ -767,10 +774,11 @@ func runIntents(ctx context.Context, w io.Writer, o *intentsOptions) error {
 	if err != nil {
 		return err
 	}
-	if os.Getenv(githubTokenEnv) == "" {
-		return fmt.Errorf("$%s must hold a GitHub token that can read the issues", githubTokenEnv)
+	if _, err := agentrepo.TokenFromEnvOrFile(); err != nil {
+		return fmt.Errorf("a GitHub token that can read the issues is needed in $%s or %s: %w",
+			githubTokenEnv, githubTokenFile, err)
 	}
-	forge := NewGitHubRunForge(githubAPIBase, func() (string, error) { return os.Getenv(githubTokenEnv), nil })
+	forge := NewGitHubRunForge(githubAPIBase, agentrepo.TokenFromEnvOrFile)
 	if ctx == nil {
 		ctx = context.Background()
 	}

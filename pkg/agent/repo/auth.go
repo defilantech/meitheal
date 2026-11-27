@@ -133,6 +133,17 @@ func NewAuth(tokenSource string) (*Auth, error) {
 	return &Auth{Token: token, dynamic: dynamic, askpassPath: f.Name()}, nil
 }
 
+// Current returns the token to use now. For an Auth built from the env/file
+// lookup it is re-resolved on every call, so a token rotated on disk reaches
+// each API call, not only the first; a failure is returned, never replaced by
+// an empty or stale token. A static Auth returns its fixed token.
+func (a *Auth) Current() (string, error) {
+	if a.dynamic {
+		return TokenFromEnvOrFile()
+	}
+	return a.Token, nil
+}
+
 // Env returns the env-var assignments needed for a git exec.Cmd to find
 // the askpass helper and skip any terminal prompt fallback. The token
 // rides in MEITHEAL_GIT_TOKEN, which the askpass script reads.
@@ -140,13 +151,11 @@ func NewAuth(tokenSource string) (*Auth, error) {
 // For an Auth built from the env/file lookup the token is re-resolved here on
 // every call; a failure is returned, never replaced by an empty token.
 func (a *Auth) Env() ([]string, error) {
-	if a.dynamic {
-		t, err := TokenFromEnvOrFile()
-		if err != nil {
-			return nil, err
-		}
-		a.Token = t
+	t, err := a.Current()
+	if err != nil {
+		return nil, err
 	}
+	a.Token = t
 	return []string{
 		"GIT_ASKPASS=" + a.askpassPath,
 		"GIT_TERMINAL_PROMPT=0",

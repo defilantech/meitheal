@@ -94,9 +94,11 @@
           }
         ],
         "restartPolicy": "Never",
+        "automountServiceAccountToken": false,
         "securityContext": {
           "fsGroup": 100
-        }
+        },
+        "enableServiceLinks": false
       }
     },
     "ttlSecondsAfterFinished": 86400

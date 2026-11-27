@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1153,5 +1154,26 @@ func TestPlanIssues_NoMaintainerDecisionNoHeading(t *testing.T) {
 	e.plan(t, f, s.call, 52)
 	if strings.Contains(s.prompts[52], maintainerDecisionHeading) {
 		t.Fatal("maintainer decision heading present with no decision")
+	}
+}
+
+// 'meitheal intents' finds the GitHub token where 'meitheal run' does: with
+// neither $GITHUB_TOKEN nor the token file it refuses and names both, and the
+// help says the file is read too.
+func TestIntents_GitHubTokenFromEnvOrFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(githubTokenEnv, "")
+	o := &intentsOptions{
+		repo: "example/widgets", issues: "52", repoDir: t.TempDir(), plannerURL: "http://127.0.0.1:1",
+		plannerKwargs: defaultPlannerKwargs, plannerTimeout: time.Minute, maxTokens: 100,
+		bashTimeout: defaultBashTimeoutSeconds,
+	}
+	err := runIntents(context.Background(), io.Discard, o)
+	if err == nil || !strings.Contains(err.Error(), "$"+githubTokenEnv) ||
+		!strings.Contains(err.Error(), githubTokenFile) {
+		t.Fatalf("err = %v, want one naming $%s and %s", err, githubTokenEnv, githubTokenFile)
+	}
+	if long := newIntentsCommand().Long; !strings.Contains(long, githubTokenFile) {
+		t.Errorf("help does not name %s:\n%s", githubTokenFile, long)
 	}
 }
