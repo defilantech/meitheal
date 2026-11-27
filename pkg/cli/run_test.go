@@ -645,7 +645,8 @@ func TestRunCommand_SharesThePlannerFlagsWithIntents(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"template", "parallel", "answerer", "notify-url", "ledger", "plan", "once",
-		"gate-allowed-host-paths", "gate-allowed-priority-classes", "gate-deadline-seconds"} {
+		"gate-allowed-host-paths", "gate-allowed-priority-classes", "gate-deadline-seconds",
+		"gate-image-pull-secrets"} {
 		if run.Flags().Lookup(name) == nil {
 			t.Errorf("run has no --%s", name)
 		}

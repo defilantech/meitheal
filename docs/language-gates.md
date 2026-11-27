@@ -185,6 +185,20 @@ gateProfile:
 This is the right choice once the project has real dependencies, because
 installing them in-command on every gate run gets slow.
 
+If the image is in a private registry, the gate pod needs a pull secret. The
+gate Job runs as the namespace's `default` ServiceAccount, so give the agent the
+Secret names with `--gate-image-pull-secrets=name1,name2`. The chart does this
+for you: install it with
+
+```yaml
+imagePullSecrets:
+  - name: registry-cred
+```
+
+and every agent pool passes `registry-cred` to its gate Jobs. The Secret must
+exist in the namespace the gate Jobs run in (the agent's `--meitheal-namespace`,
+the release namespace by default).
+
 ## A verified example
 
 The [`defilantech/meitheal-python-example`](https://github.com/defilantech/meitheal-python-example)

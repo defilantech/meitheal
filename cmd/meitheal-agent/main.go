@@ -190,6 +190,7 @@ func main() {
 		gateCachePVC               string
 		gateAllowedHostPaths       string
 		gateAllowedPriorityClasses string
+		gateImagePullSecrets       string
 		commitAuthorName           string
 		commitAuthorEmail          string
 		commitCommitterName        string
@@ -320,6 +321,7 @@ func main() {
 			"(a placement path must equal or sit under one). Empty allows none.")
 	flag.StringVar(&gateAllowedPriorityClasses, "gate-allowed-priority-classes", "",
 		"Comma-separated priority classes a GateProfile placement may request. Empty allows none.")
+	flag.StringVar(&gateImagePullSecrets, "gate-image-pull-secrets", "", gateImagePullSecretsUsage)
 	flag.StringVar(&coderGitSecret, "coder-git-secret", "meitheal-git-credentials",
 		"Name of the Secret the coder Job projects as GITHUB_TOKEN for the clone + push (#620). "+
 			"Point this at an existing git Secret (e.g. meitheal-github) to reuse it instead of "+
@@ -351,6 +353,8 @@ func main() {
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	gatePolicy := mustGateJobPolicy(gateAllowedHostPaths, gateAllowedPriorityClasses, gateImagePullSecrets)
 
 	resolved, err := resolveFleetNodeName(fleetNodeName, os.Hostname)
 	if err != nil {
@@ -534,7 +538,7 @@ func main() {
 			},
 			KeepWorkspace: keepWorkspace,
 			RegistryFactory: makeRegistryFactory(kc, kcs, meithealNamespace, gateCachePVC, seams,
-				splitCSV(gateAllowedHostPaths), splitCSV(gateAllowedPriorityClasses)),
+				gatePolicy),
 			CodeHost:     seams.codeHost,
 			WorkItems:    seams.workItems,
 			ChangePolicy: changepolicy.NewDefaultPolicy(),
@@ -565,7 +569,8 @@ func main() {
 			},
 			// EnvtestJobRunner verifies envtest-backed packages post-push in a
 			// clean-room Job (#859).
-			EnvtestJobRunner: makeEnvtestJobRunner(kc, meithealNamespace, makePodLogTailFn(kcs)),
+			EnvtestJobRunner: makeEnvtestJobRunner(kc, meithealNamespace, gatePolicy.imagePullSecrets,
+				makePodLogTailFn(kcs)),
 			// ScanJobRunner reproduces the release-image CVE scan gate
 			// post-push for tasks that declare a spec.scanGate (#1798). The
 			// scan reuses the gate's cache claim: same clone, same Go module
@@ -668,6 +673,7 @@ func runTaskCommand(args []string) {
 		gateCachePVC               string
 		gateAllowedHostPaths       string
 		gateAllowedPriorityClasses string
+		gateImagePullSecrets       string
 		keepWorkspace              bool
 	)
 	fs.StringVar(&taskName, "task", "",
@@ -709,6 +715,7 @@ func runTaskCommand(args []string) {
 			"(a placement path must equal or sit under one). Empty allows none.")
 	fs.StringVar(&gateAllowedPriorityClasses, "gate-allowed-priority-classes", "",
 		"Comma-separated priority classes a GateProfile placement may request. Empty allows none.")
+	fs.StringVar(&gateImagePullSecrets, "gate-image-pull-secrets", "", gateImagePullSecretsUsage)
 	fs.BoolVar(&keepWorkspace, "keep-workspace", false,
 		"Preserve the per-task clone workspace after the run.")
 
@@ -724,6 +731,7 @@ func runTaskCommand(args []string) {
 		setupLog.Error(nil, "--task is required")
 		os.Exit(2)
 	}
+	gatePolicy := mustGateJobPolicy(gateAllowedHostPaths, gateAllowedPriorityClasses, gateImagePullSecrets)
 
 	cfg, err := loadKubeconfig(kubeContext)
 	if err != nil {
@@ -760,7 +768,7 @@ func runTaskCommand(args []string) {
 		},
 		KeepWorkspace: keepWorkspace,
 		RegistryFactory: makeRegistryFactory(kc, kcs, meithealNamespace, gateCachePVC, seams,
-			splitCSV(gateAllowedHostPaths), splitCSV(gateAllowedPriorityClasses)),
+			gatePolicy),
 		CodeHost:     seams.codeHost,
 		WorkItems:    seams.workItems,
 		ChangePolicy: changepolicy.NewDefaultPolicy(),
@@ -808,6 +816,45 @@ func loadKubeconfig(contextName string) (*rest.Config, error) {
 		return nil, fmt.Errorf("load kubeconfig: %w", err)
 	}
 	return cfg, nil
+}
+
+// gateImagePullSecretsUsage is shared by the daemon and run-task flag sets.
+const gateImagePullSecretsUsage = "Comma-separated Secret names (in --meitheal-namespace) gate Job pods " +
+	"pull their image with, so a GateProfile image can live in a private registry. The chart passes its " +
+	"imagePullSecrets here. Empty sets none: the pull uses the namespace's default ServiceAccount."
+
+// gateJobPolicy is what the --gate-* flags let a gate Job carry beyond the
+// template's defaults.
+type gateJobPolicy struct {
+	allowedHostPaths       []string
+	allowedPriorityClasses []string
+	imagePullSecrets       []string
+}
+
+// parseGateJobPolicy reads the --gate-* flag values. Only the pull secret
+// names can be malformed; a bad one is an error rather than a gate that
+// fails on its first private pull.
+func parseGateJobPolicy(hostPaths, priorityClasses, pullSecrets string) (gateJobPolicy, error) {
+	secrets, err := meithealtools.ParseGateImagePullSecrets(pullSecrets)
+	if err != nil {
+		return gateJobPolicy{}, fmt.Errorf("--gate-image-pull-secrets: %w", err)
+	}
+	return gateJobPolicy{
+		allowedHostPaths:       splitCSV(hostPaths),
+		allowedPriorityClasses: splitCSV(priorityClasses),
+		imagePullSecrets:       secrets,
+	}, nil
+}
+
+// mustGateJobPolicy is parseGateJobPolicy for startup: a bad value exits 2,
+// the flag package's own exit code for a bad flag.
+func mustGateJobPolicy(hostPaths, priorityClasses, pullSecrets string) gateJobPolicy {
+	p, err := parseGateJobPolicy(hostPaths, priorityClasses, pullSecrets)
+	if err != nil {
+		setupLog.Error(err, "invalid gate flag")
+		os.Exit(2)
+	}
+	return p
 }
 
 func splitCSV(s string) []string {
@@ -938,7 +985,7 @@ func assembleAgentRegistry(
 // before MCP existed.
 func makeRegistryFactory(
 	kc client.Client, kcs kubernetes.Interface, meithealNamespace, gateCachePVC string, seams forgeSeams,
-	gateAllowedHostPaths, gateAllowedPriorityClasses []string,
+	gate gateJobPolicy,
 ) func(
 	ctx context.Context, workspace string, ag *meithealv1alpha1.Agent, workloadMCPEnabled bool,
 ) (meithealagent.ToolRegistry, error) {
@@ -967,8 +1014,9 @@ func makeRegistryFactory(
 			Client:                     kc,
 			MeithealNamespace:          meithealNamespace,
 			GateCachePVC:               gateCachePVC,
-			GateAllowedHostPaths:       gateAllowedHostPaths,
-			GateAllowedPriorityClasses: gateAllowedPriorityClasses,
+			GateAllowedHostPaths:       gate.allowedHostPaths,
+			GateAllowedPriorityClasses: gate.allowedPriorityClasses,
+			GateImagePullSecrets:       gate.imagePullSecrets,
 			LogTailFn:                  logTail,
 			Token:                      repo.TokenFromEnvOrFile,
 			GateActiveDeadlineSeconds:  gateDeadline,
@@ -1127,17 +1175,18 @@ func mapGateVerdict(verdict string) (pass bool, ran bool) {
 // RunGateJobTool scoped to the `test` make target (the fast tier already ran
 // fmt/vet/lint/build).
 func makeEnvtestJobRunner(
-	kc client.Client, meithealNamespace string,
+	kc client.Client, meithealNamespace string, imagePullSecrets []string,
 	logTailFn func(ctx context.Context, namespace, jobName string) string,
 ) meithealagent.EnvtestJobRunner {
 	return &envtestJobRunnerImpl{
 		tool: &meithealtools.RunGateJobTool{
 			Client: kc,
 			Cfg: meithealtools.RunGateJobToolConfig{
-				Namespace:    meithealNamespace,
-				LogTailFn:    logTailFn,
-				PollInterval: 5 * time.Second,
-				PollTimeout:  10 * time.Minute,
+				Namespace:        meithealNamespace,
+				ImagePullSecrets: imagePullSecrets,
+				LogTailFn:        logTailFn,
+				PollInterval:     5 * time.Second,
+				PollTimeout:      10 * time.Minute,
 			},
 		},
 	}
