@@ -19,6 +19,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -26,11 +27,15 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
+	"github.com/defilantech/meitheal/pkg/agent"
 )
 
 // gateScheme is the scheme the fake controller-runtime client uses for
@@ -1506,5 +1511,294 @@ func TestGateJobCacheVolumeUsesGivenPVCName(t *testing.T) {
 	}
 	if !found {
 		t.Error("a set PVCName must render the /cache volumeMount")
+	}
+}
+
+func placementTestInput() rendererInput {
+	return rendererInput{
+		Name:                    "meitheal-gate-x",
+		Namespace:               "meitheal-system",
+		Image:                   "golang:1.26",
+		Repo:                    "defilantech/LLMKube",
+		Branch:                  "meitheal/issue-503",
+		Checks:                  []string{"fmt", "vet", "test"},
+		PVCName:                 "meitheal-gate-cache",
+		ActiveDeadlineSeconds:   1800,
+		TTLSecondsAfterFinished: 86400,
+		CPURequest:              "2",
+		CPULimit:                "4",
+		MemRequest:              "4Gi",
+		MemLimit:                "8Gi",
+		CloneURLBase:            "https://github.com",
+		TaskNamespace:           "default",
+		TaskName:                "gate-503",
+	}
+}
+
+// TestRenderGateJob_NilPlacement_Unchanged compares the rendered Job against a
+// golden captured from the renderer before Placement existed, proving a nil
+// placement leaves the Job byte for byte as it was.
+func TestRenderGateJob_NilPlacement_Unchanged(t *testing.T) {
+	in := placementTestInput()
+	in.Placement = nil
+	job, err := renderGateJob(in)
+	if err != nil {
+		t.Fatalf("renderGateJob: %v", err)
+	}
+	got, err := json.MarshalIndent(job, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	want, err := os.ReadFile("testdata/gate_job_nil_placement.golden.json")
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if strings.TrimSpace(string(got)) != strings.TrimSpace(string(want)) {
+		t.Errorf("nil-placement Job differs from golden.\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func gpuPlacement() *meithealv1alpha1.GatePlacement {
+	return &meithealv1alpha1.GatePlacement{
+		NodeSelector: map[string]string{"kubernetes.io/hostname": "gpu-node-1"},
+		Tolerations: []corev1.Toleration{
+			{Key: "nvidia.com/gpu", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule},
+		},
+		Resources: &corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("1")},
+		},
+		PriorityClassName: "batch",
+		Env:               []corev1.EnvVar{{Name: "DLUTH_INKLING2_MINI", Value: "/models/inkling2-mini"}},
+		Volumes: []corev1.Volume{{
+			Name:         "models",
+			VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/srv/models"}},
+		}},
+		VolumeMounts: []corev1.VolumeMount{{Name: "models", MountPath: "/models", ReadOnly: true}},
+	}
+}
+
+func TestRenderGateJob_PlacementApplied(t *testing.T) {
+	in := placementTestInput()
+	in.Placement = gpuPlacement()
+	in.AllowedHostPaths = []string{"/srv/models"}
+	in.AllowedPriorityClasses = []string{"batch"}
+	job, err := renderGateJob(in)
+	if err != nil {
+		t.Fatalf("renderGateJob: %v", err)
+	}
+	pod := job.Spec.Template.Spec
+	c := pod.Containers[0]
+
+	if pod.NodeSelector["kubernetes.io/hostname"] != "gpu-node-1" {
+		t.Errorf("nodeSelector: %v", pod.NodeSelector)
+	}
+	if len(pod.Tolerations) != 1 || pod.Tolerations[0].Key != "nvidia.com/gpu" ||
+		pod.Tolerations[0].Operator != corev1.TolerationOpExists ||
+		pod.Tolerations[0].Effect != corev1.TaintEffectNoSchedule {
+		t.Errorf("tolerations: %+v", pod.Tolerations)
+	}
+	if pod.PriorityClassName != "batch" {
+		t.Errorf("priorityClassName: %q", pod.PriorityClassName)
+	}
+	if gpu := c.Resources.Limits["nvidia.com/gpu"]; gpu.String() != "1" {
+		t.Errorf("gpu limit: %v", c.Resources.Limits)
+	}
+	assertQuantities(t, "limit", c.Resources.Limits, map[corev1.ResourceName]string{"cpu": "4", "memory": "8Gi"})
+	assertQuantities(t, "request", c.Resources.Requests, map[corev1.ResourceName]string{"cpu": "2", "memory": "4Gi"})
+	var envOK bool
+	for _, e := range c.Env {
+		if e.Name == "DLUTH_INKLING2_MINI" && e.Value == "/models/inkling2-mini" {
+			envOK = true
+		}
+	}
+	if !envOK {
+		t.Errorf("env missing: %+v", c.Env)
+	}
+	var modelsVol, cacheVol bool
+	for _, v := range pod.Volumes {
+		if v.Name == "models" && v.HostPath != nil {
+			modelsVol = true
+		}
+		if v.Name == "cache" && v.PersistentVolumeClaim != nil {
+			cacheVol = true
+		}
+	}
+	if !modelsVol || !cacheVol {
+		t.Errorf("volumes: models=%v cache=%v (%+v)", modelsVol, cacheVol, pod.Volumes)
+	}
+	var modelsMount, cacheMount bool
+	for _, m := range c.VolumeMounts {
+		if m.Name == "models" && m.MountPath == "/models" && m.ReadOnly {
+			modelsMount = true
+		}
+		if m.Name == "cache" && m.MountPath == "/cache" {
+			cacheMount = true
+		}
+	}
+	if !modelsMount || !cacheMount {
+		t.Errorf("mounts: models=%v cache=%v (%+v)", modelsMount, cacheMount, c.VolumeMounts)
+	}
+}
+
+func TestRenderGateJob_PlacementResourcesOverrideByName(t *testing.T) {
+	in := placementTestInput()
+	in.Placement = &meithealv1alpha1.GatePlacement{
+		Resources: &corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{"memory": resource.MustParse("32Gi")},
+		},
+	}
+	job, err := renderGateJob(in)
+	if err != nil {
+		t.Fatalf("renderGateJob: %v", err)
+	}
+	r := job.Spec.Template.Spec.Containers[0].Resources
+	if got := r.Limits["memory"]; got.String() != "32Gi" {
+		t.Errorf("memory limit: %q", got.String())
+	}
+	if got := r.Limits["cpu"]; got.String() != "4" {
+		t.Errorf("cpu limit: %q", got.String())
+	}
+	if got := r.Requests["memory"]; got.String() != "4Gi" {
+		t.Errorf("memory request: %q", got.String())
+	}
+	if got := r.Requests["cpu"]; got.String() != "2" {
+		t.Errorf("cpu request: %q", got.String())
+	}
+}
+
+func assertQuantities(t *testing.T, kind string, got corev1.ResourceList, want map[corev1.ResourceName]string) {
+	t.Helper()
+	for name, w := range want {
+		q := got[name]
+		if q.String() != w {
+			t.Errorf("default %s %s: got %q want %q", name, kind, q.String(), w)
+		}
+	}
+}
+
+// placementRejections lists one violation per validateGatePlacement rule.
+func placementRejections() map[string]*meithealv1alpha1.GatePlacement {
+	vol := func(src corev1.VolumeSource) corev1.Volume { return corev1.Volume{Name: "v", VolumeSource: src} }
+	hp := func(path string) corev1.Volume {
+		return vol(corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: path}})
+	}
+	return map[string]*meithealv1alpha1.GatePlacement{
+		"env valueFrom": {Env: []corev1.EnvVar{{Name: "X", ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{Key: "k"}}}}},
+		"env collides with gate env": {Env: []corev1.EnvVar{{Name: "GOMODCACHE", Value: "/x"}}},
+		"volume other source": {
+			Volumes: []corev1.Volume{vol(corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}})},
+		},
+		"hostPath root":              {Volumes: []corev1.Volume{hp("/")}},
+		"hostPath outside allowlist": {Volumes: []corev1.Volume{hp("/etc")}},
+		"hostPath dotdot":            {Volumes: []corev1.Volume{hp("/srv/models/../../etc")}},
+		"hostPath sibling prefix":    {Volumes: []corev1.Volume{hp("/srv/models-evil")}},
+		"pvc not readOnly": {Volumes: []corev1.Volume{vol(corev1.VolumeSource{
+			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "c"}})}},
+		"mount of unknown volume": {VolumeMounts: []corev1.VolumeMount{{Name: "nope", MountPath: "/m", ReadOnly: true}}},
+		"mount not readOnly": {
+			Volumes:      []corev1.Volume{hp("/srv/models")},
+			VolumeMounts: []corev1.VolumeMount{{Name: "v", MountPath: "/m"}},
+		},
+		"toleration empty key":       {Tolerations: []corev1.Toleration{{Operator: corev1.TolerationOpExists}}},
+		"priority class not allowed": {PriorityClassName: "system-node-critical"},
+		"resources claims":           {Resources: &corev1.ResourceRequirements{Claims: []corev1.ResourceClaim{{Name: "c"}}}},
+	}
+}
+
+func TestRenderGateJob_PlacementRejected(t *testing.T) {
+	for name, p := range placementRejections() {
+		t.Run(name, func(t *testing.T) {
+			in := placementTestInput()
+			in.Placement = p
+			in.AllowedHostPaths = []string{"/srv/models"}
+			in.AllowedPriorityClasses = []string{"batch"}
+			if _, err := renderGateJob(in); err == nil {
+				t.Fatal("expected rejection")
+			}
+		})
+	}
+}
+
+func TestRenderGateJob_PlacementEmptyAllowlistsAllowNone(t *testing.T) {
+	in := placementTestInput()
+	in.Placement = &meithealv1alpha1.GatePlacement{PriorityClassName: "batch"}
+	if _, err := renderGateJob(in); err == nil {
+		t.Error("priority class must be rejected with an empty allowlist")
+	}
+	in.Placement = gpuPlacement()
+	if _, err := renderGateJob(in); err == nil {
+		t.Error("hostPath must be rejected with an empty allowlist")
+	}
+}
+
+func jobCount(t *testing.T, c client.Client) int {
+	t.Helper()
+	var l batchv1.JobList
+	if err := c.List(context.Background(), &l); err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	return len(l.Items)
+}
+
+// A model-supplied placement in the tool-call JSON is refused and no Job is created.
+func TestRunGateJob_RejectsPlacementInModelArgs(t *testing.T) {
+	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).Build()
+	tool := &RunGateJobTool{Client: c}
+	for _, key := range []string{"placement", "Placement"} {
+		raw := json.RawMessage(`{"repo":"x/y","branch":"b","` + key + `":{"volumes":[{"name":"r","hostPath":{"path":"/"}}]}}`)
+		res, err := tool.Execute(context.Background(), raw)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		if res == nil || res.Verdict != VerdictGateError {
+			t.Errorf("%s: want GATE-ERROR result, got %+v", key, res)
+		}
+		if n := jobCount(t, c); n != 0 {
+			t.Errorf("%s: %d Job(s) created", key, n)
+		}
+	}
+	if strings.Contains(string(tool.Schema().Parameters), "placement") {
+		t.Error("placement must not be advertised in the schema")
+	}
+}
+
+// A placement from the trusted context that violates policy yields an error
+// result and no Job.
+func TestRunGateJob_InvalidContextPlacementCreatesNoJob(t *testing.T) {
+	c := fake.NewClientBuilder().WithScheme(gateScheme(t)).Build()
+	tool := &RunGateJobTool{Client: c}
+	ctx := agent.WithGatePlacement(context.Background(), &meithealv1alpha1.GatePlacement{PriorityClassName: "batch"})
+	res, err := tool.Execute(ctx, json.RawMessage(`{"repo":"x/y","branch":"b"}`))
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if res == nil || res.Verdict != VerdictGateError {
+		t.Errorf("want GATE-ERROR, got %+v", res)
+	}
+	if n := jobCount(t, c); n != 0 {
+		t.Errorf("%d Job(s) created", n)
+	}
+}
+
+// The gate pod runs the branch's own code: it must carry no API token and no
+// Service environment variables, with or without a placement.
+func TestRenderGateJob_NoTokenNoServiceLinks(t *testing.T) {
+	for name, placement := range map[string]*meithealv1alpha1.GatePlacement{"nil": nil, "gpu": gpuPlacement()} {
+		in := placementTestInput()
+		in.Placement = placement
+		in.AllowedHostPaths = []string{"/srv/models"}
+		in.AllowedPriorityClasses = []string{"batch"}
+		job, err := renderGateJob(in)
+		if err != nil {
+			t.Fatalf("%s: renderGateJob: %v", name, err)
+		}
+		pod := job.Spec.Template.Spec
+		if pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken {
+			t.Errorf("%s: automountServiceAccountToken = %v, want false", name, pod.AutomountServiceAccountToken)
+		}
+		if pod.EnableServiceLinks == nil || *pod.EnableServiceLinks {
+			t.Errorf("%s: enableServiceLinks = %v, want false", name, pod.EnableServiceLinks)
+		}
 	}
 }

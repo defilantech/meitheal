@@ -90,3 +90,36 @@ func TestIntentFor_MissingFileIsAnError(t *testing.T) {
 		t.Fatal("want error for a missing intent file")
 	}
 }
+
+func TestParseQueue_LaneDefaultsToCPUAndIsValidated(t *testing.T) {
+	q, err := ParseQueue([]byte("repo: a/b\nitems:\n  - issue: 1\n    intent: ./x.md\n" +
+		"  - issue: 2\n    intent: ./y.md\n    lane: gpu\n"))
+	if err != nil {
+		t.Fatalf("ParseQueue: %v", err)
+	}
+	if q.Items[0].Lane != "cpu" || q.Items[1].Lane != "gpu" {
+		t.Errorf("lanes = %q,%q, want cpu,gpu", q.Items[0].Lane, q.Items[1].Lane)
+	}
+	if _, err := ParseQueue([]byte("repo: a/b\nitems:\n  - issue: 1\n    intent: ./x.md\n    lane: tpu\n")); err == nil {
+		t.Error("want error for an unknown lane")
+	}
+}
+
+func TestParseQueue_AfterMustNameQueuedIssues(t *testing.T) {
+	q, err := ParseQueue([]byte("repo: a/b\nitems:\n  - issue: 1\n    intent: ./x.md\n" +
+		"  - issue: 2\n    intent: ./y.md\n    after: [1]\n"))
+	if err != nil {
+		t.Fatalf("ParseQueue: %v", err)
+	}
+	if len(q.Items[1].After) != 1 || q.Items[1].After[0] != 1 {
+		t.Errorf("After = %v, want [1]", q.Items[1].After)
+	}
+	for name, y := range map[string]string{
+		"absent": "repo: a/b\nitems:\n  - issue: 2\n    intent: ./y.md\n    after: [9]\n",
+		"self":   "repo: a/b\nitems:\n  - issue: 2\n    intent: ./y.md\n    after: [2]\n",
+	} {
+		if _, err := ParseQueue([]byte(y)); err == nil {
+			t.Errorf("%s: want error", name)
+		}
+	}
+}

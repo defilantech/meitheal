@@ -37,8 +37,20 @@ const (
 // kind introduced here that optionsFor does not recognise silently gets the
 // adjudicate answer set instead of its own.
 const (
-	ParkEscalate   = "escalate"
-	ParkAdjudicate = "adjudicate"
+	ParkEscalate = "escalate"
+	// ParkAdjudicate is no longer produced by NextStage (a first dirty verify
+	// goes to feedback), but optionsFor and decision files already on disk
+	// still know the kind.
+	ParkAdjudicate    = "adjudicate"
+	ParkNeedsDecision = "needs-decision"
+	ParkNeedsSplit    = "needs-split"
+)
+
+// The two reasons a failed Workload parks with. Both are public (the park
+// comment carries the reason), so neither names a task, a model or a log.
+const (
+	ReviewNotConvergedReason = "review did not converge"
+	RunFailedReason          = "the run failed before a review verdict"
 )
 
 // maxAttempts is the structural one-pass rule: one original attempt plus at
@@ -51,10 +63,28 @@ const maxAttempts = 2
 type Facts struct {
 	// SkipReason, when non-empty, ends the item at preflight.
 	SkipReason string
+	// RunLost reports that preflight found the issue's own task branch with
+	// no Workload of the loop's behind it (ErrRunLost). It parks escalate:
+	// there is nothing to resume, and a dispatch would start over on top of
+	// the branch.
+	RunLost bool
 	// Stalled reports the stall predicate's verdict during watch.
 	Stalled bool
 	// VerifyClean reports whether the independent verify stage found nothing.
 	VerifyClean bool
+	// WorkloadFailed reports that review rounds were exhausted or a task failed
+	// terminally.
+	WorkloadFailed bool
+	// ReviewRejected, with WorkloadFailed, says the failure is the review's:
+	// the run ended on a review that requested changes (see
+	// WatchResult.ReviewRejected).
+	ReviewRejected bool
+	// Concern is the first structured concern text from any child task.
+	Concern string
+	// GPUBusy reports that verify could not run the GPU gate because the GPU
+	// node stayed busy serving a model. It is an infrastructure condition,
+	// not a verdict on the branch, so it never spends the feedback pass.
+	GPUBusy bool
 	// Attempts counts coder attempts made so far, starting at 1.
 	Attempts int
 }
@@ -72,6 +102,9 @@ type Transition struct {
 func NextStage(cur Stage, f Facts) Transition {
 	switch cur {
 	case StagePreflight:
+		if f.RunLost {
+			return Transition{Next: StageParked, Park: ParkEscalate, Reason: RunLostReason}
+		}
 		if f.SkipReason != "" {
 			return Transition{Next: StageDone, Reason: f.SkipReason}
 		}
@@ -82,15 +115,32 @@ func NextStage(cur Stage, f Facts) Transition {
 		if f.Stalled {
 			return Transition{Next: StageParked, Park: ParkEscalate, Reason: "stalled"}
 		}
+		if f.Concern != "" {
+			return Transition{Next: StageParked, Park: ParkNeedsDecision, Reason: "a task raised a concern"}
+		}
+		if f.WorkloadFailed {
+			if f.ReviewRejected {
+				return Transition{Next: StageParked, Park: ParkEscalate, Reason: ReviewNotConvergedReason}
+			}
+			// A coder or gate task that failed, or a run that ended some
+			// other way: nothing the review decided, so the reason does
+			// not claim it.
+			return Transition{Next: StageParked, Park: ParkEscalate, Reason: RunFailedReason}
+		}
 		return Transition{Next: StageVerify}
 	case StageVerify:
+		// Before the clean and attempts checks: a busy GPU node judged
+		// nothing, and the coder has nothing to fix.
+		if f.GPUBusy {
+			return Transition{Next: StageParked, Park: ParkEscalate, Reason: "GPU node stayed busy"}
+		}
 		if f.VerifyClean {
 			return Transition{Next: StageFinalize}
 		}
 		if f.Attempts >= maxAttempts {
 			return Transition{Next: StageParked, Park: ParkEscalate, Reason: "verify failed after the feedback pass"}
 		}
-		return Transition{Next: StageParked, Park: ParkAdjudicate, Reason: "verify found issues"}
+		return Transition{Next: StageFeedback}
 	case StageFeedback:
 		return Transition{Next: StageWatch}
 	case StageFinalize:

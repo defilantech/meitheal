@@ -32,6 +32,10 @@ type QueueItem struct {
 	IntentPath string `json:"intent"`
 	// Repo overrides the queue-level default for this item.
 	Repo string `json:"repo,omitempty"`
+	// Lane is "cpu" (the default, filled in by ParseQueue) or "gpu".
+	Lane string `json:"lane,omitempty"`
+	// After lists issues that must finish first; each must be in the queue.
+	After []int32 `json:"after,omitempty"`
 }
 
 // Queue is the prepared work list handed to `meitheal run`.
@@ -51,6 +55,10 @@ func ParseQueue(data []byte) (Queue, error) {
 	if len(q.Items) == 0 {
 		return Queue{}, fmt.Errorf("parse queue: no items")
 	}
+	queued := map[int32]bool{}
+	for _, it := range q.Items {
+		queued[it.Issue] = true
+	}
 	for i := range q.Items {
 		if q.Items[i].Issue == 0 {
 			return Queue{}, fmt.Errorf("parse queue: item %d has no issue", i)
@@ -63,6 +71,23 @@ func ParseQueue(data []byte) (Queue, error) {
 		}
 		if q.Items[i].IntentPath == "" {
 			return Queue{}, fmt.Errorf("parse queue: issue %d has no intent path", q.Items[i].Issue)
+		}
+		switch q.Items[i].Lane {
+		case "":
+			q.Items[i].Lane = "cpu"
+		case "cpu", "gpu":
+		default:
+			return Queue{}, fmt.Errorf("parse queue: issue %d has lane %q, want cpu or gpu",
+				q.Items[i].Issue, q.Items[i].Lane)
+		}
+		for _, a := range q.Items[i].After {
+			if a == q.Items[i].Issue {
+				return Queue{}, fmt.Errorf("parse queue: issue %d lists itself in after", a)
+			}
+			if !queued[a] {
+				return Queue{}, fmt.Errorf("parse queue: issue %d runs after issue %d, which is not in the queue",
+					q.Items[i].Issue, a)
+			}
 		}
 	}
 	return q, nil

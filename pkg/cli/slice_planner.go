@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -189,13 +190,53 @@ func parseSlicePlan(raw string) (slicePlan, error) {
 // it is sent as an Authorization: Bearer header so the call can route through
 // a ModelRouter / Envoy AI Gateway that requires JWT auth.
 func httpPlannerCall(url, model, token string) PlannerCaller {
+	return httpPlannerCallWithOptions(url, model, token, PlannerCallOptions{
+		MaxTokens:   2400,
+		Temperature: 0.2,
+	})
+}
+
+// PlannerCallOptions shapes one planner request. The zero values of the
+// fields past Temperature keep httpPlannerCall's request and behavior as they
+// were: no chat_template_kwargs key, a ten-minute timeout, and a completion
+// cut off at max_tokens returned like any other.
+type PlannerCallOptions struct {
+	MaxTokens   int
+	Temperature float64
+	// TemplateKwargs is sent as chat_template_kwargs when non-empty, for
+	// instance {"thinking": true} to turn a model's reasoning on.
+	TemplateKwargs map[string]any
+	// Timeout bounds the whole request; zero means ten minutes. A thinking
+	// model writing up to MaxTokens can need longer.
+	Timeout time.Duration
+	// RejectTruncated makes a completion that stopped at max_tokens
+	// (finish_reason "length") an errPlannerTruncated error instead of
+	// content: a cut-off answer can still parse, and must not be used.
+	RejectTruncated bool
+}
+
+// errPlannerTruncated marks a completion the endpoint cut off at max_tokens.
+var errPlannerTruncated = errors.New("planner output truncated at max_tokens")
+
+const defaultPlannerTimeout = 10 * time.Minute
+
+// httpPlannerCallWithOptions is httpPlannerCall with the request shaped by o.
+// The token is only ever sent as a header; it is never part of an error.
+func httpPlannerCallWithOptions(url, model, token string, o PlannerCallOptions) PlannerCaller {
 	return func(ctx context.Context, prompt string) (string, error) {
-		reqBody, _ := json.Marshal(map[string]any{
+		body := map[string]any{
 			"model":       model,
 			"messages":    []map[string]string{{"role": "user", "content": prompt}},
-			"temperature": 0.2,
-			"max_tokens":  2400,
-		})
+			"temperature": o.Temperature,
+			"max_tokens":  o.MaxTokens,
+		}
+		if len(o.TemplateKwargs) > 0 {
+			body["chat_template_kwargs"] = o.TemplateKwargs
+		}
+		reqBody, err := json.Marshal(body)
+		if err != nil {
+			return "", fmt.Errorf("marshal planner request: %w", err)
+		}
 		endpoint := strings.TrimSuffix(url, "/") + "/v1/chat/completions"
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(reqBody))
 		if err != nil {
@@ -205,7 +246,11 @@ func httpPlannerCall(url, model, token string) PlannerCaller {
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
-		client := &http.Client{Timeout: 10 * time.Minute}
+		timeout := o.Timeout
+		if timeout <= 0 {
+			timeout = defaultPlannerTimeout
+		}
+		client := &http.Client{Timeout: timeout}
 		resp, err := client.Do(req)
 		if err != nil {
 			return "", err
@@ -220,6 +265,7 @@ func httpPlannerCall(url, model, token string) PlannerCaller {
 				Message struct {
 					Content string `json:"content"`
 				} `json:"message"`
+				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
 		}
 		if err := json.Unmarshal(b, &parsed); err != nil {
@@ -227,6 +273,9 @@ func httpPlannerCall(url, model, token string) PlannerCaller {
 		}
 		if len(parsed.Choices) == 0 {
 			return "", fmt.Errorf("planner response had no choices")
+		}
+		if o.RejectTruncated && parsed.Choices[0].FinishReason == "length" {
+			return "", errPlannerTruncated
 		}
 		return parsed.Choices[0].Message.Content, nil
 	}

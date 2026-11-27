@@ -16,7 +16,10 @@ limitations under the License.
 
 package cli
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestNextStage(t *testing.T) {
 	cases := []struct {
@@ -35,11 +38,22 @@ func TestNextStage(t *testing.T) {
 		{"a terminal run verifies", StageWatch, Facts{}, StageVerify, ""},
 		{"clean verify on the first attempt finalizes", StageVerify,
 			Facts{VerifyClean: true, Attempts: 1}, StageFinalize, ""},
-		{"dirty verify on the first attempt parks to adjudicate", StageVerify,
-			Facts{VerifyClean: false, Attempts: 1}, StageParked, "adjudicate"},
+		{"dirty verify on the first attempt goes to feedback", StageVerify,
+			Facts{VerifyClean: false, Attempts: 1}, StageFeedback, ""},
+		{"dirty verify after the feedback pass escalates", StageVerify,
+			Facts{VerifyClean: false, Attempts: 2}, StageParked, "escalate"},
+		{"feedback goes back to watch", StageFeedback, Facts{Attempts: 2}, StageWatch, ""},
+		{"a concern parks needs-decision", StageWatch,
+			Facts{Concern: "the issue contradicts the spec"}, StageParked, "needs-decision"},
+		{"a failed workload parks escalate", StageWatch,
+			Facts{WorkloadFailed: true}, StageParked, "escalate"},
 		{"clean verify after the one feedback pass finalizes", StageVerify,
 			Facts{VerifyClean: true, Attempts: 2}, StageFinalize, ""},
 		{"finalize ends the item", StageFinalize, Facts{}, StageDone, ""},
+		{"a busy GPU parks escalate on the first attempt, before feedback", StageVerify,
+			Facts{GPUBusy: true, Attempts: 1}, StageParked, "escalate"},
+		{"a busy GPU parks even when the rest says clean", StageVerify,
+			Facts{GPUBusy: true, VerifyClean: true, Attempts: 1}, StageParked, "escalate"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -67,5 +81,50 @@ func TestNextStage_NeverMakesASecondFeedbackAttempt(t *testing.T) {
 		if g.Next != StageParked || g.Park != "escalate" {
 			t.Fatalf("attempts=%d = (%q,%q), want (parked,escalate)", n, g.Next, g.Park)
 		}
+	}
+}
+
+func TestNextStage_WatchParkReasons(t *testing.T) {
+	got := NextStage(StageWatch, Facts{WorkloadFailed: true, ReviewRejected: true})
+	if got.Park != ParkEscalate || got.Reason != "review did not converge" {
+		t.Errorf("rejected review = (%q,%q), want (escalate, review did not converge)", got.Park, got.Reason)
+	}
+	// Any other failure does not claim a review verdict it never had.
+	got = NextStage(StageWatch, Facts{WorkloadFailed: true})
+	if got.Park != ParkEscalate || got.Reason != "the run failed before a review verdict" {
+		t.Errorf("other failure = (%q,%q), want (escalate, the run failed before a review verdict)",
+			got.Park, got.Reason)
+	}
+	// A stall is the more specific fact and keeps its own reason.
+	got = NextStage(StageWatch, Facts{Stalled: true, WorkloadFailed: true, Concern: "x"})
+	if got.Park != ParkEscalate || got.Reason != "stalled" {
+		t.Errorf("stalled+failed+concern = (%q,%q), want (escalate,stalled)", got.Park, got.Reason)
+	}
+}
+
+func TestOptionsFor_EveryParkOffersTheAnswerCommands(t *testing.T) {
+	cases := map[string][]string{
+		ParkEscalate:      {"requeue", "decide", "hand-fix", "drop"},
+		ParkNeedsDecision: {"requeue", "decide", "drop"},
+		ParkNeedsSplit:    {"requeue", "decide", "drop"},
+	}
+	for kind, want := range cases {
+		if got := optionsFor(kind); !slices.Equal(got, want) {
+			t.Errorf("optionsFor(%q) = %q, want %q", kind, got, want)
+		}
+	}
+}
+
+func TestNextStage_GPUBusyReason(t *testing.T) {
+	if got := NextStage(StageVerify, Facts{GPUBusy: true, Attempts: 1}); got.Reason != "GPU node stayed busy" {
+		t.Fatalf("Reason = %q", got.Reason)
+	}
+}
+
+// A lost run parks escalate at preflight, ahead of any skip reason.
+func TestNextStage_RunLostParksEscalate(t *testing.T) {
+	got := NextStage(StagePreflight, Facts{RunLost: true, SkipReason: "x"})
+	if got.Next != StageParked || got.Park != ParkEscalate || got.Reason != RunLostReason {
+		t.Fatalf("run lost = %+v, want parked escalate %q", got, RunLostReason)
 	}
 }

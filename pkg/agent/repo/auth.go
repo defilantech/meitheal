@@ -48,6 +48,12 @@ var ErrNoToken = errors.New("repo: no GitHub token found (set GITHUB_TOKEN env o
 type Auth struct {
 	Token string
 
+	// dynamic is true when the token came from the env/file lookup. Env()
+	// then re-resolves it on every call, so a token rotated on disk (the
+	// GitHub App minter) reaches each clone and push, not just the first.
+	// An explicitly passed token stays static.
+	dynamic bool
+
 	// askpassPath is a tmp script git invokes when prompted for a
 	// credential. It reads MEITHEAL_GIT_TOKEN and prints it on stdout.
 	askpassPath string
@@ -98,6 +104,7 @@ exec printf "%s" "$MEITHEAL_GIT_TOKEN"
 // ~/.config/github-token (the production / local-dev path).
 func NewAuth(tokenSource string) (*Auth, error) {
 	token := strings.TrimSpace(tokenSource)
+	dynamic := token == ""
 	if token == "" {
 		t, err := TokenFromEnvOrFile()
 		if err != nil {
@@ -123,18 +130,37 @@ func NewAuth(tokenSource string) (*Auth, error) {
 		_ = os.Remove(f.Name())
 		return nil, fmt.Errorf("repo: chmod askpass: %w", err)
 	}
-	return &Auth{Token: token, askpassPath: f.Name()}, nil
+	return &Auth{Token: token, dynamic: dynamic, askpassPath: f.Name()}, nil
+}
+
+// Current returns the token to use now. For an Auth built from the env/file
+// lookup it is re-resolved on every call, so a token rotated on disk reaches
+// each API call, not only the first; a failure is returned, never replaced by
+// an empty or stale token. A static Auth returns its fixed token.
+func (a *Auth) Current() (string, error) {
+	if a.dynamic {
+		return TokenFromEnvOrFile()
+	}
+	return a.Token, nil
 }
 
 // Env returns the env-var assignments needed for a git exec.Cmd to find
 // the askpass helper and skip any terminal prompt fallback. The token
 // rides in MEITHEAL_GIT_TOKEN, which the askpass script reads.
-func (a *Auth) Env() []string {
+//
+// For an Auth built from the env/file lookup the token is re-resolved here on
+// every call; a failure is returned, never replaced by an empty token.
+func (a *Auth) Env() ([]string, error) {
+	t, err := a.Current()
+	if err != nil {
+		return nil, err
+	}
+	a.Token = t
 	return []string{
 		"GIT_ASKPASS=" + a.askpassPath,
 		"GIT_TERMINAL_PROMPT=0",
 		"MEITHEAL_GIT_TOKEN=" + a.Token,
-	}
+	}, nil
 }
 
 // Close removes the on-disk askpass helper. Safe to call multiple times.

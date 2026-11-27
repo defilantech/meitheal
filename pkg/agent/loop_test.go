@@ -30,6 +30,7 @@ import (
 	"testing"
 	"time"
 
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 )
 
@@ -1926,5 +1927,110 @@ func TestLoop_OnProgressTurnNumbersAndFallback(t *testing.T) {
 				t.Fatalf("unexpected progress: %v", turns)
 			}
 		})
+	}
+}
+
+func TestRewriteToolOutput_LiteralAndJSONEscaped(t *testing.T) {
+	rules := []meithealv1alpha1.ToolOutputRewrite{{From: "<|im_end|>", To: "<¦im_end¦>"}}
+	escaped, err := json.Marshal("<|im_end|>")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(escaped), `\u003c`) {
+		t.Fatalf("test premise: json.Marshal did not escape: %s", escaped)
+	}
+	in := "lit <|im_end|> and json " + strings.Trim(string(escaped), `"`)
+	got := rewriteToolOutput(in, rules)
+	if strings.Count(got, "<¦im_end¦>") != 2 {
+		t.Errorf("want 2 replacements, got %q", got)
+	}
+	if strings.Contains(got, "<|im_end|>") || strings.Contains(got, `\u003c`) {
+		t.Errorf("original form survived: %q", got)
+	}
+}
+
+func TestRewriteToolOutput_NoRulesIsIdentity(t *testing.T) {
+	in := `a <|im_start|> b \u003c`
+	if got := rewriteToolOutput(in, nil); got != in {
+		t.Errorf("got %q", got)
+	}
+}
+
+func toolOutputLoopTranscript(t *testing.T, rules []meithealv1alpha1.ToolOutputRewrite) string {
+	t.Helper()
+	srv, _ := scriptedOAIServer(t, []string{toolCallReadFile, toolCallSubmitGo})
+	reg := &fakeRegistry{results: map[string]*ToolResult{
+		"read_file":     {Output: "a <|im_start|> b"},
+		"submit_result": {Terminal: true, Verdict: "GO"},
+	}}
+	res, err := newTestLoop(srv, reg).Run(context.Background(),
+		LoopConfig{Model: "test", MaxTurns: 5, ToolOutputRewrites: rules})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, m := range res.Transcript {
+		if m.Role == oai.RoleTool && m.Name == "read_file" {
+			return m.Content
+		}
+	}
+	t.Fatalf("no read_file tool message")
+	return ""
+}
+
+func TestLoop_ToolOutputRewritesApplied(t *testing.T) {
+	got := toolOutputLoopTranscript(t, []meithealv1alpha1.ToolOutputRewrite{
+		{From: "<|im_start|>", To: "<¦im_start¦>"},
+	})
+	if !strings.Contains(got, "<¦im_start¦>") || strings.Contains(got, "im_start|") {
+		t.Errorf("rewrite not applied: %q", got)
+	}
+}
+
+func TestLoop_NoRewrites_ContentUnchanged(t *testing.T) {
+	got := toolOutputLoopTranscript(t, nil)
+	if want := `"a \u003c|im_start|\u003e b"`; got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestRewriteToolOutput_UnsafeRulesSkipped(t *testing.T) {
+	b, _ := json.Marshal(`say "hi" \ <x> & y`)
+	in := string(b)
+	for _, r := range []meithealv1alpha1.ToolOutputRewrite{
+		{From: "hi", To: `a"b`},
+		{From: "hi", To: `a\b`},
+		{From: "hi", To: "a\nb"},
+		{From: `"`, To: "q"},
+		{From: `\`, To: "q"},
+	} {
+		got := rewriteToolOutput(in, []meithealv1alpha1.ToolOutputRewrite{r})
+		if got != in || !json.Valid([]byte(got)) {
+			t.Errorf("rule %+v changed content or broke JSON: %q", r, got)
+		}
+	}
+}
+
+func TestRewriteToolOutput_AppliedInOrder(t *testing.T) {
+	got := rewriteToolOutput("a", []meithealv1alpha1.ToolOutputRewrite{
+		{From: "a", To: "b"}, {From: "b", To: "c"},
+	})
+	if got != "c" {
+		t.Errorf("got %q want c", got)
+	}
+	got = rewriteToolOutput("a", []meithealv1alpha1.ToolOutputRewrite{
+		{From: "b", To: "c"}, {From: "a", To: "b"},
+	})
+	if got != "b" {
+		t.Errorf("got %q want b", got)
+	}
+}
+
+func TestRewriteToolOutput_EscapedAmpersandAndGT(t *testing.T) {
+	b, _ := json.Marshal("x && y -> z")
+	got := rewriteToolOutput(string(b), []meithealv1alpha1.ToolOutputRewrite{
+		{From: "&&", To: "AND"}, {From: "->", To: "TO"},
+	})
+	if got != `"x AND y TO z"` || !json.Valid([]byte(got)) {
+		t.Errorf("got %q", got)
 	}
 }

@@ -86,12 +86,27 @@ type fakeEffects struct {
 	watch          WatchResult
 	verifyClean    bool
 	verifyEvidence string
+	// verifyCleans, when set, answers successive Verify calls in order (the
+	// last repeats); verifyEvidences does the same for the evidence.
+	verifyCleans    []bool
+	verifyEvidences []string
 	// dispatchWorkload is the Workload name Dispatch reports creating.
 	// Empty means driveWorkload.
 	dispatchWorkload string
 	// dispatchNoName makes Dispatch report ("", nil): it claims to have
 	// created a Workload and does not say which.
 	dispatchNoName bool
+	// dispatchAttempt is the attempt Dispatch reports. Zero means 1.
+	dispatchAttempt int
+
+	redispatchErr error
+	finalizeErr   error
+	notifyErr     error
+
+	redispatched []redispatchCall
+	finalized    []driveCall
+	notified     []Decision
+	verified     int
 
 	preflightErr error
 	dispatchErr  error
@@ -100,6 +115,8 @@ type fakeEffects struct {
 	verifyErr    error
 
 	calls      map[string]driveCall
+	noRound    bool
+	restarted  int
 	dispatched int
 	killed     int
 	watched    int
@@ -117,20 +134,35 @@ func (f *fakeEffects) Preflight(ctx context.Context, item QueueItem, branch stri
 	return f.skip, f.preflightErr
 }
 
-func (f *fakeEffects) Dispatch(ctx context.Context, item QueueItem, intent string) (string, error) {
+func (f *fakeEffects) Dispatch(ctx context.Context, item QueueItem, intent string) (string, int, error) {
 	f.record("dispatch", driveCall{ctx: ctx, item: item, intent: intent})
 	f.dispatched++
+	attempt := f.dispatchAttempt
+	if attempt == 0 {
+		attempt = 1
+	}
 	if f.dispatchErr != nil {
-		return "", f.dispatchErr
+		return "", 0, f.dispatchErr
 	}
 	if f.dispatchNoName {
-		return "", nil
+		return "", attempt, nil
 	}
 	if f.dispatchWorkload != "" {
-		return f.dispatchWorkload, nil
+		return f.dispatchWorkload, attempt, nil
 	}
-	return driveWorkload, nil
+	return driveWorkload, attempt, nil
 }
+
+func (f *fakeEffects) Restart(ctx context.Context, item QueueItem, intent string) (string, int, error) {
+	f.record("restart", driveCall{ctx: ctx, item: item, intent: intent})
+	f.restarted++
+	if f.dispatchErr != nil {
+		return "", 0, f.dispatchErr
+	}
+	return driveWorkload, 1, nil
+}
+
+func (f *fakeEffects) HasRound(context.Context, QueueItem) (bool, error) { return !f.noRound, nil }
 
 func (f *fakeEffects) Watch(ctx context.Context, workload string, baseline time.Duration,
 	factor float64) (WatchResult, error) {
@@ -147,7 +179,36 @@ func (f *fakeEffects) Kill(ctx context.Context, workload string) error {
 
 func (f *fakeEffects) Verify(ctx context.Context, workload, branch string) (bool, string, error) {
 	f.record("verify", driveCall{ctx: ctx, workload: workload, branch: branch})
-	return f.verifyClean, f.verifyEvidence, f.verifyErr
+	n := f.verified
+	f.verified++
+	clean, ev := f.verifyClean, f.verifyEvidence
+	if len(f.verifyCleans) > 0 {
+		clean = f.verifyCleans[min(n, len(f.verifyCleans)-1)]
+	}
+	if len(f.verifyEvidences) > 0 {
+		ev = f.verifyEvidences[min(n, len(f.verifyEvidences)-1)]
+	}
+	return clean, ev, f.verifyErr
+}
+
+type redispatchCall struct {
+	item                       QueueItem
+	workload, intent, evidence string
+}
+
+func (f *fakeEffects) Redispatch(_ context.Context, item QueueItem, workload, intent, evidence string) error {
+	f.redispatched = append(f.redispatched, redispatchCall{item, workload, intent, evidence})
+	return f.redispatchErr
+}
+
+func (f *fakeEffects) Finalize(ctx context.Context, item QueueItem, workload, branch string) error {
+	f.finalized = append(f.finalized, driveCall{ctx: ctx, item: item, workload: workload, branch: branch})
+	return f.finalizeErr
+}
+
+func (f *fakeEffects) Notify(_ context.Context, _ QueueItem, d Decision) (ParkNotices, error) {
+	f.notified = append(f.notified, d)
+	return ParkNotices{}, f.notifyErr
 }
 
 func driveItemUnderTest(ctx context.Context, e *fakeEffects, dir string) (Stage, error) {
@@ -256,7 +317,7 @@ func TestDriveItem_StallKillsAndParksToEscalate(t *testing.T) {
 	if !strings.Contains(d.Reason, "stall") {
 		t.Errorf("Reason = %q, want it to say the run stalled", d.Reason)
 	}
-	if want := []string{"requeue", "hand-fix", "drop"}; !slices.Equal(d.Options, want) {
+	if want := []string{"requeue", "decide", "hand-fix", "drop"}; !slices.Equal(d.Options, want) {
 		t.Errorf("Options = %q, want %q", d.Options, want)
 	}
 	// Nothing verified this run, so claiming verify evidence would be a lie.
@@ -265,7 +326,7 @@ func TestDriveItem_StallKillsAndParksToEscalate(t *testing.T) {
 	}
 }
 
-func TestDriveItem_DirtyVerifyParksAdjudicateWithEvidence(t *testing.T) {
+func TestDriveItem_DirtyVerifyGetsOneFeedbackPassThenEscalatesWithEvidence(t *testing.T) {
 	dir := t.TempDir()
 	e := &fakeEffects{verifyClean: false, verifyEvidence: driveEvidence}
 	if got := drive(t, e, dir); got != StageParked {
@@ -274,9 +335,15 @@ func TestDriveItem_DirtyVerifyParksAdjudicateWithEvidence(t *testing.T) {
 	if e.killed != 0 {
 		t.Errorf("killed %d times, want 0: a dirty verify is not a stall", e.killed)
 	}
+	if len(e.redispatched) != 1 {
+		t.Errorf("redispatched %d times, want exactly one feedback pass", len(e.redispatched))
+	}
+	if e.dispatched != 1 {
+		t.Errorf("dispatched %d times, want 1: feedback is Redispatch, not Dispatch", e.dispatched)
+	}
 	d := onlyDecision(t, dir)
-	if d.Kind != "adjudicate" {
-		t.Errorf("Kind = %q, want adjudicate", d.Kind)
+	if d.Kind != "escalate" {
+		t.Errorf("Kind = %q, want escalate", d.Kind)
 	}
 	if d.Stage != string(StageVerify) {
 		t.Errorf("Stage = %q, want %q", d.Stage, StageVerify)
@@ -287,18 +354,203 @@ func TestDriveItem_DirtyVerifyParksAdjudicateWithEvidence(t *testing.T) {
 	if !strings.Contains(d.Reason, "verify") {
 		t.Errorf("Reason = %q, want it to name verify", d.Reason)
 	}
-	if want := []string{"accept", "revise", "escalate", "drop"}; !slices.Equal(d.Options, want) {
+	if want := []string{"requeue", "decide", "hand-fix", "drop"}; !slices.Equal(d.Options, want) {
 		t.Errorf("Options = %q, want %q", d.Options, want)
 	}
-	// Verbatim: a human adjudicates on what the gate actually said, and a
-	// truncated or relabelled copy is not that.
 	if got := d.Evidence["verify"]; got != driveEvidence {
 		t.Errorf("Evidence[verify] = %q, want %q", got, driveEvidence)
 	}
-	// Parking must be durable on disk, not just in memory.
-	if _, err := os.Stat(filepath.Join(dir, "1602-adjudicate.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "1602-escalate.yaml")); err != nil {
 		t.Errorf("decision file not written: %v", err)
 	}
+}
+
+func TestDrive_VerifyFailThenPass_OneRedispatch(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{
+		verifyCleans:    []bool{false, true},
+		verifyEvidences: []string{"first evidence", "second evidence"},
+	}
+	if got := drive(t, e, dir); got != StageDone {
+		t.Fatalf("end stage = %q, want %q", got, StageDone)
+	}
+	if len(e.redispatched) != 1 {
+		t.Fatalf("redispatched %d times, want 1", len(e.redispatched))
+	}
+	r := e.redispatched[0]
+	if r.evidence != "first evidence" {
+		t.Errorf("Redispatch evidence = %q, want the first verify's, unmodified", r.evidence)
+	}
+	if r.workload != driveWorkload || r.intent != driveIntent || r.item.Issue != driveIssue {
+		t.Errorf("Redispatch got %+v, want the dispatched workload, the intent text and the item", r)
+	}
+	if e.watched != 2 || e.verified != 2 {
+		t.Errorf("watched %d, verified %d, want 2 and 2", e.watched, e.verified)
+	}
+	if len(e.finalized) != 1 {
+		t.Fatalf("finalized %d times, want 1", len(e.finalized))
+	}
+	f := e.finalized[0]
+	if f.workload != driveWorkload || f.branch != driveDispatchedBranch || f.item.Issue != driveIssue {
+		t.Errorf("Finalize got %+v, want workload %q and branch %q", f, driveWorkload, driveDispatchedBranch)
+	}
+	if len(e.notified) != 0 {
+		t.Errorf("notified %d times, want 0: nothing parked", len(e.notified))
+	}
+	noDecisions(t, dir)
+}
+
+func TestDrive_VerifyFailTwice_ParksEscalateAndNotifies(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{verifyEvidence: driveEvidence}
+	if got := drive(t, e, dir); got != StageParked {
+		t.Fatalf("end stage = %q, want %q", got, StageParked)
+	}
+	if len(e.finalized) != 0 {
+		t.Errorf("finalized %d times, want 0", len(e.finalized))
+	}
+	if len(e.notified) != 1 {
+		t.Fatalf("notified %d times, want 1", len(e.notified))
+	}
+	n := e.notified[0]
+	if n.Kind != ParkEscalate || n.Workload != driveWorkload || n.Issue != driveIssue {
+		t.Errorf("Notify got %+v, want escalate on %q for issue %d", n, driveWorkload, driveIssue)
+	}
+}
+
+func TestDrive_ConcernParksWithoutVerify(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{watch: WatchResult{Concern: "the spec contradicts itself"}}
+	if got := drive(t, e, dir); got != StageParked {
+		t.Fatalf("end stage = %q, want %q", got, StageParked)
+	}
+	if e.verified != 0 {
+		t.Errorf("Verify ran %d times, want 0", e.verified)
+	}
+	d := onlyDecision(t, dir)
+	if d.Kind != ParkNeedsDecision {
+		t.Errorf("Kind = %q, want %q", d.Kind, ParkNeedsDecision)
+	}
+	if got := d.Evidence["concern"]; got != "the spec contradicts itself" {
+		t.Errorf("Evidence[concern] = %q, want the concern text", got)
+	}
+}
+
+func TestDrive_FailedWorkloadParksEscalateWithoutVerify(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{watch: WatchResult{WorkloadFailed: true, ReviewRejected: true}}
+	if got := drive(t, e, dir); got != StageParked {
+		t.Fatalf("end stage = %q, want %q", got, StageParked)
+	}
+	if e.verified != 0 || e.killed != 0 {
+		t.Errorf("verified %d, killed %d, want 0 and 0", e.verified, e.killed)
+	}
+	d := onlyDecision(t, dir)
+	if d.Kind != ParkEscalate || d.Reason != "review did not converge" {
+		t.Errorf("decision = (%q,%q), want (escalate, review did not converge)", d.Kind, d.Reason)
+	}
+}
+
+func TestDrive_EveryParkNotifies(t *testing.T) {
+	cases := []struct {
+		name     string
+		effects  fakeEffects
+		wantKind string
+	}{
+		{"stall", fakeEffects{watch: WatchResult{Stalled: true}}, ParkEscalate},
+		{"concern", fakeEffects{watch: WatchResult{Concern: "c"}}, ParkNeedsDecision},
+		{"failed workload", fakeEffects{watch: WatchResult{WorkloadFailed: true}}, ParkEscalate},
+		{"run lost", fakeEffects{preflightErr: ErrRunLost}, ParkEscalate},
+		{"verify twice", fakeEffects{}, ParkEscalate},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := tc.effects
+			dir := t.TempDir()
+			if got := drive(t, &e, dir); got != StageParked {
+				t.Fatalf("end stage = %q, want parked", got)
+			}
+			if len(e.notified) != 1 {
+				t.Fatalf("notified %d times, want exactly 1", len(e.notified))
+			}
+			if e.notified[0].Kind != tc.wantKind {
+				t.Errorf("notified kind = %q, want %q", e.notified[0].Kind, tc.wantKind)
+			}
+			if want := onlyDecision(t, dir); e.notified[0].Kind != want.Kind || e.notified[0].Reason != want.Reason {
+				t.Errorf("Notify got %+v, parked %+v", e.notified[0], want)
+			}
+		})
+	}
+}
+
+// Preflight's ErrRunLost (the issue's own branch, no Workload of the loop's)
+// parks escalate with RunLostReason and is announced, instead of ending the
+// item as a skip or an error. Nothing is dispatched, and the park names the
+// reserved Workload so its notice can find the draft PR.
+func TestDrive_RunLostParksEscalateAndNotifies(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{preflightErr: ErrRunLost}
+	if got := drive(t, e, dir); got != StageParked {
+		t.Fatalf("end stage = %q, want parked", got)
+	}
+	if e.dispatched != 0 {
+		t.Errorf("dispatched %d times, want 0", e.dispatched)
+	}
+	d := onlyDecision(t, dir)
+	if d.Kind != ParkEscalate || d.Reason != RunLostReason || d.Stage != string(StagePreflight) {
+		t.Errorf("decision = (%q,%q,%q), want (escalate,%q,preflight)", d.Kind, d.Reason, d.Stage, RunLostReason)
+	}
+	if d.Workload != plannedWorkloadName(driveIssue) {
+		t.Errorf("Workload = %q, want the reserved name %q", d.Workload, plannedWorkloadName(driveIssue))
+	}
+	if len(e.notified) != 1 || e.notified[0].Reason != RunLostReason {
+		t.Errorf("notified %+v, want one notice of the lost run", e.notified)
+	}
+}
+
+// A Notify error is a missed ping, not a missed park: the decision is on disk
+// and the item stays parked.
+func TestDrive_NotifyErrorDoesNotUnpark(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{watch: WatchResult{Stalled: true}, notifyErr: errors.New("forge down")}
+	if got := drive(t, e, dir); got != StageParked {
+		t.Fatalf("end stage = %q, want parked", got)
+	}
+	onlyDecision(t, dir)
+}
+
+// A park that could not be written is not a park, so nobody is told about one.
+func TestDrive_NoNotifyWhenParkFails(t *testing.T) {
+	notADir := filepath.Join(t.TempDir(), "decisions")
+	if err := os.WriteFile(notADir, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e := &fakeEffects{watch: WatchResult{Stalled: true}}
+	if _, err := driveItemUnderTest(context.Background(), e, notADir); err == nil {
+		t.Fatal("want the failed park surfaced")
+	}
+	if len(e.notified) != 0 {
+		t.Errorf("notified %d times, want 0", len(e.notified))
+	}
+}
+
+func TestDrive_RedispatchAndFinalizeErrorsAbortTheItem(t *testing.T) {
+	errRe := errors.New("redispatch refused")
+	errFin := errors.New("finalize failed")
+	dir := t.TempDir()
+	e := &fakeEffects{redispatchErr: errRe}
+	got, err := driveItemUnderTest(context.Background(), e, dir)
+	if !errors.Is(err, errRe) || got != StageFeedback {
+		t.Errorf("redispatch: (%q,%v), want (feedback, %v)", got, err, errRe)
+	}
+	noDecisions(t, dir)
+
+	e = &fakeEffects{verifyClean: true, finalizeErr: errFin}
+	got, err = driveItemUnderTest(context.Background(), e, dir)
+	if !errors.Is(err, errFin) || got != StageFinalize {
+		t.Errorf("finalize: (%q,%v), want (finalize, %v)", got, err, errFin)
+	}
+	noDecisions(t, dir)
 }
 
 // Every stage acts on something the driver handed it. A dropped or blanked
@@ -433,7 +685,7 @@ func TestDriveLoop_StopsRatherThanSpinningOnACycle(t *testing.T) {
 	e := &fakeEffects{}
 	got, err := driveLoop(context.Background(), e,
 		QueueItem{Issue: driveIssue, Repo: driveRepo, IntentPath: "intent.md"},
-		driveIntent, dir, driveBaseline, driveFactor, cycle)
+		driveIntent, dir, driveBaseline, driveFactor, cycle, false)
 	if err == nil {
 		t.Fatal("driveLoop = nil, want a cycling machine refused rather than spun on")
 	}
@@ -505,5 +757,91 @@ func TestDriveItem_SurfacesAParkThatCouldNotBeWritten(t *testing.T) {
 	}
 	if got != StageWatch {
 		t.Errorf("stage = %q, want %q: the item is not parked", got, StageWatch)
+	}
+}
+
+// A busy GPU node is not a verdict on the branch: it parks escalate on the
+// first attempt and never spends the feedback pass on a coder who has
+// nothing to fix.
+func TestDrive_GPUBusyParksWithoutFeedback(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{verifyClean: false, verifyEvidence: GPUBusyEvidence}
+	if got := drive(t, e, dir); got != StageParked {
+		t.Fatalf("end stage = %q, want parked", got)
+	}
+	if len(e.redispatched) != 0 {
+		t.Fatalf("redispatched %d times, want 0", len(e.redispatched))
+	}
+	if len(e.notified) != 1 {
+		t.Fatalf("notified %d times, want 1", len(e.notified))
+	}
+	d := onlyDecision(t, dir)
+	if d.Kind != ParkEscalate || d.Reason != "GPU node stayed busy" {
+		t.Fatalf("decision = (%q,%q), want (escalate, GPU node stayed busy)", d.Kind, d.Reason)
+	}
+}
+
+// A restarted loop that resumes a Workload which is already the feedback
+// pass must not grant another: the next dirty verify escalates.
+func TestDrive_ResumedSecondAttemptEscalatesWithoutRedispatch(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{dispatchAttempt: 2, verifyClean: false, verifyEvidence: driveEvidence}
+	if got := drive(t, e, dir); got != StageParked {
+		t.Fatalf("end stage = %q, want parked", got)
+	}
+	if len(e.redispatched) != 0 {
+		t.Fatalf("redispatched %d times, want 0 on a resumed attempt 2", len(e.redispatched))
+	}
+	if d := onlyDecision(t, dir); d.Kind != ParkEscalate {
+		t.Fatalf("kind = %q, want escalate", d.Kind)
+	}
+}
+
+func TestDrive_DispatchAttemptBelowOneIsAnError(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{dispatchAttempt: -1, verifyClean: false}
+	if _, err := driveItemUnderTest(context.Background(), e, dir); err == nil {
+		t.Fatal("want an error for a nonsense attempt")
+	}
+	if e.verified != 0 {
+		t.Fatalf("verified %d times after a bad dispatch", e.verified)
+	}
+}
+
+// A maintainer's answer starts a new round: no preflight (the open draft PR
+// is the loop's own), Restart instead of Dispatch, and a fresh attempt
+// count, so one feedback pass is available again.
+func TestRestartItem_SkipsPreflightAndStartsAtAttemptOne(t *testing.T) {
+	e := &fakeEffects{skip: "an open PR already references it: x", verifyCleans: []bool{false, true}}
+	end, err := RestartItem(context.Background(), e,
+		QueueItem{Issue: driveIssue, Repo: driveRepo, IntentPath: "intent.md"},
+		driveIntent, t.TempDir(), driveBaseline, driveFactor)
+	if err != nil || end != StageDone {
+		t.Fatalf("RestartItem = %s, %v; want done", end, err)
+	}
+	if _, ran := e.calls["preflight"]; ran || e.dispatched != 0 || e.restarted != 1 {
+		t.Fatalf("preflight ran %v, dispatched %d, restarted %d; want only one Restart", ran, e.dispatched, e.restarted)
+	}
+	if e.calls["restart"].intent != driveIntent {
+		t.Fatalf("Restart got intent %q", e.calls["restart"].intent)
+	}
+	if len(e.redispatched) != 1 {
+		t.Fatalf("feedback passes = %d, want the round's one", len(e.redispatched))
+	}
+}
+
+// Without a round of the loop's (no own Workload, no own branch), a new
+// round is an ordinary drive: preflight runs, and its skip stops it.
+func TestRestartItem_WithoutARoundRunsPreflight(t *testing.T) {
+	e := &fakeEffects{noRound: true, skip: "an open PR already references it: x"}
+	end, err := RestartItem(context.Background(), e,
+		QueueItem{Issue: driveIssue, Repo: driveRepo, IntentPath: "intent.md"},
+		driveIntent, t.TempDir(), driveBaseline, driveFactor)
+	if err != nil || end != StageDone {
+		t.Fatalf("RestartItem = %s, %v", end, err)
+	}
+	if _, ran := e.calls["preflight"]; !ran || e.dispatched != 0 || e.restarted != 0 {
+		t.Fatalf("preflight ran %v, dispatched %d, restarted %d; want preflight and nothing else",
+			ran, e.dispatched, e.restarted)
 	}
 }

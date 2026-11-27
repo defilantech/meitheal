@@ -332,6 +332,15 @@ type AgentSpec struct {
 	// +optional
 	ChatTemplateKwargs map[string]apiextensionsv1.JSON `json:"chatTemplateKwargs,omitempty"`
 
+	// ToolOutputRewrites are literal string rewrites applied to every tool
+	// result before it enters the transcript. Use them to defuse
+	// chat-template marker strings (for example a ChatML "<|im_start|>" in
+	// source or fixtures) that a model would otherwise read as its own
+	// special tokens. Each From matches literally and in its JSON-escaped
+	// form. Unset leaves tool output untouched.
+	// +optional
+	ToolOutputRewrites []ToolOutputRewrite `json:"toolOutputRewrites,omitempty"`
+
 	// ContextWindowTokens is the soft token budget for the wire payload
 	// the loop sends on every turn. When the running message list
 	// approximately exceeds this size, older tool result messages are
@@ -446,6 +455,13 @@ type AgentSpec struct {
 	// unattended loop (#1653) into a supervised one.
 	// +optional
 	OpenPullRequestsAsDraft *bool `json:"openPullRequestsAsDraft,omitempty"`
+
+	// SignOffCommits controls whether the commits this agent makes carry a
+	// DCO `Signed-off-by` trailer (git commit -s). Nil means true, preserving
+	// today's behaviour. Set false for repositories whose rules forbid
+	// bot-signed commits; a maintainer then adds the sign-off themselves.
+	// +optional
+	SignOffCommits *bool `json:"signOffCommits,omitempty"`
 
 	// Tools is the tool whitelist surfaced to the model on every turn.
 	// Unknown names are rejected at agent startup so a typo in an Agent
@@ -579,4 +595,29 @@ type AgentList struct {
 
 func init() {
 	SchemeBuilder.Register(&Agent{}, &AgentList{})
+}
+
+// SignsOffCommits reports whether commits made by this agent carry a DCO
+// sign-off trailer. Nil (unset), or a nil
+// receiver, means true.
+func (s *AgentSpec) SignsOffCommits() bool {
+	return s == nil || s.SignOffCommits == nil || *s.SignOffCommits
+}
+
+// ToolOutputRewrite replaces every occurrence of From with To in tool output.
+// Rules apply in slice order, each to the output of the previous one.
+type ToolOutputRewrite struct {
+	// From is the literal string to find.
+	// Must not contain a double quote, a backslash or an ASCII control
+	// character: tool output is JSON-encoded, and those bytes would match
+	// or break the JSON envelope.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^[^"\\\x00-\x1f]*$`
+	From string `json:"from"`
+
+	// To is the replacement text. May be empty to delete From. The same
+	// character restriction as From applies, so a rewrite cannot corrupt
+	// the JSON-encoded tool result.
+	// +kubebuilder:validation:Pattern=`^[^"\\\x00-\x1f]*$`
+	To string `json:"to"`
 }

@@ -1,0 +1,107 @@
+{
+  "kind": "Job",
+  "apiVersion": "batch/v1",
+  "metadata": {
+    "name": "meitheal-gate-x",
+    "namespace": "meitheal-system",
+    "labels": {
+      "app.kubernetes.io/managed-by": "meitheal-agent",
+      "app.kubernetes.io/name": "meitheal-gate",
+      "meitheal.dev/task-name": "gate-503",
+      "meitheal.dev/task-namespace": "default"
+    }
+  },
+  "spec": {
+    "activeDeadlineSeconds": 1800,
+    "backoffLimit": 0,
+    "template": {
+      "metadata": {
+        "labels": {
+          "app.kubernetes.io/name": "meitheal-gate",
+          "meitheal.dev/task-name": "gate-503",
+          "meitheal.dev/task-namespace": "default"
+        }
+      },
+      "spec": {
+        "volumes": [
+          {
+            "name": "cache",
+            "persistentVolumeClaim": {
+              "claimName": "meitheal-gate-cache"
+            }
+          }
+        ],
+        "containers": [
+          {
+            "name": "gate",
+            "image": "golang:1.26",
+            "command": [
+              "/bin/bash",
+              "-c"
+            ],
+            "args": [
+              "set -uo pipefail\necho \"=== clone defilantech/LLMKube @ meitheal/issue-503 ===\"\ngit clone --depth 1 --branch \"meitheal/issue-503\" \\\n  \"https://github.com/defilantech/LLMKube.git\" /work || { echo \"GATE FAIL: clone\"; exit 1; }\ncd /work\nrc=0\necho \"=== make fmt ===\"; make fmt || rc=1\necho \"=== make vet ===\"; make vet || rc=1\necho \"=== make test ===\"; make test || rc=1\nif ! git diff --quiet; then\n  echo \"GATE FAIL: tree dirty after checks (unformatted or stale codegen)\"\n  git diff --stat\n  rc=1\nfi\n# --- shared change detection ------------------------------------------\n# Resolve this branch's fork point ONCE and reuse it below. Both the\n# non-Go lint and the revert-and-retest phase need to know what this\n# branch changed, and the clone is `--depth 1`, so HEAD~1 does not\n# exist. Anything that\n# computes its own base from HEAD~N gets a fatal error, an empty file list\n# once stderr is swallowed, and then silently checks nothing while still\n# reporting a pass. That is how the first attempt at #1072 shipped a no-op.\nBASE=\"${BASE_BRANCH:-main}\"\nbase_warn() { echo \"GATE-WARN: change detection skipped ($1)\"; }\ncheck_warn() { echo \"GATE-WARN: $1\"; }\nBASE=\"${BASE_BRANCH:-main}\"\nMB=\"\"\nif [ -n \"${UPSTREAM_URL:-}\" ]; then\n  # Fetch the base from the CANONICAL repo, not the fork: the fork\n  # $BASE can be arbitrarily stale, and reverting production to a stale\n  # tip manufactures compile failures in packages the coder never\n  # touched (#1259). The coder branched from the upstream base (#813),\n  # so merge-base(HEAD, upstream base) IS the coder's true fork point.\n  # The `--` end-of-options guard keeps a crafted URL starting\n  # with `-` from being read as a git option (argv smuggling).\n  if ! git fetch --depth 100 -- \"$UPSTREAM_URL\" \"+refs/heads/$BASE:refs/remotes/ubase/$BASE\" \u003e/dev/null 2\u003e\u00261; then\n    base_warn \"could not fetch $BASE from upstream\"\n  else\n    # The clone is shallow; deepen until the histories connect. Two\n    # rounds is plenty for any sane coder branch; beyond that the base\n    # resolution is suspect and the bite is skipped, never failed.\n    MB=$(git merge-base HEAD \"refs/remotes/ubase/$BASE\" 2\u003e/dev/null || true)\n    if [ -z \"$MB\" ]; then\n      git fetch --deepen=1000 origin \"$BRANCH\" \u003e/dev/null 2\u003e\u00261 || true\n      git fetch --deepen=1000 -- \"$UPSTREAM_URL\" \"+refs/heads/$BASE:refs/remotes/ubase/$BASE\" \u003e/dev/null 2\u003e\u00261 || true\n      MB=$(git merge-base HEAD \"refs/remotes/ubase/$BASE\" 2\u003e/dev/null || true)\n    fi\n    [ -z \"$MB\" ] \u0026\u0026 base_warn \"no merge-base between HEAD and upstream $BASE after deepening\"\n  fi\nelse\n  # No upstream URL (freeform task without a repo slug): pre-#1259\n  # behavior, fetch the base ref from origin and use its tip.\n  if ! git fetch --depth 1 origin \"+refs/heads/$BASE:refs/remotes/origin/$BASE\" \u003e/dev/null 2\u003e\u00261; then\n    base_warn \"could not fetch base ref origin/$BASE\"\n  elif ! git rev-parse --verify --quiet \"origin/$BASE\" \u003e/dev/null; then\n    base_warn \"base ref origin/$BASE did not resolve after fetch\"\n  else\n    MB=\"origin/$BASE\"\n  fi\nfi\nchanged=\"\"\nif [ -n \"$MB\" ]; then\n  changed=$(git diff --name-only \"$MB\" HEAD)\n  nchanged=$(printf '%s\\n' \"$changed\" | sed '/^$/d' | wc -l | tr -d ' ')\n  if [ \"$nchanged\" -gt 200 ]; then\n    # A coder diff is tens of files at most. Hundreds means the base\n    # resolution is wrong (the #1259 incident swept 103 commits of drift).\n    # Drop the base rather than act on it: both consumers below then\n    # degrade to a loud skip instead of blaming the coder.\n    base_warn \"diff vs merge-base names $nchanged files; base resolution suspect\"\n    MB=\"\"; changed=\"\"\n  fi\nfi\n\n# --- copyright headers -------------------------------------------------\n# Runs after base resolution for the same reason the two below do. It\n# needs a real merge base and not a base tip: a tree diff against a\n# tip also lists files the base deleted, and every narrowed variant of\n# that comparison reported either the wrong files or none. The freeform\n# path resolves a tip and never deepens, so it is skipped loudly rather\n# than handed a base the check would misread. CI's lint.yml enforces it\n# there with a full-history checkout.\nif [ -z \"$MB\" ]; then\n  check_warn \"copyright header check skipped, no usable base to diff against\"\nelif ! CMB=$(git merge-base HEAD \"$MB\" 2\u003e/dev/null) || [ -z \"$CMB\" ]; then\n  check_warn \"copyright header check skipped, $MB is not a merge base of HEAD\"\nelse\n  echo \"=== make check-copyright BASE_REF=$CMB ===\"\n  make check-copyright BASE_REF=\"$CMB\" || rc=1\nfi\n\n# --- non-Go lint -------------------------------------------------------\n# A diff that is entirely non-Go (CI YAML, shell, Ruby) otherwise reaches\n# GATE PASS with nothing meaningful checked (#1072). Each checker is scoped\n# to the files THIS branch changed: linting the whole repo would fail an\n# unrelated contributor on a pre-existing violation they never touched.\n# A missing linter is reported and skipped, never a failure, since the gate\n# runs in a Go image. Only a real finding sets rc=1.\necho \"=== non-go lint ===\"\nif [ -z \"$MB\" ]; then\n  echo \"non-go lint: skipped, no usable base to diff against\"\nelse\n  ng_wf=$(printf '%s\\n' \"$changed\" | grep -E '^\\.github/workflows/.+\\.ya?ml$' || true)\n  ng_sh=$(printf '%s\\n' \"$changed\" | grep -E '\\.sh$' || true)\n  ng_rb=$(printf '%s\\n' \"$changed\" | grep -E '\\.rb$' || true)\n  if [ -z \"$ng_wf$ng_sh$ng_rb\" ]; then\n    echo \"non-go lint: no checkable non-Go files changed\"\n  fi\n  if [ -n \"$ng_wf\" ]; then\n    if command -v actionlint \u003e/dev/null 2\u003e\u00261; then\n      echo \"--- actionlint ---\"\n      printf '%s\\n' \"$ng_wf\" | xargs -r actionlint || rc=1\n    else\n      echo \"non-go lint: actionlint not installed, changed workflows unchecked\"\n    fi\n  fi\n  if [ -n \"$ng_sh\" ]; then\n    if command -v shellcheck \u003e/dev/null 2\u003e\u00261; then\n      echo \"--- shellcheck ---\"\n      printf '%s\\n' \"$ng_sh\" | xargs -r shellcheck || rc=1\n    else\n      echo \"non-go lint: shellcheck not installed, changed shell scripts unchecked\"\n    fi\n  fi\n  if [ -n \"$ng_rb\" ]; then\n    if command -v rubocop \u003e/dev/null 2\u003e\u00261; then\n      echo \"--- rubocop ---\"\n      printf '%s\\n' \"$ng_rb\" | xargs -r rubocop --format progress || rc=1\n    else\n      echo \"non-go lint: rubocop not installed, changed Ruby files unchecked\"\n    fi\n  fi\nfi\n[ \"$rc\" -eq 0 ] \u0026\u0026 echo \"GATE PASS\" || echo \"GATE FAIL\"\nexit \"$rc\"\n"
+            ],
+            "env": [
+              {
+                "name": "BRANCH",
+                "value": "meitheal/issue-503"
+              },
+              {
+                "name": "BASE_BRANCH",
+                "value": "main"
+              },
+              {
+                "name": "UPSTREAM_URL"
+              },
+              {
+                "name": "GOTOOLCHAIN",
+                "value": "auto"
+              },
+              {
+                "name": "GIT_TERMINAL_PROMPT",
+                "value": "0"
+              },
+              {
+                "name": "GOMODCACHE",
+                "value": "/cache/gomod"
+              },
+              {
+                "name": "GOCACHE",
+                "value": "/cache/gobuild"
+              },
+              {
+                "name": "XDG_DATA_HOME",
+                "value": "/cache/xdg"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "cpu": "4",
+                "memory": "8Gi"
+              },
+              "requests": {
+                "cpu": "2",
+                "memory": "4Gi"
+              }
+            },
+            "volumeMounts": [
+              {
+                "name": "cache",
+                "mountPath": "/cache"
+              }
+            ]
+          }
+        ],
+        "restartPolicy": "Never",
+        "automountServiceAccountToken": false,
+        "securityContext": {
+          "fsGroup": 100
+        },
+        "enableServiceLinks": false
+      }
+    },
+    "ttlSecondsAfterFinished": 86400
+  },
+  "status": {}
+}

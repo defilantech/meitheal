@@ -263,14 +263,24 @@ func (e *NativeAgentLoopExecutor) workItems(token string) worktracker.WorkItems 
 	return nil
 }
 
-// authToken returns the token carried by auth, or "" when auth is nil. It
+// authToken returns the token auth carries now, or "" when auth is nil. It
 // bridges the run's repo.Auth to the token the CodeHost/WorkItems legacy
-// wraps need.
-func authToken(auth *repo.Auth) string {
-	if auth != nil {
-		return auth.Token
+// wraps need. An Auth resolved from the env/file lookup is re-resolved on
+// every call (repo.Auth.Current), so a long review that opens its PR after
+// the token rotated on disk uses the new token, not the one from the clone.
+// A failed resolution is an error: an API call is never made with an empty
+// or stale token in its place.
+func authToken(auth *repo.Auth) (string, error) {
+	if auth == nil {
+		return "", nil
 	}
-	return ""
+	return auth.Current()
+}
+
+// hasCodeHost reports whether codeHost would return one, without resolving
+// a token to find out.
+func (e *NativeAgentLoopExecutor) hasCodeHost() bool {
+	return e.CodeHost != nil || e.PREnsurer != nil
 }
 
 // changePolicy returns the effective ChangePolicy seam: the injected
@@ -847,7 +857,12 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 	// the prompt empty; without this fetch the model is asked to fix
 	// "#510" with no knowledge of what #510 is about. Best-effort: a
 	// failed fetch logs and the loop runs with the pre-#571 behavior.
-	fetchIssueBodyIfNeeded(ctx, e.workItems(authToken(auth)), task, log)
+	if tok, terr := authToken(auth); terr != nil {
+		log.Info("issue fetch: skipped, the GitHub token could not be resolved",
+			"issue", task.Spec.Payload.Issue, "error", terr.Error())
+	} else {
+		fetchIssueBodyIfNeeded(ctx, e.workItems(tok), task, log)
+	}
 	// Staleness pre-flight (#1550): before the coder starts, cheaply check
 	// whether the tree already addresses this issue. The pure check takes
 	// git-log and grep output as strings (see staleness_check.go); here we
@@ -910,6 +925,8 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 		// template. Nil/empty omits the field on the wire so the request
 		// is byte-identical to today for agents that do not set it.
 		ChatTemplateKwargs: agent.Spec.ChatTemplateKwargs,
+		// Literal rewrites of marker strings in tool output; nil is a no-op.
+		ToolOutputRewrites: agent.Spec.ToolOutputRewrites,
 		// Live turn streaming, opt-in. A method rather than an inline nil
 		// check because this function sits at the gocyclo ceiling; see
 		// turnHook for why the nil case must stay a nil hook.
@@ -1230,7 +1247,7 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 		// rejected, or push failed); it is byte-identical to the linear path
 		// on the first push.
 		attemptSHA, envtestTouched, done := e.commitPushAttempt(
-			ctx, log, task, workspace, branch, baseBranch, auth,
+			ctx, log, agent, task, workspace, branch, baseBranch, auth,
 			envtestAttempt > 0 || scanAttempt > 0, task.Spec.Payload.AllowOverwrite,
 			start, transcriptRef, loopRes)
 		if done != nil {
@@ -1545,7 +1562,8 @@ func (e *NativeAgentLoopExecutor) retryCoderWithFeedback(
 }
 
 // commitPushAttempt settles the working tree, commits the current terminal's
-// change with the executor's identity + DCO sign-off, and pushes the branch.
+// change with the executor's identity (plus a DCO sign-off unless the Agent
+// sets signOffCommits=false), and pushes the branch.
 // It returns the commit SHA, whether the change touched an envtest-backed
 // package (captured before the commit clears the working-tree status), and a
 // non-nil done Result when the attempt terminates the task early (no diff,
@@ -1555,7 +1573,8 @@ func (e *NativeAgentLoopExecutor) retryCoderWithFeedback(
 // replaceOnReject, which flips ReplaceOnReject on for a retry from EITHER
 // gate that supersedes its predecessor push).
 func (e *NativeAgentLoopExecutor) commitPushAttempt(
-	ctx context.Context, log logr.Logger, task *meithealv1alpha1.AgenticTask,
+	ctx context.Context, log logr.Logger,
+	agent *meithealv1alpha1.Agent, task *meithealv1alpha1.AgenticTask,
 	workspace, branch, baseBranch string, auth *repo.Auth,
 	replaceOnReject bool, allowOverwrite bool,
 	start time.Time, tref corev1.ObjectReference, lr *LoopResult,
@@ -1620,10 +1639,11 @@ func (e *NativeAgentLoopExecutor) commitPushAttempt(
 	}
 
 	sha, commitErr := repo.Commit(ctx, repo.CommitOptions{
-		Workspace: workspace,
-		Message:   commitMessage,
-		Author:    e.CommitAuthor,
-		Committer: e.CommitCommitter,
+		Workspace:   workspace,
+		Message:     commitMessage,
+		Author:      e.CommitAuthor,
+		Committer:   e.CommitCommitter,
+		SkipSignOff: !agent.Spec.SignsOffCommits(),
 	})
 	if errors.Is(commitErr, repo.ErrNothingToCommit) {
 		// Model said GO but never edited anything. Honest report: this is a
@@ -1987,7 +2007,15 @@ func (e *NativeAgentLoopExecutor) executeDeterministic(
 	// payload.repo where the branch does not yet exist.
 	args := buildDeterministicArgs(task, branch, cloneURL, e.resolveUpstreamForRun(task))
 
-	result, dispatchErr := registry.Dispatch(ctx, toolName, args)
+	// A GateProfile placement (node, tolerations, GPU, env, volumes) reaches
+	// the gate tool through the context, never through the args: run_gate_job
+	// rejects a `placement` in model-visible args, so only this deterministic
+	// path, which reads the operator-declared profile, can set one.
+	dispatchCtx := ctx
+	if task.Spec.GateProfile != nil {
+		dispatchCtx = WithGatePlacement(ctx, task.Spec.GateProfile.Resolve().Placement)
+	}
+	result, dispatchErr := registry.Dispatch(dispatchCtx, toolName, args)
 	if dispatchErr != nil {
 		return e.failResult(start, meithealv1alpha1.FailureToolFailed,
 			fmt.Sprintf("%s: %s", toolName, dispatchErr.Error()))
@@ -2638,7 +2666,7 @@ func (e *NativeAgentLoopExecutor) maybeOpenPullRequest(
 	if verdict != meithealv1alpha1.AgenticTaskVerdictGo ||
 		task.Spec.Kind != meithealv1alpha1.AgenticTaskKindReview ||
 		!task.Spec.Payload.OpenPullRequest ||
-		e.codeHost(authToken(auth)) == nil {
+		!e.hasCodeHost() {
 		return
 	}
 	body := e.groundPRSummary(ctx, log, r, workspace, reviewBase, reviewDiff)
@@ -2839,13 +2867,19 @@ func (e *NativeAgentLoopExecutor) maybeRefreshPRBody(
 	branch string, r *Result, workspace, reviewBase string, reviewDiff []string,
 	cloneURL string,
 ) {
-	ch := e.codeHost(authToken(auth))
-	if ch == nil {
+	if !e.hasCodeHost() {
 		return
 	}
 	if workspace == "" || reviewBase == "" {
 		return
 	}
+	tok, err := authToken(auth)
+	if err != nil {
+		log.Error(err, "PR body refresh skipped: the GitHub token could not be resolved",
+			"repo", task.Spec.Payload.Repo, "branch", branch)
+		return
+	}
+	ch := e.codeHost(tok)
 	// Body: the coder's authored description wins when present (#1777),
 	// exactly as on the open path. Only the grounded reviewer summary,
 	// which is what the refresh replaced with a one-line verdict before,
@@ -2921,7 +2955,11 @@ func (e *NativeAgentLoopExecutor) openPullRequest(
 	if !ok {
 		return "", fmt.Errorf("openPullRequest: payload.repo %q is not a valid repo slug", p.Repo)
 	}
-	ch := e.codeHost(authToken(auth))
+	tok, err := authToken(auth)
+	if err != nil {
+		return "", fmt.Errorf("openPullRequest: resolve the GitHub token: %w", err)
+	}
+	ch := e.codeHost(tok)
 	// The coder pushed the branch to the resolved clone+push target, which may
 	// be a fork of payload.repo. For a cross-fork PR the head is qualified
 	// "forkOwner:branch" and the head commit is read from the fork (headSlug),
@@ -3027,10 +3065,11 @@ func (e *NativeAgentLoopExecutor) maybePreserveGateFailedBranch(
 			"for a human to finish. Do not merge as-is.\n\nRefs #%d",
 		task.Spec.Payload.Issue, task.Spec.Payload.Issue)
 	sha, err := repo.Commit(ctx, repo.CommitOptions{
-		Workspace: workspace,
-		Message:   msg,
-		Author:    e.CommitAuthor,
-		Committer: e.CommitCommitter,
+		Workspace:   workspace,
+		Message:     msg,
+		Author:      e.CommitAuthor,
+		Committer:   e.CommitCommitter,
+		SkipSignOff: !agent.Spec.SignsOffCommits(),
 	})
 	if err != nil {
 		log.Error(err, "gate-failed preserve: commit failed; not preserving branch")
@@ -3135,10 +3174,11 @@ func (e *NativeAgentLoopExecutor) preserveUnsuccessfulLoopBranch(
 			"finish or discard. Do not merge as-is.\n\nRefs #%d",
 		task.Spec.Payload.Issue, task.Spec.Payload.Issue)
 	sha, commitErr := repo.Commit(ctx, repo.CommitOptions{
-		Workspace: workspace,
-		Message:   msg,
-		Author:    e.CommitAuthor,
-		Committer: e.CommitCommitter,
+		Workspace:   workspace,
+		Message:     msg,
+		Author:      e.CommitAuthor,
+		Committer:   e.CommitCommitter,
+		SkipSignOff: !agent.Spec.SignsOffCommits(),
 	})
 	if errors.Is(commitErr, repo.ErrNothingToCommit) {
 		// The model wrote nothing between the HasChanges check and the
@@ -3200,7 +3240,20 @@ func (e *NativeAgentLoopExecutor) modelDecidedResult(
 		"modelExtra":    lr.Terminal.Extra,
 	}
 	promoteTerminalOutcome(ctx, r.Extra, lr.Terminal.Extra, workspace, execCommandRunner, baseBranch)
+	promoteTerminalConcerns(r.Extra, lr.Terminal.Extra)
 	return r
+}
+
+// promoteTerminalConcerns lifts submit_result's structured concerns from the
+// terminal's Extra (nested under "modelExtra") to the Result's top-level
+// Extra["concerns"], i.e. status.result.extra.concerns, where a run loop
+// reads them. Nothing is added when none were raised. submit_result has
+// already turned a model-supplied extra.concerns of the wrong shape into a
+// malformed-concern entry, so what is lifted here is always a list.
+func promoteTerminalConcerns(extra, terminalExtra map[string]any) {
+	if c, ok := terminalExtra["concerns"]; ok && c != nil {
+		extra["concerns"] = c
+	}
 }
 
 // promoteTerminalOutcome lifts a terminal, non-escalating machine outcome
@@ -3661,6 +3714,7 @@ func (e *NativeAgentLoopExecutor) goResult(
 		"turnCount":     lr.Turns,
 		"modelExtra":    lr.Terminal.Extra,
 	}
+	promoteTerminalConcerns(r.Extra, lr.Terminal.Extra)
 	return r
 }
 

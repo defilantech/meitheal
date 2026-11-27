@@ -4042,3 +4042,36 @@ func TestPromoteTerminalOutcome_AlreadyResolvedResolvedByValidation(t *testing.T
 		})
 	}
 }
+
+// TestBuildDeterministicArgs_NoPlacementInArgs pins that the placement never
+// rides in the model-visible args JSON: run_gate_job rejects it there.
+func TestBuildDeterministicArgs_NoPlacementInArgs(t *testing.T) {
+	task := &meithealv1alpha1.AgenticTask{
+		ObjectMeta: metav1.ObjectMeta{Name: "gate-1", Namespace: "default"},
+		Spec: meithealv1alpha1.AgenticTaskSpec{
+			Kind:    meithealv1alpha1.AgenticTaskKindVerify,
+			Payload: meithealv1alpha1.AgenticTaskPayload{Repo: "defilantech/dluth"},
+			GateProfile: &meithealv1alpha1.GateProfile{
+				Language:  meithealv1alpha1.GateLanguageRust,
+				Placement: &meithealv1alpha1.GatePlacement{PriorityClassName: "batch"},
+			},
+		},
+	}
+	var got map[string]any
+	if err := json.Unmarshal(buildDeterministicArgs(task, "b", "", ""), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := got["placement"]; ok {
+		t.Error("placement must not appear in args")
+	}
+}
+
+func TestGatePlacementContext(t *testing.T) {
+	if GatePlacementFromContext(context.Background()) != nil {
+		t.Error("empty context must yield nil")
+	}
+	p := &meithealv1alpha1.GatePlacement{PriorityClassName: "batch"}
+	if got := GatePlacementFromContext(WithGatePlacement(context.Background(), p)); got != p {
+		t.Errorf("got %v", got)
+	}
+}

@@ -22,7 +22,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"sigs.k8s.io/yaml"
@@ -43,7 +45,41 @@ type Decision struct {
 	Options  []string          `json:"options,omitempty"`
 	// Answer is empty until a human answers it.
 	Answer string `json:"answer,omitempty"`
+	// Notified is when every notice of the park went out (Effects.Notify).
+	// Nil means some have not yet: the loop retries them on its next answer
+	// cycle. A file written before the field existed parses with nil and is
+	// announced once.
+	Notified *time.Time `json:"notified,omitempty"`
+	// Notices records each notice channel that went out, so a retry sends
+	// only the ones that failed.
+	Notices *ParkNotices `json:"notices,omitempty"`
+	// Repo is the repository the issue is in. Decisions written before the
+	// field existed have none; the run loop then acts on one only when its
+	// issue is in the run's queue.
+	Repo string `json:"repo,omitempty"`
+	// answeredBy is when the comment PollAnswers took the answer from was
+	// made. Never written to the file; the run loop uses it so a park opened
+	// soon after must not take the same comment again.
+	answeredBy time.Time
 }
+
+// ParkNotices is when each notice of a park succeeded; nil is not yet.
+type ParkNotices struct {
+	// Comment is the one-line public comment on the issue.
+	Comment *time.Time `json:"comment,omitempty"`
+	// Label is the parked label on the draft PR.
+	Label *time.Time `json:"label,omitempty"`
+	// Ping is the POST to the notify URL.
+	Ping *time.Time `json:"ping,omitempty"`
+}
+
+// decisionsMu serialises this process's read-modify-write of decision files.
+// The run loop's lanes park and stamp files while its answer cycle records
+// answers, and two writers of one file would otherwise lose one write. Other
+// processes (a human's 'meitheal decisions answer') are not covered; the
+// atomic rename keeps every file whole, and an answer lost that way is
+// re-read from the issue comment on the next poll.
+var decisionsMu sync.Mutex
 
 // checkDecisionKind rejects a kind that would steer the path out of dir.
 // `meitheal decisions answer ISSUE KIND ANSWER` takes the kind straight off the
@@ -118,6 +154,8 @@ func ParkDecision(dir string, d Decision) (string, error) {
 	if err := checkDecisionKind(d.Kind); err != nil {
 		return "", err
 	}
+	decisionsMu.Lock()
+	defer decisionsMu.Unlock()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create decisions dir: %w", err)
 	}
@@ -208,6 +246,10 @@ func ListDecisions(dir string) ([]Decision, error) {
 	return out, errors.Join(bad...)
 }
 
+// errAnswerNotOffered marks an answer the decision's options do not allow, as
+// opposed to a read or write failure.
+var errAnswerNotOffered = errors.New("answer not offered")
+
 // AnswerDecision records a human's answer. The answer must be one of the
 // options the decision offered, so a typo cannot silently become an action.
 //
@@ -224,6 +266,8 @@ func AnswerDecision(dir string, issue int32, kind, answer string) error {
 	if answer == "" {
 		return fmt.Errorf("decision answer must not be empty")
 	}
+	decisionsMu.Lock()
+	defer decisionsMu.Unlock()
 	p := decisionPath(dir, issue, kind)
 	b, err := os.ReadFile(p)
 	if err != nil {
@@ -244,8 +288,18 @@ func AnswerDecision(dir string, issue int32, kind, answer string) error {
 			break
 		}
 	}
+	// "decide: TEXT" carries free text, so it cannot match an option exactly.
+	// It is valid when decide is offered and the text is not blank.
+	if rest, found := strings.CutPrefix(answer, "decide:"); found && strings.TrimSpace(rest) != "" {
+		for _, o := range d.Options {
+			if o == "decide" {
+				ok = true
+				break
+			}
+		}
+	}
 	if !ok {
-		return fmt.Errorf("answer %q is not one of %v", answer, d.Options)
+		return fmt.Errorf("%w: answer %q is not one of %v", errAnswerNotOffered, answer, d.Options)
 	}
 	d.Answer = answer
 	out, err := yaml.Marshal(d)
@@ -253,4 +307,85 @@ func AnswerDecision(dir string, issue int32, kind, answer string) error {
 		return fmt.Errorf("marshal decision: %w", err)
 	}
 	return writeDecisionFile(p, out)
+}
+
+// RecordNotices saves which notices of a park went out and, when complete,
+// stamps the park as fully announced at the given time, so the run loop
+// retries only what failed and never announces a park twice.
+func RecordNotices(dir string, issue int32, kind string, n ParkNotices, complete bool, at time.Time) error {
+	if err := checkDecisionKind(kind); err != nil {
+		return err
+	}
+	decisionsMu.Lock()
+	defer decisionsMu.Unlock()
+	p := decisionPath(dir, issue, kind)
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return fmt.Errorf("read decision %s: %w", p, err)
+	}
+	var d Decision
+	if err := yaml.Unmarshal(b, &d); err != nil {
+		return fmt.Errorf("parse decision %s: %w", p, err)
+	}
+	d.Notices = &n
+	if complete {
+		t := at.UTC()
+		d.Notified = &t
+	}
+	out, err := yaml.Marshal(d)
+	if err != nil {
+		return fmt.Errorf("marshal decision: %w", err)
+	}
+	return writeDecisionFile(p, out)
+}
+
+// RemoveDecision deletes a decision file. One that is already gone is not an
+// error.
+func RemoveDecision(dir string, issue int32, kind string) error {
+	if err := checkDecisionKind(kind); err != nil {
+		return err
+	}
+	decisionsMu.Lock()
+	defer decisionsMu.Unlock()
+	if err := os.Remove(decisionPath(dir, issue, kind)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove decision: %w", err)
+	}
+	return nil
+}
+
+// parkedIssues names every issue of repo with a decision file in dir. The
+// issue comes from the file name ("<issue>-<kind>.yaml"), so a file that no
+// longer parses still parks its issue: a human was asked, and the issue
+// stays parked until someone looks at it. A file that parses and names
+// another repository parks nothing here. A missing directory parks nothing.
+func parkedIssues(dir, repo string) (map[int32]bool, error) {
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return map[int32]bool{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read decisions dir: %w", err)
+	}
+	out := map[int32]bool{}
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".yaml" {
+			continue
+		}
+		num, _, ok := strings.Cut(e.Name(), "-")
+		if !ok {
+			continue
+		}
+		n, err := strconv.ParseInt(num, 10, 32)
+		if err != nil {
+			continue
+		}
+		if b, err := os.ReadFile(filepath.Join(dir, e.Name())); err == nil {
+			var d Decision
+			if yaml.Unmarshal(b, &d) == nil && d.Repo != "" && d.Repo != repo {
+				continue
+			}
+		}
+		out[int32(n)] = true
+	}
+	return out, nil
 }

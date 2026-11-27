@@ -39,14 +39,19 @@ type CommitOptions struct {
 
 	// Message is the full, model-authored commit message: subject,
 	// optional body, and any "Fixes #N" trailer. The helper never
-	// modifies it; the DCO sign-off is added by `git commit -s` based
-	// on the Committer identity.
+	// modifies it; when SignOff is true the DCO sign-off is added by
+	// `git commit -s` based on the Committer identity.
 	Message string
 
 	// Author and Committer drive the sign-off. v0.1 sets both to the
 	// same Identity (the meitheal bot user); v0.2 may distinguish.
 	Author    Identity
 	Committer Identity
+
+	// SkipSignOff suppresses the DCO `Signed-off-by` trailer. The zero
+	// value keeps the historical behaviour: `git commit -s`, derived from
+	// Committer. Callers opt out explicitly (see AgentSpec.SignsOffCommits).
+	SkipSignOff bool
 }
 
 // ErrNothingToCommit is returned when the workspace has no staged or
@@ -207,7 +212,12 @@ func Commit(ctx context.Context, opts CommitOptions) (string, error) {
 		return "", ErrNothingToCommit
 	}
 
-	if _, err := runGit(ctx, opts.Workspace, env, "commit", "-s", "-m", opts.Message); err != nil {
+	commitArgs := []string{"commit"}
+	if !opts.SkipSignOff {
+		commitArgs = append(commitArgs, "-s")
+	}
+	commitArgs = append(commitArgs, "-m", opts.Message)
+	if _, err := runGit(ctx, opts.Workspace, env, commitArgs...); err != nil {
 		return "", fmt.Errorf("Commit: commit: %w", err)
 	}
 	sha, err := runGit(ctx, opts.Workspace, env, "rev-parse", "HEAD")

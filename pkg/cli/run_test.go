@@ -26,6 +26,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 // meithealExec runs args through the real `meitheal` root command and returns
@@ -456,10 +458,20 @@ func TestRunCommand_RequiresQueueAndCoderAgent(t *testing.T) {
 	if err == nil {
 		t.Fatal("Execute() = nil, want the required flags to be enforced")
 	}
-	for _, want := range []string{"required flag(s)", `"queue"`, `"coder-agent"`} {
+	for _, want := range []string{"required flag(s)", `"coder-agent"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("err = %v, want it to contain %q", err, want)
 		}
+	}
+	// The queue comes from --queue or from --plan, exactly one of them.
+	_, err = meithealExec(t, "run", "--coder-agent", "coder-metal")
+	if err == nil || !strings.Contains(err.Error(), "queue") || !strings.Contains(err.Error(), "plan") {
+		t.Errorf("err = %v, want it to ask for --queue or --plan", err)
+	}
+	queue, _ := runQueueFixture(t)
+	_, err = meithealExec(t, "run", "--coder-agent", "coder-metal", "--queue", queue, "--plan")
+	if err == nil || !strings.Contains(err.Error(), "queue") || !strings.Contains(err.Error(), "plan") {
+		t.Errorf("err = %v, want --queue and --plan refused together", err)
 	}
 }
 
@@ -522,9 +534,8 @@ func TestRunCommand_UsesTheOptionsItWasGiven(t *testing.T) {
 
 // pflag parses --stall-factor with strconv.ParseFloat, which accepts "0",
 // "-1", "NaN" and "Inf" as readily as "2.5". Every one of those makes IsStalled
-// declare a run stalled on its first watch tick and kill it, which is harmless
-// today only because a live run is refused: the flag has to be refused before
-// the Effects that would act on it are wired up.
+// declare a run stalled on its first watch tick and kill it, so the flag is
+// refused before anything is dispatched.
 //
 // Each case is a valid queue with --dry-run, the one combination that otherwise
 // succeeds and prints a plan, so the error cannot be arriving from anywhere but
@@ -549,25 +560,104 @@ func TestRunCommand_RefusesAStallFactorThatWouldKillEveryRun(t *testing.T) {
 	}
 }
 
-// A live run has no cluster-backed effects behind it yet, so it must say so
-// rather than print a plan and exit 0 as though something ran.
-func TestRunCommand_RefusesALiveRunRatherThanPretending(t *testing.T) {
+// A live run drives Workloads built from the template, so it cannot start
+// without one, and it says so before touching a cluster or printing a plan.
+func TestRunCommand_LiveRunNeedsATemplate(t *testing.T) {
 	queue, _ := runQueueFixture(t)
 	out, err := meithealExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal")
 	if err == nil {
-		t.Fatal("Execute() = nil, want a live run refused while the effects are unwired")
+		t.Fatal("Execute() = nil, want a live run without --template refused")
 	}
-	if !strings.Contains(err.Error(), "--dry-run") {
-		t.Errorf("err = %v, want it to name the flag that does work today", err)
+	if !strings.Contains(err.Error(), "--template") {
+		t.Errorf("err = %v, want it to name --template", err)
 	}
 	if out != "" {
-		t.Errorf("stdout = %q, want no plan printed by a run that refused", out)
+		t.Errorf("stdout = %q, want nothing printed by a run that refused", out)
 	}
 }
 
-// The queue is the human's input and it is where the mistakes are. Both cases
-// run WITHOUT --dry-run: validation has to happen before the run is refused,
-// or `run` answers a broken queue with a message about unwired effects.
+// --gpu-paths sends a cpu-lane branch that touches them to the GPU gate, so a
+// template without one is refused before anything is touched.
+func TestRunCommand_GPUPathsNeedAGPUGate(t *testing.T) {
+	queue, _ := runQueueFixture(t)
+	tpl := filepath.Join(t.TempDir(), "template.yaml")
+	if err := os.WriteFile(tpl, []byte("spec: {repo: example/widgets, gateProfile: {language: generic}}\n"),
+		0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := meithealExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal", "--template", tpl,
+		"--gpu-paths", "crates/gpu/")
+	if err == nil || !strings.Contains(err.Error(), "--gpu-paths") || !strings.Contains(err.Error(), "gpuGate") {
+		t.Fatalf("err = %v, want --gpu-paths without a gpuGate refused", err)
+	}
+}
+
+func TestRunCommand_RefusesBadParallel(t *testing.T) {
+	queue, _ := runQueueFixture(t)
+	for _, p := range []string{"cpu=0", "tpu=1", "cpu"} {
+		_, err := meithealExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal", "--parallel", p)
+		if err == nil || !strings.Contains(err.Error(), "--parallel") {
+			t.Errorf("--parallel %s: err = %v, want it refused by name", p, err)
+		}
+	}
+}
+
+func TestRunCommand_RefusesANonPositiveGateDeadline(t *testing.T) {
+	queue, _ := runQueueFixture(t)
+	for _, v := range []string{"0", "-5"} {
+		_, err := meithealExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal", "--gate-deadline-seconds", v)
+		if err == nil || !strings.Contains(err.Error(), "--gate-deadline-seconds") {
+			t.Errorf("--gate-deadline-seconds %s: err = %v, want it refused by name", v, err)
+		}
+	}
+}
+
+func TestRunCommand_PlanIsNotADryRun(t *testing.T) {
+	_, err := meithealExec(t, "run", "--coder-agent", "coder-metal", "--plan", "--dry-run",
+		"--issues", "52", "--repo", "example/widgets")
+	if err == nil || !strings.Contains(err.Error(), "--dry-run") {
+		t.Errorf("err = %v, want --plan with --dry-run refused", err)
+	}
+}
+
+// --plan takes the planner flags of 'meitheal intents', registered once.
+func TestRunCommand_SharesThePlannerFlagsWithIntents(t *testing.T) {
+	root := NewRootCommand()
+	var run, intents *cobra.Command
+	for _, c := range root.Commands() {
+		switch c.Name() {
+		case "run":
+			run = c
+		case "intents":
+			intents = c
+		}
+	}
+	for _, name := range []string{"repo", "issues", "repo-dir", "out", "planner-url", "planner-model",
+		"planner-kwargs", "planner-timeout", "max-tokens", "rules-file", "gpu-labels", "gpu-paths",
+		"trusted-commenters", "decision-label", "bash-timeout-seconds"} {
+		rf, inf := run.Flags().Lookup(name), intents.Flags().Lookup(name)
+		if rf == nil || inf == nil {
+			t.Errorf("--%s: run has %v, intents has %v; want both", name, rf != nil, inf != nil)
+			continue
+		}
+		if rf.DefValue != inf.DefValue {
+			t.Errorf("--%s defaults differ: run %q, intents %q", name, rf.DefValue, inf.DefValue)
+		}
+	}
+	for _, name := range []string{"template", "parallel", "answerer", "notify-url", "ledger", "plan", "once",
+		"gate-allowed-host-paths", "gate-allowed-priority-classes", "gate-deadline-seconds"} {
+		if run.Flags().Lookup(name) == nil {
+			t.Errorf("run has no --%s", name)
+		}
+	}
+	if f := run.Flags().Lookup("parallel"); f != nil && f.DefValue != "cpu=1,gpu=1" {
+		t.Errorf("--parallel default = %q, want cpu=1,gpu=1", f.DefValue)
+	}
+}
+
+// The queue is the human's input and it is where the mistakes are. Every case
+// runs WITHOUT --dry-run and without --template: the queue is checked first,
+// so a broken queue is not answered with a complaint about another flag.
 func TestRunCommand_ReportsWhatIsWrongWithTheQueue(t *testing.T) {
 	t.Run("a queue that is not there", func(t *testing.T) {
 		missing := filepath.Join(t.TempDir(), "no-queue.yaml")

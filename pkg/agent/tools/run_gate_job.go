@@ -23,6 +23,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	pathpkg "path"
+	"reflect"
 	"regexp"
 	"strings"
 	"text/template"
@@ -35,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	meithealv1alpha1 "github.com/defilantech/meitheal/api/v1alpha1"
 	"github.com/defilantech/meitheal/pkg/agent"
 	"github.com/defilantech/meitheal/pkg/agent/oai"
 
@@ -197,6 +200,16 @@ type RunGateJobToolConfig struct {
 	// self-hosted mirrors.
 	CloneURLBase string
 
+	// AllowedHostPaths lists host directories a gate profile's placement may
+	// mount (the path must equal or sit under an entry). Empty allows none.
+	// Set from --gate-allowed-host-paths.
+	AllowedHostPaths []string
+
+	// AllowedPriorityClasses lists the priority classes a gate profile's
+	// placement may request. Empty allows none. Set from
+	// --gate-allowed-priority-classes.
+	AllowedPriorityClasses []string
+
 	// ActiveDeadlineSeconds bounds wall-clock per run. Default 1800
 	// (30 min) matches the autofix pipeline's tolerance.
 	ActiveDeadlineSeconds int32
@@ -293,7 +306,11 @@ type runGateJobArgs struct {
 	// order; each is a check and a non-zero exit fails the gate. Ignored
 	// unless Generic is true.
 	Commands []string `json:"commands,omitempty"`
-	TaskRef  struct {
+	// Placement is deliberately NOT an arg: a model-visible placement would let
+	// a model-driven Agent mount host paths or tolerate any taint. Execute
+	// rejects a `placement` key and reads the gate profile's placement from
+	// the trusted context set by the deterministic executor.
+	TaskRef struct {
 		Namespace string `json:"namespace"`
 		Name      string `json:"name"`
 	} `json:"taskRef"`
@@ -345,6 +362,15 @@ func (t *RunGateJobTool) Execute(ctx context.Context, args json.RawMessage) (*ag
 	if err := json.Unmarshal(args, &a); err != nil {
 		return nil, fmt.Errorf("run_gate_job: bad args: %w", err)
 	}
+	var rawKeys map[string]json.RawMessage
+	if err := json.Unmarshal(args, &rawKeys); err == nil {
+		for k := range rawKeys {
+			if strings.EqualFold(k, "placement") {
+				return t.errorResult("", "placement is not accepted from tool arguments; "+
+					"it is honored only from the gate profile on the deterministic gate path"), nil
+			}
+		}
+	}
 	if a.Repo == "" {
 		return nil, errors.New("run_gate_job: repo is required")
 	}
@@ -392,6 +418,9 @@ func (t *RunGateJobTool) Execute(ctx context.Context, args json.RawMessage) (*ag
 		HunkCheck:               a.HunkCheck,
 		Generic:                 a.Generic,
 		Commands:                a.Commands,
+		Placement:               agent.GatePlacementFromContext(ctx),
+		AllowedHostPaths:        cfg.AllowedHostPaths,
+		AllowedPriorityClasses:  cfg.AllowedPriorityClasses,
 		PVCName:                 cfg.PVCName,
 		ActiveDeadlineSeconds:   cfg.ActiveDeadlineSeconds,
 		TTLSecondsAfterFinished: cfg.TTLSecondsAfterFinished,
@@ -612,11 +641,18 @@ type rendererInput struct {
 	HelmUnittestVersion string
 	// JQVersion is non-empty only when a check that needs jq was requested;
 	// the template installs a pinned jq when it is set.
-	JQVersion               string
-	BiteCheck               bool
-	HunkCheck               bool
-	Generic                 bool
-	Commands                []string
+	JQVersion string
+	BiteCheck bool
+	HunkCheck bool
+	Generic   bool
+	Commands  []string
+	// Placement, when non-nil, is applied to the rendered Job after the
+	// default pod spec is built. Nil leaves the Job untouched.
+	Placement *meithealv1alpha1.GatePlacement
+	// AllowedHostPaths and AllowedPriorityClasses bound what Placement may
+	// ask for; see validateGatePlacement. Empty means none allowed.
+	AllowedHostPaths        []string
+	AllowedPriorityClasses  []string
 	PVCName                 string
 	ActiveDeadlineSeconds   int32
 	TTLSecondsAfterFinished int32
@@ -661,7 +697,171 @@ func renderGateJob(in rendererInput) (*batchv1.Job, error) {
 	if err := yaml.Unmarshal(buf.Bytes(), &job); err != nil {
 		return nil, fmt.Errorf("unmarshal job: %w", err)
 	}
+	if in.Placement != nil && len(job.Spec.Template.Spec.Containers) > 0 {
+		var reserved []string
+		for _, e := range job.Spec.Template.Spec.Containers[0].Env {
+			reserved = append(reserved, e.Name)
+		}
+		if err := validateGatePlacement(in.Placement, in.AllowedHostPaths, in.AllowedPriorityClasses, reserved); err != nil {
+			return nil, err
+		}
+	}
+	applyGatePlacement(&job, in.Placement)
 	return &job, nil
+}
+
+// validateGatePlacement fails closed on a placement that could escape the gate
+// pod's intended sandbox. The gate pod clones and runs branch code, so every
+// pass-through field is constrained:
+//   - Env: no ValueFrom (no Secret/ConfigMap/field reads) and no name that the
+//     gate container already sets (reservedEnv).
+//   - Volumes: only HostPath (under an allowedHostPaths entry, no "..") or
+//     PersistentVolumeClaim (ReadOnly).
+//   - VolumeMounts: must name a placement volume and be ReadOnly.
+//   - Tolerations: Key must be non-empty (an empty key tolerates every taint).
+//   - PriorityClassName: must be in allowedPriorityClasses when set.
+//   - Resources: Claims must be empty.
+//
+// Empty allowlists allow nothing.
+func validateGatePlacement(
+	p *meithealv1alpha1.GatePlacement, allowedHostPaths, allowedPriorityClasses, reservedEnv []string,
+) error {
+	if p == nil {
+		return nil
+	}
+	reserved := make(map[string]bool, len(reservedEnv))
+	for _, n := range reservedEnv {
+		reserved[n] = true
+	}
+	for _, e := range p.Env {
+		if e.ValueFrom != nil {
+			return fmt.Errorf("placement env %q: valueFrom is not allowed", e.Name)
+		}
+		if reserved[e.Name] {
+			return fmt.Errorf("placement env %q collides with an env var the gate container already sets", e.Name)
+		}
+	}
+	volumes := make(map[string]bool, len(p.Volumes))
+	for _, v := range p.Volumes {
+		volumes[v.Name] = true
+		if err := validateGateVolume(v, allowedHostPaths); err != nil {
+			return err
+		}
+	}
+	for _, m := range p.VolumeMounts {
+		if !volumes[m.Name] {
+			return fmt.Errorf("placement volumeMount %q does not name a placement volume", m.Name)
+		}
+		if !m.ReadOnly {
+			return fmt.Errorf("placement volumeMount %q must be readOnly", m.Name)
+		}
+	}
+	for i, t := range p.Tolerations {
+		if t.Key == "" {
+			return fmt.Errorf("placement toleration %d: key must be non-empty", i)
+		}
+	}
+	if p.PriorityClassName != "" && !containsString(allowedPriorityClasses, p.PriorityClassName) {
+		return fmt.Errorf("placement priorityClassName %q is not in the allowed list", p.PriorityClassName)
+	}
+	if p.Resources != nil && len(p.Resources.Claims) > 0 {
+		return errors.New("placement resources.claims is not supported")
+	}
+	return nil
+}
+
+func validateGateVolume(v corev1.Volume, allowedHostPaths []string) error {
+	src := v.VolumeSource
+	hostPath, pvc := src.HostPath, src.PersistentVolumeClaim
+	src.HostPath, src.PersistentVolumeClaim = nil, nil
+	if !reflect.DeepEqual(src, corev1.VolumeSource{}) || (hostPath == nil) == (pvc == nil) {
+		return fmt.Errorf("placement volume %q: only one hostPath or persistentVolumeClaim source is allowed", v.Name)
+	}
+	if pvc != nil {
+		if !pvc.ReadOnly {
+			return fmt.Errorf("placement volume %q: persistentVolumeClaim must be readOnly", v.Name)
+		}
+		return nil
+	}
+	if !hostPathAllowed(hostPath.Path, allowedHostPaths) {
+		return fmt.Errorf("placement volume %q: hostPath %q is not under an allowed path", v.Name, hostPath.Path)
+	}
+	return nil
+}
+
+func hostPathAllowed(path string, allowed []string) bool {
+	if path == "" || !strings.HasPrefix(path, "/") {
+		return false
+	}
+	for _, seg := range strings.Split(path, "/") {
+		if seg == ".." {
+			return false
+		}
+	}
+	clean := pathpkg.Clean(path)
+	for _, a := range allowed {
+		a = pathpkg.Clean(a)
+		if clean == a || strings.HasPrefix(clean, strings.TrimSuffix(a, "/")+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// applyGatePlacement layers a GatePlacement over the default gate pod spec.
+// NodeSelector, tolerations and priority class are set on the pod; resources
+// are merged by resource name over the container defaults; env, volumes and
+// mounts are appended. A nil placement is a no-op.
+func applyGatePlacement(job *batchv1.Job, p *meithealv1alpha1.GatePlacement) {
+	if p == nil || len(job.Spec.Template.Spec.Containers) == 0 {
+		return
+	}
+	pod := &job.Spec.Template.Spec
+	c := &pod.Containers[0]
+
+	if len(p.NodeSelector) > 0 {
+		pod.NodeSelector = make(map[string]string, len(p.NodeSelector))
+		for k, v := range p.NodeSelector {
+			pod.NodeSelector[k] = v
+		}
+	}
+	if len(p.Tolerations) > 0 {
+		pod.Tolerations = append(pod.Tolerations, p.Tolerations...)
+	}
+	if p.PriorityClassName != "" {
+		pod.PriorityClassName = p.PriorityClassName
+	}
+	if p.Resources != nil {
+		c.Resources.Requests = mergeResourceList(c.Resources.Requests, p.Resources.Requests)
+		c.Resources.Limits = mergeResourceList(c.Resources.Limits, p.Resources.Limits)
+	}
+	c.Env = append(c.Env, p.Env...)
+	pod.Volumes = append(pod.Volumes, p.Volumes...)
+	c.VolumeMounts = append(c.VolumeMounts, p.VolumeMounts...)
+}
+
+// mergeResourceList returns base with every entry of over applied on top.
+func mergeResourceList(base, over corev1.ResourceList) corev1.ResourceList {
+	if len(over) == 0 {
+		return base
+	}
+	out := make(corev1.ResourceList, len(base)+len(over))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range over {
+		out[k] = v.DeepCopy()
+	}
+	return out
 }
 
 // applyConfigDefaults fills in every empty field with the documented

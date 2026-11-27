@@ -19,6 +19,7 @@ package controller
 import (
 	"fmt"
 	"strings"
+	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -1471,4 +1472,53 @@ func markVerifySkipped(workloadName string, issue int32) {
 	v.Status.Phase = meithealv1alpha1.AgenticTaskPhaseSucceeded
 	v.Status.Verdict = meithealv1alpha1.AgenticTaskVerdictSkipped
 	Expect(k8sClient.Status().Patch(ctx, &v, patch)).To(Succeed())
+}
+
+func reviseBatchWorkload(revise bool) *meithealv1alpha1.Workload {
+	w := &meithealv1alpha1.Workload{}
+	w.Name = "wl"
+	w.Spec.Repo = "defilantech/dluth"
+	w.Spec.Issues = []int32{7, 9}
+	w.Spec.CoderAgentRef = &corev1.LocalObjectReference{Name: "coder"}
+	w.Spec.ReviseExistingBranch = revise
+	return w
+}
+
+func codeSteps(steps []meithealv1alpha1.PipelineStep) []meithealv1alpha1.PipelineStep {
+	var out []meithealv1alpha1.PipelineStep
+	for _, s := range steps {
+		if s.Kind == meithealv1alpha1.AgenticTaskKindIssueFix {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func TestIssueBatch_ReviseExistingBranch_SetsRevisePayload(t *testing.T) {
+	cs := codeSteps(synthesizeIssueBatch(reviseBatchWorkload(true)))
+	if len(cs) != 2 {
+		t.Fatalf("got %d code steps, want 2", len(cs))
+	}
+	for i, n := range []int32{7, 9} {
+		p := cs[i].Payload
+		want := fmt.Sprintf("meitheal/wl/issue-%d", n)
+		if p.Branch != want || p.ReviseFromBranch != want {
+			t.Errorf("issue %d: branch=%q reviseFrom=%q, want both %q", n, p.Branch, p.ReviseFromBranch, want)
+		}
+		if p.BranchStrategy != meithealv1alpha1.BranchStrategyRebase {
+			t.Errorf("issue %d: strategy=%q, want rebase", n, p.BranchStrategy)
+		}
+		if !p.AllowOverwrite {
+			t.Errorf("issue %d: AllowOverwrite=false, want true", n)
+		}
+	}
+}
+
+func TestIssueBatch_ReviseExistingBranchUnset_PayloadUnchanged(t *testing.T) {
+	for _, s := range codeSteps(synthesizeIssueBatch(reviseBatchWorkload(false))) {
+		p := s.Payload
+		if p.ReviseFromBranch != "" || p.BranchStrategy != "" || p.AllowOverwrite {
+			t.Errorf("%s: revise fields set when unset: %q %q %v", s.Name, p.ReviseFromBranch, p.BranchStrategy, p.AllowOverwrite)
+		}
+	}
 }

@@ -152,7 +152,11 @@ func CreateBranchFromUpstream(ctx context.Context, opts UpstreamBranchOptions) e
 
 	env := baseEnv()
 	if opts.Auth != nil {
-		env = append(env, opts.Auth.Env()...)
+		authEnv, aerr := opts.Auth.Env()
+		if aerr != nil {
+			return fmt.Errorf("resolve git token: %w", aerr)
+		}
+		env = append(env, authEnv...)
 	}
 
 	// Fetch the current upstream base into FETCH_HEAD. The fork clone is full
@@ -209,7 +213,11 @@ func CreateBranchFromRemoteRef(ctx context.Context, opts RemoteRefBranchOptions)
 
 	env := baseEnv()
 	if opts.Auth != nil {
-		env = append(env, opts.Auth.Env()...)
+		authEnv, aerr := opts.Auth.Env()
+		if aerr != nil {
+			return false, fmt.Errorf("resolve git token: %w", aerr)
+		}
+		env = append(env, authEnv...)
 	}
 
 	// Probe first: ls-remote exits 0 with empty output for a missing
@@ -303,7 +311,11 @@ func RebaseOntoBase(ctx context.Context, opts RebaseOntoBaseOptions) error {
 
 	env := baseEnv()
 	if opts.Auth != nil {
-		env = append(env, opts.Auth.Env()...)
+		authEnv, aerr := opts.Auth.Env()
+		if aerr != nil {
+			return fmt.Errorf("resolve git token: %w", aerr)
+		}
+		env = append(env, authEnv...)
 	}
 	if _, err := runGit(ctx, opts.Workspace, env, "fetch", opts.UpstreamURL, base); err != nil {
 		return fmt.Errorf("RebaseOntoBase: fetch %s %s: %w", opts.UpstreamURL, base, err)

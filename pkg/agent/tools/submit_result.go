@@ -17,6 +17,7 @@ limitations under the License.
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -98,11 +99,61 @@ func lastSentenceEnd(s string) int {
 // Phase D repo helpers use to push the branch.
 type SubmitResultTool struct{}
 
+// Concern is a structured issue an agent raises alongside its verdict. A
+// run loop reads status.result.extra.concerns and parks the issue for a
+// human when any is present.
+type Concern struct {
+	Kind  string   `json:"kind"`
+	Text  string   `json:"text"`
+	Files []string `json:"files,omitempty"`
+}
+
+// concernKindNovelty marks a change that would copy code, text or design
+// from another inference engine or kernel library.
+const concernKindNovelty = "novelty"
+
+// MalformedConcernText is the text of the concern that replaces an
+// extra.concerns value the model sent in a shape a run loop cannot read.
+const MalformedConcernText = "malformed concern from the model"
+
+// malformedConcernsKey keeps the model's unreadable extra.concerns value as
+// evidence once it has been replaced.
+const malformedConcernsKey = "malformedConcerns"
+
+// normalizeExtraConcerns reads a model-supplied extra.concerns value. A list
+// of {kind: novelty, text, files} objects is returned as is (an empty list or
+// null as none); anything else is a concern too, only an unreadable one, so
+// it becomes one novelty concern with MalformedConcernText and ok is false.
+// A run loop parks on any concern, so a malformed one must never read as
+// none (fail closed).
+func normalizeExtraConcerns(v any) (list []Concern, ok bool) {
+	if v == nil {
+		return nil, true
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return []Concern{{Kind: concernKindNovelty, Text: MalformedConcernText}}, false
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var cs []Concern
+	if err := dec.Decode(&cs); err != nil {
+		return []Concern{{Kind: concernKindNovelty, Text: MalformedConcernText}}, false
+	}
+	for _, c := range cs {
+		if c.Kind != concernKindNovelty {
+			return []Concern{{Kind: concernKindNovelty, Text: MalformedConcernText}}, false
+		}
+	}
+	return cs, true
+}
+
 type submitResultArgs struct {
 	Verdict       string         `json:"verdict"`
 	Summary       string         `json:"summary"`
 	CommitMessage string         `json:"commit_message"`
 	Extra         map[string]any `json:"extra"`
+	Concerns      []Concern      `json:"concerns"`
 }
 
 // Name returns the tool name as advertised to the model.
@@ -124,7 +175,18 @@ func (SubmitResultTool) Schema() oai.ToolSchemaDef {
       "Full commit message: subject, body, and Fixes #N if applicable. The executor commits your edits with it."},
   "extra": {"type": "object",
     "description":
-      "Structured extra fields surfaced in status.result.extra. Reviewers: set prBody for the untruncated PR body."}
+      "Structured extra fields surfaced in status.result.extra. Reviewers: set prBody for the untruncated PR body."},
+"concerns": {"type": "array",
+    "description":
+      "Set a concern of kind novelty if the change would copy code, text or design ` +
+			`from another inference engine or kernel library.",
+    "items": {"type": "object",
+      "properties": {
+        "kind":  {"type": "string", "enum": ["novelty"]},
+        "text":  {"type": "string"},
+        "files": {"type": "array", "items": {"type": "string"}}
+      },
+      "required": ["kind", "text"]}}
 },
 "required": ["verdict", "summary", "commit_message"]
 }`),
@@ -158,6 +220,28 @@ func (SubmitResultTool) Execute(_ context.Context, args json.RawMessage) (*agent
 	// depend on whether the model bothered to send the optional field.
 	if a.Extra == nil {
 		a.Extra = map[string]any{}
+	}
+	for _, c := range a.Concerns {
+		if c.Kind != concernKindNovelty {
+			return nil, fmt.Errorf("submit_result: invalid concern kind %q (must be %q)", c.Kind, concernKindNovelty)
+		}
+	}
+	// extra is free-form, so the model can put concerns there too, in any
+	// shape. extra.concerns is what a run loop reads: it always leaves here
+	// as a list of Concern, the model's own list first.
+	var concerns []Concern
+	if v, present := a.Extra["concerns"]; present {
+		list, ok := normalizeExtraConcerns(v)
+		if !ok {
+			a.Extra[malformedConcernsKey] = v
+		}
+		concerns = list
+	}
+	concerns = append(concerns, a.Concerns...)
+	if len(concerns) > 0 {
+		a.Extra["concerns"] = concerns
+	} else {
+		delete(a.Extra, "concerns")
 	}
 	return &agent.ToolResult{
 		Terminal:      true,

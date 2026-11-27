@@ -407,18 +407,26 @@ func synthesizeIssueBatch(w *meithealv1alpha1.Workload) []meithealv1alpha1.Pipel
 	for _, n := range w.Spec.Issues {
 		codeName := fmt.Sprintf("code-%d", n)
 		branch := fmt.Sprintf("meitheal/%s/issue-%d", w.Name, n)
+		codePayload := meithealv1alpha1.AgenticTaskPayload{
+			Repo:           w.Spec.Repo,
+			Issue:          n,
+			Branch:         branch,
+			AllowOverwrite: w.Spec.AllowOverwrite,
+			PromptPrefix:   intentPromptPrefix(w),
+		}
+		if w.Spec.ReviseExistingBranch {
+			// Resume the branch an earlier run pushed and replay it onto
+			// the current base, as the in-review fix iteration does.
+			codePayload.ReviseFromBranch = branch
+			codePayload.BranchStrategy = meithealv1alpha1.BranchStrategyRebase
+			codePayload.AllowOverwrite = true
+		}
 		steps = append(steps,
 			meithealv1alpha1.PipelineStep{
 				Name:     codeName,
 				Kind:     meithealv1alpha1.AgenticTaskKindIssueFix,
 				AgentRef: *w.Spec.CoderAgentRef,
-				Payload: meithealv1alpha1.AgenticTaskPayload{
-					Repo:           w.Spec.Repo,
-					Issue:          n,
-					Branch:         branch,
-					AllowOverwrite: w.Spec.AllowOverwrite,
-					PromptPrefix:   intentPromptPrefix(w),
-				},
+				Payload:  codePayload,
 			},
 		)
 		// Reviews hang off the verify gate when one is configured, and
