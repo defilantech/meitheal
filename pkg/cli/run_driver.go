@@ -45,6 +45,16 @@ type WatchResult struct {
 	// failure (a coder or gate task failing, a revision that never got its
 	// review) leaves it false.
 	ReviewRejected bool
+	// FailureReason, set only with WorkloadFailed, is the park reason the
+	// children's terminal outcomes give (explainFailure, run_failure.go):
+	// which review round said NO-GO and what followed, or which gate failed.
+	// It is public, so it names no task and quotes no task text. Empty
+	// leaves the reason to ReviewRejected.
+	FailureReason string
+	// FailureEvidence, set only with WorkloadFailed, holds the task
+	// summaries behind FailureReason ("review", "coder", "gate"), capped. It
+	// goes into the decision's evidence, never the public comment.
+	FailureEvidence map[string]string
 	// Concern is the first structured concern text from any child task, ""
 	// when none.
 	Concern string
@@ -214,6 +224,9 @@ func driveLoop(
 	// the name Dispatch reported.
 	branch := taskBranch(plannedWorkloadName(item.Issue), item.Issue)
 	var workload, evidence string
+	// failEvidence is the last Watch's account of a failed run (see
+	// WatchResult.FailureEvidence); each Watch replaces it.
+	var failEvidence map[string]string
 	// attempts drives NextStage's one-pass rule: a dirty verify at attempts 1
 	// goes to feedback, at maxAttempts it escalates. case StageDispatch SETS
 	// it to the attempt Dispatch reports (2 when a restarted loop resumes a
@@ -291,7 +304,9 @@ func driveLoop(
 			facts.Stalled = res.Stalled
 			facts.WorkloadFailed = res.WorkloadFailed
 			facts.ReviewRejected = res.ReviewRejected
+			facts.FailureReason = res.FailureReason
 			facts.Concern = res.Concern
+			failEvidence = res.FailureEvidence
 		case StageVerify:
 			clean, ev, err := e.Verify(ctx, workload, branch)
 			if err != nil {
@@ -325,18 +340,7 @@ func driveLoop(
 				// same park time the file records.
 				Opened: time.Now().UTC(),
 			}
-			// Only when verify actually produced some: a stall is killed
-			// before verify runs, and an empty "verify" key would claim a
-			// judgment that nothing made.
-			if evidence != "" {
-				d.Evidence = map[string]string{"verify": evidence}
-			}
-			if facts.Concern != "" {
-				if d.Evidence == nil {
-					d.Evidence = map[string]string{}
-				}
-				d.Evidence["concern"] = facts.Concern
-			}
+			d.Evidence = parkEvidence(evidence, facts.Concern, failEvidence)
 			// A park that could not be written is not a park. Returning
 			// StageParked here would tell the caller a human has been asked
 			// when there is nothing on disk to answer.
@@ -355,4 +359,27 @@ func driveLoop(
 		}
 		stage = t.Next
 	}
+}
+
+// parkEvidence assembles a park's evidence: the verify evidence, a task's
+// concern, and the watcher's account of a failed run. The keys the driver
+// writes itself win over the watcher's. Nil when there is none.
+func parkEvidence(verify, concern string, failEvidence map[string]string) map[string]string {
+	ev := map[string]string{}
+	for k, v := range failEvidence {
+		ev[k] = v
+	}
+	// Only when verify actually produced some: a stall is killed before
+	// verify runs, and an empty "verify" key would claim a judgment that
+	// nothing made.
+	if verify != "" {
+		ev["verify"] = verify
+	}
+	if concern != "" {
+		ev["concern"] = concern
+	}
+	if len(ev) == 0 {
+		return nil
+	}
+	return ev
 }

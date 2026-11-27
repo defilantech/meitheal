@@ -451,6 +451,45 @@ func TestDrive_FailedWorkloadParksEscalateWithoutVerify(t *testing.T) {
 	}
 }
 
+// The park carries the watcher's account of the failure: its reason, and its
+// evidence beside (not over) the keys the driver writes itself.
+func TestDrive_FailedWorkloadParksWithTheWatchersExplanation(t *testing.T) {
+	dir := t.TempDir()
+	reason := "review returned NO-GO in round 2 and the coder could not address it"
+	e := &fakeEffects{watch: WatchResult{
+		WorkloadFailed:  true,
+		Concern:         "",
+		FailureReason:   reason,
+		FailureEvidence: map[string]string{"review": "round 2 findings", "coder": "Cannot address the review"},
+	}}
+	if got := drive(t, e, dir); got != StageParked {
+		t.Fatalf("end stage = %q, want %q", got, StageParked)
+	}
+	d := onlyDecision(t, dir)
+	if d.Kind != ParkEscalate || d.Reason != reason {
+		t.Errorf("decision = (%q,%q), want (escalate,%q)", d.Kind, d.Reason, reason)
+	}
+	if d.Evidence["review"] != "round 2 findings" || d.Evidence["coder"] != "Cannot address the review" {
+		t.Errorf("Evidence = %q, want the review and coder summaries", d.Evidence)
+	}
+	if len(e.notified) != 1 || e.notified[0].Reason != reason {
+		t.Errorf("notified = %+v, want one notice with the reason", e.notified)
+	}
+
+	// A concern is still the park, and its key is not overwritten.
+	dir = t.TempDir()
+	e = &fakeEffects{watch: WatchResult{
+		WorkloadFailed: true, Concern: "the spec contradicts itself", FailureReason: reason,
+		FailureEvidence: map[string]string{"concern": "not this", "coder": "c"},
+	}}
+	drive(t, e, dir)
+	d = onlyDecision(t, dir)
+	if d.Kind != ParkNeedsDecision ||
+		d.Evidence["concern"] != "the spec contradicts itself" || d.Evidence["coder"] != "c" {
+		t.Errorf("concern park = (%q, %q)", d.Kind, d.Evidence)
+	}
+}
+
 func TestDrive_EveryParkNotifies(t *testing.T) {
 	cases := []struct {
 		name     string

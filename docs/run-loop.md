@@ -109,9 +109,28 @@ by `meitheal decisions`.
 
 | Kind | When |
 |---|---|
-| `escalate` | The coder stalled; review did not converge (the run ended on a review requesting changes); the run failed before a review verdict (any other failed Workload); the gate failed again after the feedback pass; the GPU node stayed busy; the loop lost track of the issue's run; the loop kept failing on the issue. |
+| `escalate` | The coder stalled; the Workload failed (see below); the gate failed again after the feedback pass; the GPU node stayed busy; the loop lost track of the issue's run; the loop kept failing on the issue. |
 | `needs-decision` | A task raised a concern (one the loop cannot read, or with no text, counts); the planner found a decision only a maintainer can make, its answer was unreadable, or its call failed; the issue carries the `--decision-label` label. |
 | `needs-split` | The planner judged the issue too big for one run. |
+
+A failed Workload's reason comes from its tasks' outcomes, judged by the
+newest round (fix iteration):
+
+| The newest round | Reason |
+|---|---|
+| The fix iteration's coder answered NO-GO | review returned NO-GO in round *k* and the coder could not address it |
+| The fix iteration's coder failed some other way | review returned NO-GO in round *k* and the coder's fix attempt failed |
+| A reviewer said NO-GO, and the Workload's `maxReviewIterations` was used up | review returned NO-GO after *k* rounds (iteration cap) |
+| A reviewer said NO-GO below the cap, and no fix iteration followed | review returned NO-GO in round *k* and no fix iteration followed |
+| The gate returned `GATE-FAIL` or `GATE-ERROR` | the gate returned GATE-FAIL on the coder's first attempt (or: on the coder's fix for review round *k*) |
+| The reviewer of a fix iteration returned no verdict | review returned NO-GO in round *k* and the next review did not return a verdict |
+| The first coder failed or declined, or nothing above applies | the run failed before a review verdict |
+
+A coder-escalation attempt (`code-<n>-esc`), once it exists, is the round
+judged, and its reasons say "on the escalated coder's attempt". The
+decision's evidence carries the latest reviewer summary (`review`), the
+coder's last summary (`coder`) and, for a gate failure, the gate's (`gate`),
+each capped at 2 KiB; none of them reaches the issue comment.
 
 Every park is announced once: a one-line comment on the issue (the reason,
 and the draft PR link when there is one; never logs or evidence), the

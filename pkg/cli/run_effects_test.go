@@ -922,7 +922,7 @@ func TestWatch_CompletedIsCleanAndMissingWorkloadErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res != (WatchResult{}) {
+	if !reflect.DeepEqual(res, WatchResult{}) {
 		t.Fatalf("Completed Workload with no tasks: got %+v, want zero", res)
 	}
 	if _, err := e.Watch(context.Background(), "wl-missing", time.Hour, 2.5); err == nil {
