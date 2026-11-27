@@ -56,6 +56,17 @@ func plannedAnswer(lane string, files ...string) string {
 	return b.String()
 }
 
+// namingAnswer is plannedAnswer with a step naming each header file, so an
+// intent whose header lists files other than src/lib.rs passes the lint.
+func namingAnswer(lane string, files ...string) string {
+	var b strings.Builder
+	b.WriteString(plannedAnswer(lane, files...))
+	for i, f := range files {
+		fmt.Fprintf(&b, "%d. Edit `%s`.\n", i+1, f)
+	}
+	return b.String()
+}
+
 func TestParsePlanVerdict(t *testing.T) {
 	ok := []struct {
 		name string
@@ -481,7 +492,7 @@ func TestPlanIssues_LaneRule(t *testing.T) {
 			e := newPlanEnv(t)
 			e.cfg = tc.cfg
 			f := newPlanForge(map[int32]IssueDetail{52: {Title: "t", Body: "b", Labels: tc.labels}})
-			s := &stubPlanner{answers: map[int32]string{52: plannedAnswer(tc.lane, tc.files...)}}
+			s := &stubPlanner{answers: map[int32]string{52: namingAnswer(tc.lane, tc.files...)}}
 			q := e.plan(t, f, s.call, 52)
 			if len(q.Items) != 1 || q.Items[0].Lane != tc.want {
 				t.Fatalf("queue = %+v, want lane %s", q.Items, tc.want)
@@ -498,9 +509,9 @@ func TestPlanIssues_SharedFileOrders(t *testing.T) {
 		54: {Title: "t", Body: "b"},
 	})
 	s := &stubPlanner{answers: map[int32]string{
-		52: plannedAnswer("cpu", "crates/dluth-serve/src/server.rs", "src/lib.rs"),
-		53: plannedAnswer("cpu", "README.md", "crates/dluth-serve/src/server.rs"),
-		54: plannedAnswer("cpu", "src/other.rs"),
+		52: namingAnswer("cpu", "crates/dluth-serve/src/server.rs", "src/lib.rs"),
+		53: namingAnswer("cpu", "README.md", "crates/dluth-serve/src/server.rs"),
+		54: namingAnswer("cpu", "src/other.rs"),
 	}}
 	q := e.plan(t, f, s.call, 52, 53, 54)
 	if len(q.Items) != 3 {
@@ -1189,7 +1200,7 @@ func TestPlanIssues_MaintainerDecisionReachesThePrompt(t *testing.T) {
 		53: {Title: "t", Body: "b"},
 	})
 	s := &stubPlanner{answers: map[int32]string{
-		52: plannedAnswer("cpu", "src/lib.rs"), 53: plannedAnswer("cpu", "README.md"),
+		52: plannedAnswer("cpu", "src/lib.rs"), 53: namingAnswer("cpu", "README.md"),
 	}}
 	q := e.plan(t, f, s.call, 52, 53)
 	if len(q.Items) != 2 {

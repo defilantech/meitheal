@@ -113,7 +113,7 @@ by `meitheal decisions`.
 | Kind | When |
 |---|---|
 | `escalate` | The coder stalled; the Workload failed (see below); the gate failed again after the feedback pass; the GPU node stayed busy; the loop lost track of the issue's run; the loop kept failing on the issue. |
-| `needs-decision` | A task raised a concern (one the loop cannot read, or with no text, counts); the planner found a decision only a maintainer can make, its answer was unreadable, or its call failed; the issue carries the `--decision-label` label. |
+| `needs-decision` | A task raised a concern (one the loop cannot read, or with no text, counts); the planner found a decision only a maintainer can make, its answer was unreadable, its call failed, or its intent failed the lint (it names a path the repository does not have, or its files list holds an existing file the intent never mentions); the issue carries the `--decision-label` label. |
 | `needs-split` | The planner judged the issue too big for one run. |
 
 A failed Workload's reason comes from its tasks' outcomes, judged by the
