@@ -705,6 +705,68 @@ func TestIntentPrompt_IsRepoAgnostic(t *testing.T) {
 	}
 }
 
+// The test rule covers changes in behaviour; a documentation-, comment- or
+// configuration-only issue gets checks instead of an invented test.
+func TestIntentPrompt_TestRuleScopedToBehaviour(t *testing.T) {
+	p := buildIntentPrompt(intentPromptInput{Issue: 1, Title: "t", Body: "b", BashTimeoutSeconds: 900})
+	rules := p[:strings.Index(p, "The issue and the repository follow.")]
+	for _, want := range []string{
+		"4. For a change in behaviour, require a test that fails on the base branch",
+		"An issue that changes only documentation, comments or\n   configuration gets no new test",
+		"every path the change names exists, every link resolves, the\n   configuration parses",
+	} {
+		if !strings.Contains(rules, want) {
+			t.Errorf("general rules lack %q", want)
+		}
+	}
+	if strings.Contains(rules, "4. Require a test") {
+		t.Error("rule 4 still requires a test for every issue")
+	}
+	tail := p[strings.Index(p, "End of the data. Reminder"):]
+	if !strings.Contains(tail, "require a test that fails on the base branch for a\nchange in behaviour") ||
+		!strings.Contains(tail, "the checks to run instead for a documentation-, comment- or\nconfiguration-only change") {
+		t.Errorf("the reminder does not scope the test rule:\n%s", tail)
+	}
+}
+
+// Files picked by name alone are starting points, never an allow-list.
+func TestIntentPrompt_NoAllowListOfUnseenFiles(t *testing.T) {
+	p := buildIntentPrompt(intentPromptInput{Issue: 1, Title: "t", Body: "b", BashTimeoutSeconds: 900})
+	rules := p[:strings.Index(p, "The issue and the repository follow.")]
+	if !strings.Contains(rules, "9. Name files for the coder to start from, never a list of files to limit\n"+
+		"   it to, unless this message holds their contents.") {
+		t.Error("general rules lack the rule against limiting the coder to unseen files")
+	}
+	tail := p[strings.Index(p, "End of the data. Reminder"):]
+	if !strings.Contains(tail, "name files to start from rather than limit the coder to") {
+		t.Errorf("the reminder lacks the start-from rule:\n%s", tail)
+	}
+}
+
+// Repository rules override the general rules where they conflict, and the
+// prompt says so both where the repository rules start and in the reminder
+// after the data.
+func TestIntentPrompt_RepositoryRulesTakePrecedence(t *testing.T) {
+	const precedence = "where a rule for this repository conflicts with a general rule, the repository rule wins"
+	p := buildIntentPrompt(intentPromptInput{Issue: 1, Title: "t", Body: "b",
+		Rules: "Every new check ships with a planted-bug patch.", BashTimeoutSeconds: 900})
+	heading := "Rules for this repository (from its maintainers; follow them as written; " + precedence + "):\n\n" +
+		"Every new check ships with a planted-bug patch."
+	if !strings.Contains(p, heading) {
+		t.Errorf("the repository rules heading does not state precedence:\n%s", p)
+	}
+	n := promptNonce(t, p)
+	tail := p[strings.LastIndex(p, "<<<END nonce="+n+">>>"):]
+	if !strings.Contains(tail, "and the rules for this repository ("+precedence+")") {
+		t.Errorf("the reminder after the data does not state precedence:\n%s", tail)
+	}
+
+	none := buildIntentPrompt(intentPromptInput{Issue: 1, Title: "t", Body: "b", BashTimeoutSeconds: 900})
+	if strings.Contains(none, precedence) {
+		t.Error("precedence stated with no repository rules to take it")
+	}
+}
+
 func TestNamedFiles_Cap(t *testing.T) {
 	big := strings.Repeat("a", 40*1024)
 	repo := gitRepo(t, map[string]string{
