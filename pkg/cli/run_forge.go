@@ -29,10 +29,12 @@ type IssueComment struct {
 }
 
 // IssueDetail is an issue as the planner reads it: title, body, labels and
-// the full comment thread.
+// the full comment thread, and its state ("open" or "closed"), which
+// preflight reads.
 type IssueDetail struct {
 	Title    string
 	Body     string
+	State    string
 	Labels   []string
 	Comments []IssueComment
 }
@@ -55,5 +57,13 @@ type RunForge interface {
 	// LabelPR adds label to the open PR for branch. It is an error when no
 	// open PR exists.
 	LabelPR(ctx context.Context, repo, branch, label string) error
+	// UnlabelPR removes label from the open PR for branch. A label the PR
+	// does not carry is not an error; no open PR is.
+	UnlabelPR(ctx context.Context, repo, branch, label string) error
+	// FetchIssue reads the issue. State is never empty on success.
 	FetchIssue(ctx context.Context, repo string, issue int32) (IssueDetail, error)
+	// ChangedFiles lists every file the head branch changes against base
+	// (from their merge base), a renamed file under both its names. A list
+	// the forge cuts short is an error, never a partial answer.
+	ChangedFiles(ctx context.Context, repo, base, head string) ([]string, error)
 }

@@ -43,14 +43,15 @@ const readyMarker = "<!-- meitheal:ready -->"
 const parkedLabel = "meitheal:parked"
 
 // gatesFor is every gate command Verify ran for the item, in order: the CPU
-// gate's, then the GPU gate's for a gpu-lane item.
-func (e *clusterEffects) gatesFor(item QueueItem) []string {
+// gate's, then the GPU gate's for a gpu-lane item (including one Verify
+// moved there).
+func (e *clusterEffects) gatesFor(item QueueItem, workload string) []string {
 	var cpu meithealv1alpha1.GateProfile
 	if e.tpl.Spec.GateProfile != nil {
 		cpu = *e.tpl.Spec.GateProfile
 	}
 	cmds := gateCommands(cpu)
-	if item.Lane == "gpu" && e.tpl.GPUGate != nil {
+	if e.gpuLane(workload, item) && e.tpl.GPUGate != nil {
 		cmds = append(cmds, gateCommands(*e.tpl.GPUGate)...)
 	}
 	return cmds
@@ -93,7 +94,7 @@ func (e *clusterEffects) prBody(ctx context.Context, item QueueItem, workload st
 	if summary == "" {
 		summary = fmt.Sprintf("Automated change for #%d.", item.Issue)
 	}
-	gates := e.gatesFor(item)
+	gates := e.gatesFor(item, workload)
 	quoted := make([]string, len(gates))
 	var b strings.Builder
 	b.WriteString("## Summary\n\n")
@@ -112,9 +113,10 @@ func (e *clusterEffects) prBody(ctx context.Context, item QueueItem, workload st
 	return b.String()
 }
 
-// Finalize rewrites the run's PR description and tells the issue the draft
-// is ready. The review stage opened the PR; a clean verify with no PR to show
-// for it is an error, not a silent success.
+// Finalize rewrites the run's PR description, takes off the parked label an
+// earlier round's park put on it, and tells the issue the draft is ready.
+// The review stage opened the PR; a clean verify with no PR to show for it is
+// an error, not a silent success.
 func (e *clusterEffects) Finalize(ctx context.Context, item QueueItem, workload, branch string) error {
 	repo := e.repoFor(item)
 	prURL, err := e.forge.PRForBranch(ctx, repo, branch)
@@ -126,6 +128,9 @@ func (e *clusterEffects) Finalize(ctx context.Context, item QueueItem, workload,
 	}
 	if err := e.forge.UpdatePRBody(ctx, repo, branch, e.prBody(ctx, item, workload)); err != nil {
 		return fmt.Errorf("finalize issue %d: update PR body: %w", item.Issue, err)
+	}
+	if err := e.forge.UnlabelPR(ctx, repo, branch, parkedLabel); err != nil {
+		return fmt.Errorf("finalize issue %d: remove the %s label: %w", item.Issue, parkedLabel, err)
 	}
 	ready := "Draft PR ready for review: " + prURL
 	comments, err := e.forge.CommentsSince(ctx, repo, item.Issue, time.Time{})

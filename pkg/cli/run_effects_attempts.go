@@ -19,7 +19,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -69,13 +68,21 @@ func (e *clusterEffects) newWorkload(
 	spec.Issues = []int32{item.Issue}
 	spec.Repo = e.repoFor(item)
 	spec.ReviseExistingBranch = attempt > 1
-	return &meithealv1alpha1.Workload{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name, Namespace: e.ns,
-			Annotations: map[string]string{runAttemptAnnotation: strconv.Itoa(attempt)},
-		},
-		Spec: *spec,
+	annotations := map[string]string{runAttemptAnnotation: strconv.Itoa(attempt)}
+	if item.Lane != laneGPU && e.gpuLane(name, item) {
+		annotations[runLaneAnnotation] = laneGPU
 	}
+	return &meithealv1alpha1.Workload{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: e.ns, Annotations: annotations},
+		Spec:       *spec,
+	}
+}
+
+// notOurs is the refusal for a Workload under the reserved name that is not
+// running this issue: resuming, deleting or recreating it would act on
+// somebody else's run.
+func notOurs(name string, issue int32) error {
+	return fmt.Errorf("workload %s exists but is not an issue-batch run for issue %d; leaving it alone", name, issue)
 }
 
 // Dispatch creates the item's Workload under its reserved name, or resumes
@@ -88,16 +95,25 @@ func (e *clusterEffects) Dispatch(ctx context.Context, item QueueItem, intent st
 	if err != nil {
 		return "", 0, err
 	}
+	// One that runs the issue in another repository is refused whether
+	// live or going away.
+	own, err := e.ownedRun(w, item)
+	if err != nil {
+		return "", 0, fmt.Errorf("dispatch issue %d: %w", item.Issue, err)
+	}
 	if w != nil && w.DeletionTimestamp == nil {
 		// Resuming a Workload that is not running this issue would watch,
 		// verify and eventually feed back (delete and recreate) somebody
 		// else's run. Refuse instead.
-		if !slices.Contains(w.Spec.Issues, item.Issue) {
-			return "", 0, fmt.Errorf("workload %s exists but is not an issue-batch run for issue %d; leaving it alone",
-				name, item.Issue)
+		if !own {
+			return "", 0, notOurs(name, item.Issue)
 		}
+		e.adoptLane(w)
 		e.remember(name, item)
 		return name, attemptOf(w), nil
+	}
+	if own {
+		e.adoptLane(w)
 	}
 	attempt, body := 1, intent
 	if w != nil {
@@ -141,7 +157,11 @@ func (e *clusterEffects) HasRound(ctx context.Context, item QueueItem) (bool, er
 	if err != nil {
 		return false, err
 	}
-	if w != nil && slices.Contains(w.Spec.Issues, item.Issue) {
+	own, err := e.ownedRun(w, item)
+	if err != nil {
+		return false, err
+	}
+	if own {
 		return true, nil
 	}
 	pushed, err := e.forge.BranchExists(ctx, e.repoFor(item), taskBranch(name, item.Issue))
@@ -165,10 +185,15 @@ func (e *clusterEffects) Restart(ctx context.Context, item QueueItem, intent str
 		return "", 0, err
 	}
 	if w != nil {
-		if !slices.Contains(w.Spec.Issues, item.Issue) {
-			return "", 0, fmt.Errorf("workload %s exists but is not an issue-batch run for issue %d; leaving it alone",
-				name, item.Issue)
+		own, err := e.ownedRun(w, item)
+		if err != nil {
+			return "", 0, fmt.Errorf("restart issue %d: %w", item.Issue, err)
 		}
+		if !own {
+			return "", 0, notOurs(name, item.Issue)
+		}
+		// The branch is kept and revised, so a lane Verify gave it stays.
+		e.adoptLane(w)
 		if w.DeletionTimestamp == nil {
 			if err := e.deleteWorkload(ctx, name); err != nil {
 				return "", 0, err
@@ -216,6 +241,16 @@ func (e *clusterEffects) Redispatch(ctx context.Context, item QueueItem, workloa
 	live, err := e.existing(ctx, workload)
 	if err != nil {
 		return err
+	}
+	if live != nil {
+		own, err := e.ownedRun(live, item)
+		if err != nil {
+			return fmt.Errorf("redispatch issue %d: %w", item.Issue, err)
+		}
+		if !own {
+			return notOurs(workload, item.Issue)
+		}
+		e.adoptLane(live)
 	}
 	if live != nil && attemptOf(live) >= maxAttempts {
 		return fmt.Errorf("redispatch issue %d: workload %s is already attempt %d; no further feedback pass",

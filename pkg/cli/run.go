@@ -99,7 +99,15 @@ the keys spec (a Workload spec: agents, gateProfile, maxReviewIterations),
 gpuGate, gpuNode and assistedBy (the PR's attribution line). --coder-agent fills spec.coderAgentRef.
 
 Items run in two lanes, cpu and gpu, at most --parallel of each at once,
-and an item waits for every issue in its 'after' list to finish.
+and an item waits for every issue in its 'after' list to finish. A cpu-lane
+branch that changes a file under --gpu-paths fails verify ("this change
+touches GPU code and needs the GPU gate") and its feedback pass is verified
+by the CPU gate and then the GPU gate.
+
+Preflight skips a closed issue, which then counts as finished for the items
+after it. An issue whose own task branch exists with no Workload of the
+loop's behind it parks escalate ("the loop lost track of this issue's run")
+until answered.
 
 Every park is announced: a one-line comment on the issue, a label on the
 draft PR, and a POST of the full decision to --notify-url (or $%s).
@@ -269,6 +277,11 @@ func runLive(ctx context.Context, w io.Writer, opts *runOptions) error {
 	if err := setCoderAgent(&tpl, opts.coderAgent); err != nil {
 		return err
 	}
+	gpuPaths := splitList(opts.planner.gpuPaths)
+	if len(gpuPaths) > 0 && tpl.GPUGate == nil {
+		return fmt.Errorf("--gpu-paths moves a cpu-lane branch that touches them to the GPU gate, " +
+			"but the template has no gpuGate")
+	}
 	runRepo, err := runRepository(opts, q)
 	if err != nil {
 		return err
@@ -317,7 +330,7 @@ func runLive(ctx context.Context, w io.Writer, opts *runOptions) error {
 		notifyURL = os.Getenv(notifyURLEnv)
 	}
 	effects := NewClusterEffects(c, opts.namespace, forge, tpl, gate, ClusterEffectsOptions{
-		NotifyURL: notifyURL, StallFactor: opts.stallFactor,
+		NotifyURL: notifyURL, StallFactor: opts.stallFactor, GPUPaths: gpuPaths,
 	})
 	baseline, err := BaselineFor(ctx, c, opts.namespace, opts.coderAgent)
 	if err != nil {

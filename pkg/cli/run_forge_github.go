@@ -41,6 +41,9 @@ const (
 	forgeMaxPages = 10
 	forgeBodyCap  = 4 << 20
 	forgeErrCap   = 512
+	// compareFileCap is the most changed files the compare API lists for a
+	// whole comparison; a list that long may have been cut short.
+	compareFileCap = 300
 )
 
 // statusError is a non-success HTTP status from the API.
@@ -242,11 +245,7 @@ func (f *githubRunForge) BranchExists(ctx context.Context, repo, branch string) 
 	if branch == "" {
 		return false, errors.New("run forge: empty branch")
 	}
-	segs := strings.Split(branch, "/")
-	for i := range segs {
-		segs[i] = url.PathEscape(segs[i])
-	}
-	target, err := f.repoURL(repo, "/git/ref/heads/%s", strings.Join(segs, "/"))
+	target, err := f.repoURL(repo, "/git/ref/heads/%s", escapeRef(branch))
 	if err != nil {
 		return false, err
 	}
@@ -413,6 +412,7 @@ func (f *githubRunForge) FetchIssue(ctx context.Context, repo string, issue int3
 	var out struct {
 		Title  string `json:"title"`
 		Body   string `json:"body"`
+		State  string `json:"state"`
 		Labels []struct {
 			Name string `json:"name"`
 		} `json:"labels"`
@@ -420,7 +420,10 @@ func (f *githubRunForge) FetchIssue(ctx context.Context, repo string, issue int3
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return IssueDetail{}, fmt.Errorf("run forge: decode issue: %w", err)
 	}
-	d := IssueDetail{Title: out.Title, Body: out.Body}
+	if out.State == "" {
+		return IssueDetail{}, fmt.Errorf("run forge: issue %d has no state", issue)
+	}
+	d := IssueDetail{Title: out.Title, Body: out.Body, State: out.State}
 	for _, l := range out.Labels {
 		d.Labels = append(d.Labels, l.Name)
 	}
@@ -428,4 +431,89 @@ func (f *githubRunForge) FetchIssue(ctx context.Context, repo string, issue int3
 		return IssueDetail{}, err
 	}
 	return d, nil
+}
+
+// UnlabelPR removes label from the open PR for branch; a 404 (the PR does not
+// carry the label) is success.
+func (f *githubRunForge) UnlabelPR(ctx context.Context, repo, branch, label string) error {
+	if label == "" {
+		return errors.New("run forge: empty label")
+	}
+	n, _, err := f.openPR(ctx, repo, branch)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("run forge: no open PR for branch %s", branch)
+	}
+	target, err := f.repoURL(repo, "/issues/%d/labels/%s", n, url.PathEscape(label))
+	if err != nil {
+		return err
+	}
+	_, _, err = f.do(ctx, http.MethodDelete, target, nil)
+	var se *statusError
+	if errors.As(err, &se) && se.Code == http.StatusNotFound {
+		return nil
+	}
+	return err
+}
+
+// escapeRef path-escapes each segment of a ref, keeping its slashes.
+func escapeRef(ref string) string {
+	segs := strings.Split(ref, "/")
+	for i := range segs {
+		segs[i] = url.PathEscape(segs[i])
+	}
+	return strings.Join(segs, "/")
+}
+
+// ChangedFiles lists the files head changes against base through the compare
+// API, following its pagination (capped like every other list). The API
+// lists at most compareFileCap files for the whole comparison, so a list
+// that reaches the cap is an error: a file past it could be the one that
+// matters.
+func (f *githubRunForge) ChangedFiles(ctx context.Context, repo, base, head string) ([]string, error) {
+	if base == "" || head == "" {
+		return nil, errors.New("run forge: compare needs a base and a head")
+	}
+	target, err := f.repoURL(repo, "/compare/%s...%s?per_page=%d", escapeRef(base), escapeRef(head), forgePageSize)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var files []string
+	add := func(name string) {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			files = append(files, name)
+		}
+	}
+	// Counted by name, so a page that repeats the first page's files does
+	// not count them twice.
+	listed := map[string]bool{}
+	err = f.eachPage(ctx, target, func(raw []byte) (bool, error) {
+		var page struct {
+			Files []struct {
+				Filename         string `json:"filename"`
+				PreviousFilename string `json:"previous_filename"`
+			} `json:"files"`
+		}
+		if err := json.Unmarshal(raw, &page); err != nil {
+			return false, fmt.Errorf("run forge: decode compare: %w", err)
+		}
+		for _, fl := range page.Files {
+			listed[fl.Filename] = true
+			add(fl.Filename)
+			add(fl.PreviousFilename)
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(listed) >= compareFileCap {
+		return nil, fmt.Errorf("run forge: %s...%s changes %d or more files, past what the compare API lists",
+			base, head, compareFileCap)
+	}
+	return files, nil
 }

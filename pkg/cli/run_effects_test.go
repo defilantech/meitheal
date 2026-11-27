@@ -137,14 +137,25 @@ type fakeRunForge struct {
 	comments []forgeComment
 	bodies   map[string]string   // branch -> body
 	labels   map[string][]string // branch -> labels
+	// unlabeled records UnlabelPR calls, branch -> labels removed.
+	unlabeled map[string][]string
+	// issueState is FetchIssue's State ("" answers "open"); fetchErr fails it.
+	issueState string
+	fetchErr   error
+	// changed answers ChangedFiles by head branch; changedErr fails it.
+	changed    map[string][]string
+	changedErr error
+	compares   int
 }
 
 func newFakeRunForge() *fakeRunForge {
 	return &fakeRunForge{
-		branches: map[string]bool{},
-		prs:      map[string]string{},
-		bodies:   map[string]string{},
-		labels:   map[string][]string{},
+		branches:  map[string]bool{},
+		prs:       map[string]string{},
+		bodies:    map[string]string{},
+		labels:    map[string][]string{},
+		unlabeled: map[string][]string{},
+		changed:   map[string][]string{},
 	}
 }
 
@@ -202,8 +213,35 @@ func (f *fakeRunForge) LabelPR(_ context.Context, _, branch, label string) error
 	return nil
 }
 
+func (f *fakeRunForge) UnlabelPR(_ context.Context, _, branch, label string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.prs[branch] == "" {
+		return fmt.Errorf("no open PR for %s", branch)
+	}
+	f.unlabeled[branch] = append(f.unlabeled[branch], label)
+	return nil
+}
+
 func (f *fakeRunForge) FetchIssue(context.Context, string, int32) (IssueDetail, error) {
-	return IssueDetail{}, nil
+	if f.fetchErr != nil {
+		return IssueDetail{}, f.fetchErr
+	}
+	state := f.issueState
+	if state == "" {
+		state = "open"
+	}
+	return IssueDetail{State: state}, nil
+}
+
+func (f *fakeRunForge) ChangedFiles(_ context.Context, _, _, head string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.compares++
+	if f.changedErr != nil {
+		return nil, f.changedErr
+	}
+	return f.changed[head], nil
 }
 
 type gateCall struct {
@@ -325,7 +363,7 @@ func TestPreflight_ExistingWorkloadResumes(t *testing.T) {
 	name := plannedWorkloadName(effIssue)
 	existing := &meithealv1alpha1.Workload{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: effNS},
-		Spec:       meithealv1alpha1.WorkloadSpec{Intent: "earlier run", Issues: []int32{effIssue}},
+		Spec:       meithealv1alpha1.WorkloadSpec{Intent: "earlier run", Repo: effRepo, Issues: []int32{effIssue}},
 	}
 	c := newEffectsClient(t, nil, existing)
 	f := newFakeRunForge()
@@ -342,19 +380,74 @@ func TestPreflight_ExistingWorkloadResumes(t *testing.T) {
 	}
 }
 
+// Neither the issue's own Workload nor its own branch: the package Preflight
+// decides, so an open PR someone else made skips the item.
 func TestPreflight_NoWorkloadUsesForgeProbe(t *testing.T) {
 	c := newEffectsClient(t, nil)
 	f := newFakeRunForge()
+	f.openPR = "https://github.com/example/widgets/pull/3"
 	branch := taskBranch(plannedWorkloadName(effIssue), effIssue)
-	f.branches[branch] = true
 	e := NewClusterEffects(c, effNS, f, testTemplate(), &fakeGateRunner{}, fastOpts())
 
 	skip, err := e.Preflight(context.Background(), effItem("cpu"), branch)
 	if err != nil {
 		t.Fatalf("Preflight: %v", err)
 	}
-	if !strings.Contains(skip, "already exists") {
-		t.Fatalf("skip = %q, want the branch-exists skip from the package Preflight", skip)
+	if !strings.Contains(skip, "open PR") {
+		t.Fatalf("skip = %q, want the open-PR skip from the package Preflight", skip)
+	}
+	f.openPR = ""
+	if skip, err := e.Preflight(context.Background(), effItem("cpu"), branch); err != nil || skip != "" {
+		t.Fatalf("clean issue: skip = %q, err = %v; want a dispatch", skip, err)
+	}
+}
+
+// The issue's own task branch with no Workload of the loop's behind it (a
+// stop during a feedback pass's delete wait, a failed recreate, a Workload
+// deleted by hand) is not somebody else's work to skip: it is ErrRunLost,
+// which the driver parks. A Workload under the name that runs another issue
+// does not count as the issue's own.
+func TestPreflight_OwnBranchWithoutWorkloadIsRunLost(t *testing.T) {
+	name := plannedWorkloadName(effIssue)
+	branch := taskBranch(name, effIssue)
+	for label, objs := range map[string][]client.Object{
+		"no workload": nil,
+		"another issue's workload": {&meithealv1alpha1.Workload{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: effNS},
+			Spec:       meithealv1alpha1.WorkloadSpec{Intent: "manual", Repo: effRepo, Issues: []int32{7}},
+		}},
+	} {
+		c := newEffectsClient(t, nil, objs...)
+		f := newFakeRunForge()
+		f.branches[branch] = true
+		e := NewClusterEffects(c, effNS, f, testTemplate(), &fakeGateRunner{}, fastOpts())
+		skip, err := e.Preflight(context.Background(), effItem("cpu"), branch)
+		if !errors.Is(err, ErrRunLost) || skip != "" {
+			t.Errorf("%s: Preflight = %q, %v; want ErrRunLost", label, skip, err)
+		}
+	}
+}
+
+// A closed issue is skipped with IssueClosedReason before anything else is
+// looked at; an open one goes on to the other probes; a failed read of the
+// issue is an error, never a green light.
+func TestPreflight_ClosedIssue(t *testing.T) {
+	branch := taskBranch(plannedWorkloadName(effIssue), effIssue)
+	f := newFakeRunForge()
+	f.issueState = "closed"
+	f.branches[branch] = true
+	e := NewClusterEffects(newEffectsClient(t, nil), effNS, f, testTemplate(), &fakeGateRunner{}, fastOpts())
+	if skip, err := e.Preflight(context.Background(), effItem("cpu"), branch); err != nil || skip != IssueClosedReason {
+		t.Fatalf("closed: Preflight = %q, %v; want %q", skip, err, IssueClosedReason)
+	}
+	f.issueState = "open"
+	f.branches[branch] = false
+	if skip, err := e.Preflight(context.Background(), effItem("cpu"), branch); err != nil || skip != "" {
+		t.Fatalf("open: Preflight = %q, %v; want a dispatch", skip, err)
+	}
+	f.fetchErr = errors.New("forge down")
+	if skip, err := e.Preflight(context.Background(), effItem("cpu"), branch); err == nil || skip != "" {
+		t.Fatalf("fetch error: Preflight = %q, %v; want an error", skip, err)
 	}
 }
 
@@ -514,7 +607,7 @@ func TestRedispatch_DeletesAndRecreatesWithRevise(t *testing.T) {
 func TestRedispatch_ShortEvidenceKeptWhole(t *testing.T) {
 	name := plannedWorkloadName(effIssue)
 	existing := &meithealv1alpha1.Workload{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: effNS},
-		Spec: meithealv1alpha1.WorkloadSpec{Intent: "fix it"}}
+		Spec: meithealv1alpha1.WorkloadSpec{Intent: "fix it", Repo: effRepo, Issues: []int32{effIssue}}}
 	c := newEffectsClient(t, nil, existing)
 	e := NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, fastOpts())
 	if err := e.Redispatch(context.Background(), effItem("cpu"), name, "fix it", "clippy: unused var"); err != nil {
@@ -530,7 +623,7 @@ func TestRedispatch_ShortEvidenceKeptWhole(t *testing.T) {
 func TestRedispatch_WaitsForTheOldWorkloadToGo(t *testing.T) {
 	name := plannedWorkloadName(effIssue)
 	existing := &meithealv1alpha1.Workload{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: effNS},
-		Spec: meithealv1alpha1.WorkloadSpec{Intent: "fix it"}}
+		Spec: meithealv1alpha1.WorkloadSpec{Intent: "fix it", Repo: effRepo, Issues: []int32{effIssue}}}
 	gets := 0
 	var mu sync.Mutex
 	funcs := &interceptor.Funcs{
@@ -566,7 +659,7 @@ func TestRedispatch_WaitsForTheOldWorkloadToGo(t *testing.T) {
 func TestRedispatch_DeleteWaitIsBoundedByContext(t *testing.T) {
 	name := plannedWorkloadName(effIssue)
 	existing := &meithealv1alpha1.Workload{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: effNS},
-		Spec: meithealv1alpha1.WorkloadSpec{Intent: "fix it"}}
+		Spec: meithealv1alpha1.WorkloadSpec{Intent: "fix it", Repo: effRepo, Issues: []int32{effIssue}}}
 	funcs := &interceptor.Funcs{
 		Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error { return nil },
 	}
@@ -1052,6 +1145,10 @@ func TestFinalize_UpdatesPRBodyAndComments(t *testing.T) {
 	if !reflect.DeepEqual(f.comments, want) {
 		t.Fatalf("comments = %+v, want %+v", f.comments, want)
 	}
+	// An earlier round's park labelled the PR; a finalized PR is not parked.
+	if got := f.unlabeled[branch]; !reflect.DeepEqual(got, []string{parkedLabel}) {
+		t.Errorf("labels removed = %v, want [%s]", got, parkedLabel)
+	}
 }
 
 func TestFinalize_CPULaneListsOnlyCPUGatesAndKeepsCoderSummary(t *testing.T) {
@@ -1249,7 +1346,7 @@ func deletingWorkload() *meithealv1alpha1.Workload {
 	return &meithealv1alpha1.Workload{
 		ObjectMeta: metav1.ObjectMeta{Name: plannedWorkloadName(effIssue), Namespace: effNS,
 			DeletionTimestamp: &now, Finalizers: []string{"test.meitheal.dev/hold"}},
-		Spec: meithealv1alpha1.WorkloadSpec{Intent: "going", Issues: []int32{effIssue}},
+		Spec: meithealv1alpha1.WorkloadSpec{Intent: "going", Repo: effRepo, Issues: []int32{effIssue}},
 	}
 }
 
@@ -1330,7 +1427,7 @@ func TestDispatch_ResumeReportsTheWorkloadsAttempt(t *testing.T) {
 			w := &meithealv1alpha1.Workload{
 				ObjectMeta: metav1.ObjectMeta{Name: plannedWorkloadName(effIssue), Namespace: effNS,
 					Annotations: tc.annotations},
-				Spec: meithealv1alpha1.WorkloadSpec{Intent: "x", Issues: []int32{effIssue},
+				Spec: meithealv1alpha1.WorkloadSpec{Intent: "x", Repo: effRepo, Issues: []int32{effIssue},
 					ReviseExistingBranch: tc.revise},
 			}
 			c := newEffectsClient(t, nil, w)
@@ -1391,10 +1488,12 @@ func TestRedispatch_RefusesAnAttemptTwoWorkload(t *testing.T) {
 	for name, w := range map[string]*meithealv1alpha1.Workload{
 		"annotated": {ObjectMeta: metav1.ObjectMeta{Name: plannedWorkloadName(effIssue), Namespace: effNS,
 			Annotations: map[string]string{"meitheal.dev/run-attempt": "2"}},
-			Spec: meithealv1alpha1.WorkloadSpec{Intent: "x", Issues: []int32{effIssue}, ReviseExistingBranch: true}},
+			Spec: meithealv1alpha1.WorkloadSpec{Intent: "x", Repo: effRepo, Issues: []int32{effIssue},
+				ReviseExistingBranch: true}},
 		"unannotated but revising": {ObjectMeta: metav1.ObjectMeta{Name: plannedWorkloadName(effIssue),
 			Namespace: effNS},
-			Spec: meithealv1alpha1.WorkloadSpec{Intent: "x", Issues: []int32{effIssue}, ReviseExistingBranch: true}},
+			Spec: meithealv1alpha1.WorkloadSpec{Intent: "x", Repo: effRepo, Issues: []int32{effIssue},
+				ReviseExistingBranch: true}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			deletes := 0
@@ -1422,7 +1521,7 @@ func TestWaitGone_GivesUpAfterTheDeleteWaitTimeout(t *testing.T) {
 	defer func() { deleteWaitTimeout = old }()
 	name := plannedWorkloadName(effIssue)
 	existing := &meithealv1alpha1.Workload{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: effNS},
-		Spec: meithealv1alpha1.WorkloadSpec{Intent: "fix it"}}
+		Spec: meithealv1alpha1.WorkloadSpec{Intent: "fix it", Repo: effRepo, Issues: []int32{effIssue}}}
 	funcs := &interceptor.Funcs{
 		Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error { return nil },
 	}
@@ -1511,7 +1610,7 @@ func TestHasRound(t *testing.T) {
 	name := plannedWorkloadName(effIssue)
 	own := &meithealv1alpha1.Workload{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: effNS},
-		Spec:       meithealv1alpha1.WorkloadSpec{Intent: "x", Issues: []int32{effIssue}},
+		Spec:       meithealv1alpha1.WorkloadSpec{Intent: "x", Repo: effRepo, Issues: []int32{effIssue}},
 	}
 	foreign := own.DeepCopy()
 	foreign.Spec.Issues = []int32{7}

@@ -46,6 +46,13 @@ const (
 	ParkNeedsSplit    = "needs-split"
 )
 
+// The two reasons a failed Workload parks with. Both are public (the park
+// comment carries the reason), so neither names a task, a model or a log.
+const (
+	ReviewNotConvergedReason = "review did not converge"
+	RunFailedReason          = "the run failed before a review verdict"
+)
+
 // maxAttempts is the structural one-pass rule: one original attempt plus at
 // most one automatic feedback pass. A third is never reached by any input.
 const maxAttempts = 2
@@ -56,6 +63,11 @@ const maxAttempts = 2
 type Facts struct {
 	// SkipReason, when non-empty, ends the item at preflight.
 	SkipReason string
+	// RunLost reports that preflight found the issue's own task branch with
+	// no Workload of the loop's behind it (ErrRunLost). It parks escalate:
+	// there is nothing to resume, and a dispatch would start over on top of
+	// the branch.
+	RunLost bool
 	// Stalled reports the stall predicate's verdict during watch.
 	Stalled bool
 	// VerifyClean reports whether the independent verify stage found nothing.
@@ -63,6 +75,10 @@ type Facts struct {
 	// WorkloadFailed reports that review rounds were exhausted or a task failed
 	// terminally.
 	WorkloadFailed bool
+	// ReviewRejected, with WorkloadFailed, says the failure is the review's:
+	// the run ended on a review that requested changes (see
+	// WatchResult.ReviewRejected).
+	ReviewRejected bool
 	// Concern is the first structured concern text from any child task.
 	Concern string
 	// GPUBusy reports that verify could not run the GPU gate because the GPU
@@ -86,6 +102,9 @@ type Transition struct {
 func NextStage(cur Stage, f Facts) Transition {
 	switch cur {
 	case StagePreflight:
+		if f.RunLost {
+			return Transition{Next: StageParked, Park: ParkEscalate, Reason: RunLostReason}
+		}
 		if f.SkipReason != "" {
 			return Transition{Next: StageDone, Reason: f.SkipReason}
 		}
@@ -100,7 +119,13 @@ func NextStage(cur Stage, f Facts) Transition {
 			return Transition{Next: StageParked, Park: ParkNeedsDecision, Reason: "a task raised a concern"}
 		}
 		if f.WorkloadFailed {
-			return Transition{Next: StageParked, Park: ParkEscalate, Reason: "review did not converge"}
+			if f.ReviewRejected {
+				return Transition{Next: StageParked, Park: ParkEscalate, Reason: ReviewNotConvergedReason}
+			}
+			// A coder or gate task that failed, or a run that ended some
+			// other way: nothing the review decided, so the reason does
+			// not claim it.
+			return Transition{Next: StageParked, Park: ParkEscalate, Reason: RunFailedReason}
 		}
 		return Transition{Next: StageVerify}
 	case StageVerify:

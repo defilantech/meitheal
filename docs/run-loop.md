@@ -28,7 +28,8 @@ items:
   gate from the template.
 - `after` lists issues that must **finish** first. An item waits while its
   dependency is parked, or was skipped at preflight, and starts once that
-  dependency is finalized, dropped or hand-fixed. The run refuses a queue that lists an issue twice
+  dependency is finalized, dropped or hand-fixed, or preflight found its
+  issue closed. The run refuses a queue that lists an issue twice
   or whose `after` lists form a cycle.
 - One run works in one repository: answers are read from that
   repository's issues. Decision files and ledger records name their
@@ -91,6 +92,16 @@ at once. Items in a lane start in queue order. Before each GPU gate the
 loop checks that no model is being served on `gpuNode`; while one is, it
 retries every 15 minutes and parks after 12 hours.
 
+`--gpu-paths` (the planner flag) also guards the cpu lane. Before gating a
+cpu-lane branch, verify lists the files it changes against `main` (through
+the compare API; a listing that fails, or reaches the API's 300-file limit,
+is an error). When one starts with a GPU path, prefixes matched as the
+planner matches them, verify fails without running a gate, with the
+evidence "this change touches GPU code and needs the GPU gate", and the item
+is verified as gpu-lane from then on: the feedback pass runs the CPU gate
+and then the GPU gate, and the finalized PR lists both. A run with
+`--gpu-paths` needs a template with `gpuGate`.
+
 ## What parks
 
 Every park is a file `<issue>-<kind>.yaml` under `--decisions-dir`, listed
@@ -98,13 +109,14 @@ by `meitheal decisions`.
 
 | Kind | When |
 |---|---|
-| `escalate` | The coder stalled; review did not converge; the gate failed again after the feedback pass; the GPU node stayed busy. |
+| `escalate` | The coder stalled; review did not converge (the run ended on a review requesting changes); the run failed before a review verdict (any other failed Workload); the gate failed again after the feedback pass; the GPU node stayed busy; the loop lost track of the issue's run. |
 | `needs-decision` | A task raised a concern (one the loop cannot read, or with no text, counts); the planner found a decision only a maintainer can make, its answer was unreadable, or its call failed; the issue carries the `--decision-label` label. |
 | `needs-split` | The planner judged the issue too big for one run. |
 
 Every park is announced once: a one-line comment on the issue (the reason,
 and the draft PR link when there is one; never logs or evidence), the
-`meitheal:parked` label on the draft PR, and, when `--notify-url` (or
+`meitheal:parked` label on the draft PR (taken off again when the PR is
+finalized), and, when `--notify-url` (or
 `$MEITHEAL_NOTIFY_URL`) is set, a JSON POST with the whole decision. The
 decision file records each notice that went out (`notices`) and when all of
 them had (`notified`). A notice that failed is retried on every answer
@@ -163,7 +175,7 @@ in `--ledger` (default `.meitheal/ledger.jsonl`):
 ```
 
 `finalStage` is `done` (finalized or hand-fixed), `skipped` (preflight
-found an open PR or a pushed branch; the reason says which), `parked`,
+found an open PR, or the issue closed; the reason says which), `parked`,
 `dropped` or `error`. A last line cut short by a crash is ignored, and
 dropped by the next append.
 
@@ -176,12 +188,26 @@ and the queue file, so it can be stopped and started at any point:
   again.
 - An item with a decision file stays parked until it is answered.
 - An item whose Workload is already in the cluster resumes it at watch;
-  nothing is dispatched twice.
+  nothing is dispatched twice. Only a Workload that runs the issue in the
+  run's repository counts: one under the issue's name that runs it in
+  another repository is an error naming both, and is never resumed,
+  deleted or recreated.
+- An item whose own task branch (`meitheal/wl-<n>/issue-<n>`) exists with
+  no Workload of the loop's behind it parks `escalate` with "the loop lost
+  track of this issue's run", and is announced. That is what is left after
+  a feedback pass's old Workload was deleted and the new one never
+  created, or after a Workload was deleted by hand. `/meitheal requeue`
+  starts a new round on the branch and its draft PR.
+- An item whose issue is closed is skipped at preflight.
 - An item that stopped on an `error`, or was `skipped`, goes through
   preflight again.
 
 SIGINT or SIGTERM stops the loop: in-flight items stop at their next poll,
-nothing is parked, no Workload is deleted, and the next start resumes them.
+nothing is parked, the stop deletes no Workload, and the next start resumes
+them. A feedback pass stopped while its old Workload was being deleted
+resumes too, as the feedback pass, if that Workload is still going away at
+the next start; if it is already gone, only the branch is left and the item
+parks as a lost run.
 
 `--once` drives until nothing more can start, reads answers one last time,
 and exits. Without it the loop keeps reading answers until it is stopped.

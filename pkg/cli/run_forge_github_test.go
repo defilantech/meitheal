@@ -279,7 +279,7 @@ func TestRunForge_FetchIssue(t *testing.T) {
 	f, srv := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/repos/o/r/issues/5":
-			_, _ = w.Write([]byte(`{"title":"T","body":"B","labels":[{"name":"gpu"},{"name":"bug"}]}`))
+			_, _ = w.Write([]byte(`{"title":"T","body":"B","state":"closed","labels":[{"name":"gpu"},{"name":"bug"}]}`))
 		case r.URL.Path == "/repos/o/r/issues/5/comments" && r.URL.Query().Get("page") == "":
 			w.Header().Set("Link", fmt.Sprintf(`<%s/repos/o/r/issues/5/comments?page=2>; rel="next"`, srvURL))
 			_, _ = w.Write([]byte(`[{"user":{"login":"a"},"body":"one","created_at":"2026-01-01T00:00:00Z"}]`))
@@ -294,7 +294,7 @@ func TestRunForge_FetchIssue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Title != "T" || d.Body != "B" || len(d.Labels) != 2 || d.Labels[0] != "gpu" {
+	if d.Title != "T" || d.Body != "B" || d.State != "closed" || len(d.Labels) != 2 || d.Labels[0] != "gpu" {
 		t.Fatalf("detail = %+v", d)
 	}
 	if len(d.Comments) != 2 || d.Comments[1].Body != "two" {
@@ -387,5 +387,115 @@ func TestRunForge_BadSlugAndTokenErrors(t *testing.T) {
 	bad := NewGitHubRunForge("http://127.0.0.1:1", func() (string, error) { return "", fmt.Errorf("no token") })
 	if _, err := bad.PRForBranch(ctx, "o/r", "b"); err == nil {
 		t.Error("token error must surface")
+	}
+}
+
+// ChangedFiles reads the compare API from the merge base, follows its
+// pagination, lists a renamed file under both names, and fails closed: an
+// error status, endless pages, and a list at the API's 300-file cap (which
+// may be cut short) are all errors.
+func TestRunForge_ChangedFiles(t *testing.T) {
+	var srvURL, gotPath string
+	f, srv := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") == "2" {
+			_, _ = w.Write([]byte(`{"files":[{"filename":"src/b.rs"}]}`))
+			return
+		}
+		gotPath = r.URL.EscapedPath()
+		w.Header().Set("Link", fmt.Sprintf(`<%s/repos/o/r/compare/x?page=2>; rel="next"`, srvURL))
+		_, _ = w.Write([]byte(`{"files":[{"filename":"src/a.rs"},` +
+			`{"filename":"crates/new/k.rs","previous_filename":"crates/gpu/k.rs"}]}`))
+	})
+	srvURL = srv.URL
+	files, err := f.ChangedFiles(context.Background(), "o/r", "main", "meitheal/wl-5/issue-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"src/a.rs", "crates/new/k.rs", "crates/gpu/k.rs", "src/b.rs"}; strings.Join(files, ",") !=
+		strings.Join(want, ",") {
+		t.Fatalf("files = %v, want %v", files, want)
+	}
+	if want := "/repos/o/r/compare/main...meitheal/wl-5/issue-5"; gotPath != want {
+		t.Errorf("first request path = %q, want %q", gotPath, want)
+	}
+
+	down, _ := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNotFound) })
+	if files, err := down.ChangedFiles(context.Background(), "o/r", "main", "b"); err == nil || files != nil {
+		t.Errorf("404 compare = %v, %v; want an error", files, err)
+	}
+	var endlessURL string
+	endless, esrv := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Link", fmt.Sprintf(`<%s/repos/o/r/compare/x>; rel="next"`, endlessURL))
+		_, _ = w.Write([]byte(`{"files":[]}`))
+	})
+	endlessURL = esrv.URL
+	if files, err := endless.ChangedFiles(context.Background(), "o/r", "main", "b"); err == nil || files != nil {
+		t.Errorf("endless pagination = %v, %v; want the page cap error", files, err)
+	}
+	full, _ := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var b strings.Builder
+		b.WriteString(`{"files":[`)
+		for i := range 300 {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			fmt.Fprintf(&b, `{"filename":"f%d"}`, i)
+		}
+		b.WriteString(`]}`)
+		_, _ = w.Write([]byte(b.String()))
+	})
+	if files, err := full.ChangedFiles(context.Background(), "o/r", "main", "b"); err == nil || files != nil {
+		t.Errorf("300 files = %d files, %v; want an error (the list may be cut short)", len(files), err)
+	}
+	if _, err := f.ChangedFiles(context.Background(), "o/r", "", "b"); err == nil {
+		t.Error("empty base must error")
+	}
+}
+
+// UnlabelPR deletes the label from the branch's open PR; a 404 (the PR does
+// not carry it) is success, any other failure is not, and no open PR is an
+// error.
+func TestRunForge_UnlabelPR(t *testing.T) {
+	for _, tc := range []struct {
+		status  int
+		wantErr bool
+	}{{http.StatusOK, false}, {http.StatusNotFound, false}, {http.StatusForbidden, true}} {
+		var deleted string
+		f, _ := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method + " " + r.URL.Path {
+			case "GET /repos/o/r/pulls":
+				_, _ = w.Write([]byte(`[{"number":9,"html_url":"u"}]`))
+			case "DELETE /repos/o/r/issues/9/labels/meitheal:parked":
+				deleted = r.URL.Path
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(`[]`))
+			default:
+				t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			}
+		})
+		err := f.UnlabelPR(context.Background(), "o/r", "b", "meitheal:parked")
+		if (err != nil) != tc.wantErr || deleted == "" {
+			t.Errorf("status %d: err = %v, deleted %q; want error %v", tc.status, err, deleted, tc.wantErr)
+		}
+	}
+	none, _ := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("must not mutate, got %s", r.Method)
+		}
+		_, _ = w.Write([]byte(`[]`))
+	})
+	if err := none.UnlabelPR(context.Background(), "o/r", "b", "meitheal:parked"); err == nil {
+		t.Error("UnlabelPR with no PR must error")
+	}
+}
+
+// An issue the API returns without a state is an unanswered query, not an
+// open issue.
+func TestRunForge_FetchIssueWithoutStateErrors(t *testing.T) {
+	f, _ := newForgeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"title":"T","body":"B"}`))
+	})
+	if _, err := f.FetchIssue(context.Background(), "o/r", 5); err == nil {
+		t.Fatal("want an error for an issue without a state")
 	}
 }

@@ -88,7 +88,8 @@ const (
 	stateDone
 	stateFailed
 	// stateSkipped: preflight found the work already in flight elsewhere.
-	// It does not release what runs after the item.
+	// It does not release what runs after the item, except for a closed
+	// issue (IssueClosedReason), whose work is settled.
 	stateSkipped
 )
 
@@ -285,6 +286,9 @@ func (l *runLoop) put(it QueueItem) {
 
 func (l *runLoop) depsDone(it QueueItem) bool {
 	for _, a := range it.After {
+		if l.state[a] == stateSkipped && l.skipReason[a] == IssueClosedReason {
+			continue
+		}
 		if !l.finished[a] {
 			if l.state[a] == stateSkipped {
 				l.logOnce(fmt.Sprintf("wait-skip %d/%d", it.Issue, a),

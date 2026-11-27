@@ -48,8 +48,10 @@ const (
 
 // scriptEffects plays one scripted outcome per drive of an issue: "done"
 // (a clean verify, then finalize), "park" (a stall), "skip" (preflight finds
-// an open PR), "block" (watch waits for the context) or "error" (watch
-// fails). The last outcome repeats; no script means "done". A drive starts at
+// an open PR), "closed" (preflight finds the issue closed), "lost" (preflight
+// finds the issue's own branch with no Workload), "block" (watch waits for
+// the context) or "error" (watch fails). The last outcome repeats; no script
+// means "done". A drive starts at
 // Preflight, or at Restart for a new round. Safe for the lanes' goroutines.
 type scriptEffects struct {
 	mu        sync.Mutex
@@ -101,8 +103,13 @@ func (s *scriptEffects) Preflight(_ context.Context, item QueueItem, _ string) (
 	defer s.mu.Unlock()
 	s.order = append(s.order, item.Issue)
 	s.drives[item.Issue]++
-	if s.outcome(item.Issue) == "skip" {
+	switch s.outcome(item.Issue) {
+	case "skip":
 		return "an open PR already references it: https://example.test/pr/other", nil
+	case "closed":
+		return IssueClosedReason, nil
+	case "lost":
+		return "", ErrRunLost
 	}
 	return "", nil
 }
@@ -205,6 +212,10 @@ func (f *loopForge) BranchExists(context.Context, string, string) (bool, error) 
 func (f *loopForge) PRForBranch(context.Context, string, string) (string, error)   { return "", nil }
 func (f *loopForge) UpdatePRBody(context.Context, string, string, string) error    { return nil }
 func (f *loopForge) LabelPR(context.Context, string, string, string) error         { return nil }
+func (f *loopForge) UnlabelPR(context.Context, string, string, string) error       { return nil }
+func (f *loopForge) ChangedFiles(context.Context, string, string, string) ([]string, error) {
+	return nil, nil
+}
 
 func (f *loopForge) CommentIssue(_ context.Context, repo string, issue int32, body string) error {
 	f.mu.Lock()

@@ -18,6 +18,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -38,6 +39,12 @@ type WatchResult struct {
 	// WorkloadFailed reports that review rounds were exhausted or a task
 	// failed terminally.
 	WorkloadFailed bool
+	// ReviewRejected, set only with WorkloadFailed, reports that the run
+	// ended on a review requesting changes (its newest review is NO-GO and
+	// nothing was created after it): the review rounds ran out. Any other
+	// failure (a coder or gate task failing, a revision that never got its
+	// review) leaves it false.
+	ReviewRejected bool
 	// Concern is the first structured concern text from any child task, ""
 	// when none.
 	Concern string
@@ -233,6 +240,13 @@ func driveLoop(
 		switch stage {
 		case StagePreflight:
 			skip, err := e.Preflight(ctx, item, branch)
+			if errors.Is(err, ErrRunLost) {
+				facts.RunLost = true
+				// The park names the Workload the lost branch was pushed
+				// for, so its notice finds and labels the draft PR.
+				workload = plannedWorkloadName(item.Issue)
+				break
+			}
 			if err != nil {
 				return stage, err
 			}
@@ -276,6 +290,7 @@ func driveLoop(
 			}
 			facts.Stalled = res.Stalled
 			facts.WorkloadFailed = res.WorkloadFailed
+			facts.ReviewRejected = res.ReviewRejected
 			facts.Concern = res.Concern
 		case StageVerify:
 			clean, ev, err := e.Verify(ctx, workload, branch)

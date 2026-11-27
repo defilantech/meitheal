@@ -24,7 +24,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -108,6 +107,11 @@ type ClusterEffectsOptions struct {
 	// claimed at all. Unclaimed time never counts toward a stall, so this is
 	// what stops a lane hanging on a task no agent picks up. 6h.
 	ClaimTimeout time.Duration
+	// GPUPaths are the planner's --gpu-paths prefixes. A cpu-lane branch
+	// that changes a file under one fails Verify with GPUPathEvidence and
+	// is verified as gpu-lane from then on. Empty: no check. Cleaned like
+	// the planner's.
+	GPUPaths []string
 }
 
 func (o ClusterEffectsOptions) withDefaults() ClusterEffectsOptions {
@@ -129,6 +133,7 @@ func (o ClusterEffectsOptions) withDefaults() ClusterEffectsOptions {
 	if o.ClaimTimeout <= 0 {
 		o.ClaimTimeout = 6 * time.Hour
 	}
+	o.GPUPaths = cleanPrefixes(o.GPUPaths)
 	return o
 }
 
@@ -169,6 +174,10 @@ type clusterEffects struct {
 	// driver always passes through Dispatch (resuming or creating) before
 	// any of them, including after a restart.
 	items map[string]QueueItem
+	// gpuOverride holds the Workloads of cpu-lane items Verify moved to the
+	// gpu lane (see GPUPathEvidence), also recorded on each Workload made
+	// from then on (runLaneAnnotation).
+	gpuOverride map[string]bool
 }
 
 // NewClusterEffects returns the Effects the run command drives: Workloads
@@ -178,9 +187,10 @@ func NewClusterEffects(
 ) Effects {
 	return &clusterEffects{
 		c: c, ns: ns, forge: f, tpl: t, gate: g,
-		o:     o.withDefaults(),
-		http:  &http.Client{Timeout: notifyTimeout},
-		items: map[string]QueueItem{},
+		o:           o.withDefaults(),
+		http:        &http.Client{Timeout: notifyTimeout},
+		items:       map[string]QueueItem{},
+		gpuOverride: map[string]bool{},
 	}
 }
 
@@ -218,21 +228,6 @@ func (e *clusterEffects) existing(ctx context.Context, name string) (*meithealv1
 		return nil, fmt.Errorf("get workload %s: %w", name, err)
 	}
 	return &w, nil
-}
-
-// Preflight is the package-level Preflight, except when this item's reserved
-// Workload is already in the cluster: then the loop was restarted mid-run (or
-// a manual run left it), the branch and PR preflight would see are that
-// Workload's own, and the item resumes rather than being skipped as done.
-func (e *clusterEffects) Preflight(ctx context.Context, item QueueItem, branch string) (string, error) {
-	w, err := e.existing(ctx, plannedWorkloadName(item.Issue))
-	if err != nil {
-		return "", err
-	}
-	if w != nil && slices.Contains(w.Spec.Issues, item.Issue) {
-		return "", nil
-	}
-	return Preflight(ctx, e.forge, item, branch)
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {
@@ -361,6 +356,37 @@ func observe(tasks []meithealv1alpha1.AgenticTask) (WatchResult, *time.Time) {
 	return res, claimed
 }
 
+// lastIsRejectedReview reports whether the run ended on a review requesting
+// changes: the newest review task (by creation time, then name) has verdict
+// NO-GO, and no other task was created after it. A revision coder (or its
+// verify step) is created after the review it answers, so a revision that
+// failed is not the review's failure. Tasks emitted together with the review
+// (the code and verify steps of the same round) share its creation time and
+// do not count as after it.
+func lastIsRejectedReview(tasks []meithealv1alpha1.AgenticTask) bool {
+	var last *meithealv1alpha1.AgenticTask
+	for i := range tasks {
+		t := &tasks[i]
+		if t.Spec.Kind != meithealv1alpha1.AgenticTaskKindReview {
+			continue
+		}
+		if last == nil || last.CreationTimestamp.Before(&t.CreationTimestamp) ||
+			(last.CreationTimestamp.Equal(&t.CreationTimestamp) && last.Name < t.Name) {
+			last = t
+		}
+	}
+	if last == nil || last.Status.Verdict != meithealv1alpha1.AgenticTaskVerdictNoGo {
+		return false
+	}
+	for i := range tasks {
+		t := &tasks[i]
+		if t.Spec.Kind != meithealv1alpha1.AgenticTaskKindReview && last.CreationTimestamp.Before(&t.CreationTimestamp) {
+			return false
+		}
+	}
+	return true
+}
+
 // Watch polls the Workload until it is terminal, the coder stalls, or the
 // coder goes unclaimed for ClaimTimeout. The stall clock starts at the coder
 // task's status.claimedAt, so time spent queued behind other work never
@@ -394,6 +420,7 @@ func (e *clusterEffects) Watch(
 			return res, nil
 		case meithealv1alpha1.WorkloadPhaseFailed:
 			res.WorkloadFailed = true
+			res.ReviewRejected = lastIsRejectedReview(tasks)
 			return res, nil
 		}
 		if claimed != nil {
@@ -419,18 +446,31 @@ func (e *clusterEffects) Watch(
 // GPUNode. A dirty CPU gate returns its log without spending GPU time. A GPU
 // node that stays busy for GPUGiveUp is reported as not clean with evidence
 // "gpu-box-busy".
+//
+// A cpu-lane branch that changes a file under GPUPaths is not gated at all:
+// it is reported not clean with GPUPathEvidence and moved to the gpu lane,
+// so the feedback pass is verified by both gates. Listing the changed files
+// fails closed.
 func (e *clusterEffects) Verify(ctx context.Context, workload, branch string) (bool, string, error) {
 	item, ok := e.itemFor(workload)
 	if !ok {
 		return false, "", fmt.Errorf("verify: workload %s was not dispatched by this run", workload)
 	}
 	repo := e.repoFor(item)
+	touches, err := e.touchesGPUPaths(ctx, workload, item, branch)
+	if err != nil {
+		return false, "", err
+	}
+	if touches {
+		e.setGPUOverride(workload)
+		return false, GPUPathEvidence, nil
+	}
 	var cpu meithealv1alpha1.GateProfile
 	if e.tpl.Spec.GateProfile != nil {
 		cpu = *e.tpl.Spec.GateProfile
 	}
 	clean, log, err := e.gate.Run(ctx, repo, branch, cpu)
-	if err != nil || !clean || item.Lane != "gpu" {
+	if err != nil || !clean || !e.gpuLane(workload, item) {
 		return clean, log, err
 	}
 	if e.tpl.GPUGate == nil {

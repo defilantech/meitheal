@@ -85,9 +85,15 @@ func TestNextStage_NeverMakesASecondFeedbackAttempt(t *testing.T) {
 }
 
 func TestNextStage_WatchParkReasons(t *testing.T) {
-	got := NextStage(StageWatch, Facts{WorkloadFailed: true})
-	if got.Reason != "review did not converge" {
-		t.Errorf("Reason = %q, want %q", got.Reason, "review did not converge")
+	got := NextStage(StageWatch, Facts{WorkloadFailed: true, ReviewRejected: true})
+	if got.Park != ParkEscalate || got.Reason != "review did not converge" {
+		t.Errorf("rejected review = (%q,%q), want (escalate, review did not converge)", got.Park, got.Reason)
+	}
+	// Any other failure does not claim a review verdict it never had.
+	got = NextStage(StageWatch, Facts{WorkloadFailed: true})
+	if got.Park != ParkEscalate || got.Reason != "the run failed before a review verdict" {
+		t.Errorf("other failure = (%q,%q), want (escalate, the run failed before a review verdict)",
+			got.Park, got.Reason)
 	}
 	// A stall is the more specific fact and keeps its own reason.
 	got = NextStage(StageWatch, Facts{Stalled: true, WorkloadFailed: true, Concern: "x"})
@@ -112,5 +118,13 @@ func TestOptionsFor_EveryParkOffersTheAnswerCommands(t *testing.T) {
 func TestNextStage_GPUBusyReason(t *testing.T) {
 	if got := NextStage(StageVerify, Facts{GPUBusy: true, Attempts: 1}); got.Reason != "GPU node stayed busy" {
 		t.Fatalf("Reason = %q", got.Reason)
+	}
+}
+
+// A lost run parks escalate at preflight, ahead of any skip reason.
+func TestNextStage_RunLostParksEscalate(t *testing.T) {
+	got := NextStage(StagePreflight, Facts{RunLost: true, SkipReason: "x"})
+	if got.Next != StageParked || got.Park != ParkEscalate || got.Reason != RunLostReason {
+		t.Fatalf("run lost = %+v, want parked escalate %q", got, RunLostReason)
 	}
 }

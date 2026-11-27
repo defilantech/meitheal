@@ -438,7 +438,7 @@ func TestDrive_ConcernParksWithoutVerify(t *testing.T) {
 
 func TestDrive_FailedWorkloadParksEscalateWithoutVerify(t *testing.T) {
 	dir := t.TempDir()
-	e := &fakeEffects{watch: WatchResult{WorkloadFailed: true}}
+	e := &fakeEffects{watch: WatchResult{WorkloadFailed: true, ReviewRejected: true}}
 	if got := drive(t, e, dir); got != StageParked {
 		t.Fatalf("end stage = %q, want %q", got, StageParked)
 	}
@@ -460,6 +460,7 @@ func TestDrive_EveryParkNotifies(t *testing.T) {
 		{"stall", fakeEffects{watch: WatchResult{Stalled: true}}, ParkEscalate},
 		{"concern", fakeEffects{watch: WatchResult{Concern: "c"}}, ParkNeedsDecision},
 		{"failed workload", fakeEffects{watch: WatchResult{WorkloadFailed: true}}, ParkEscalate},
+		{"run lost", fakeEffects{preflightErr: ErrRunLost}, ParkEscalate},
 		{"verify twice", fakeEffects{}, ParkEscalate},
 	}
 	for _, tc := range cases {
@@ -479,6 +480,31 @@ func TestDrive_EveryParkNotifies(t *testing.T) {
 				t.Errorf("Notify got %+v, parked %+v", e.notified[0], want)
 			}
 		})
+	}
+}
+
+// Preflight's ErrRunLost (the issue's own branch, no Workload of the loop's)
+// parks escalate with RunLostReason and is announced, instead of ending the
+// item as a skip or an error. Nothing is dispatched, and the park names the
+// reserved Workload so its notice can find the draft PR.
+func TestDrive_RunLostParksEscalateAndNotifies(t *testing.T) {
+	dir := t.TempDir()
+	e := &fakeEffects{preflightErr: ErrRunLost}
+	if got := drive(t, e, dir); got != StageParked {
+		t.Fatalf("end stage = %q, want parked", got)
+	}
+	if e.dispatched != 0 {
+		t.Errorf("dispatched %d times, want 0", e.dispatched)
+	}
+	d := onlyDecision(t, dir)
+	if d.Kind != ParkEscalate || d.Reason != RunLostReason || d.Stage != string(StagePreflight) {
+		t.Errorf("decision = (%q,%q,%q), want (escalate,%q,preflight)", d.Kind, d.Reason, d.Stage, RunLostReason)
+	}
+	if d.Workload != plannedWorkloadName(driveIssue) {
+		t.Errorf("Workload = %q, want the reserved name %q", d.Workload, plannedWorkloadName(driveIssue))
+	}
+	if len(e.notified) != 1 || e.notified[0].Reason != RunLostReason {
+		t.Errorf("notified %+v, want one notice of the lost run", e.notified)
 	}
 }
 

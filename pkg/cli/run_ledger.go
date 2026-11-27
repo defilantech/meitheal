@@ -34,8 +34,9 @@ const (
 	// ledgerDone: finalized, or hand-fixed.
 	ledgerDone = "done"
 	// ledgerSkipped: preflight found the work in flight elsewhere (an open
-	// PR, a pushed branch). Not finished: a restart runs preflight again,
-	// and what runs after the item keeps waiting.
+	// PR), or the issue closed. Not finished: a restart runs preflight
+	// again, and what runs after the item keeps waiting, unless the issue
+	// is closed.
 	ledgerSkipped = "skipped"
 	// ledgerParked: a decision was parked for a human.
 	ledgerParked = "parked"

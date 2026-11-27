@@ -576,6 +576,22 @@ func TestRunCommand_LiveRunNeedsATemplate(t *testing.T) {
 	}
 }
 
+// --gpu-paths sends a cpu-lane branch that touches them to the GPU gate, so a
+// template without one is refused before anything is touched.
+func TestRunCommand_GPUPathsNeedAGPUGate(t *testing.T) {
+	queue, _ := runQueueFixture(t)
+	tpl := filepath.Join(t.TempDir(), "template.yaml")
+	if err := os.WriteFile(tpl, []byte("spec: {repo: example/widgets, gateProfile: {language: generic}}\n"),
+		0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := meithealExec(t, "run", "--queue", queue, "--coder-agent", "coder-metal", "--template", tpl,
+		"--gpu-paths", "crates/gpu/")
+	if err == nil || !strings.Contains(err.Error(), "--gpu-paths") || !strings.Contains(err.Error(), "gpuGate") {
+		t.Fatalf("err = %v, want --gpu-paths without a gpuGate refused", err)
+	}
+}
+
 func TestRunCommand_RefusesBadParallel(t *testing.T) {
 	queue, _ := runQueueFixture(t)
 	for _, p := range []string{"cpu=0", "tpu=1", "cpu"} {
