@@ -669,7 +669,8 @@ a decision under --decisions-dir for 'meitheal decisions', and is never put
 in the queue.
 
 Rules that belong to one repository go in --rules-file; they reach the
-planner verbatim. --gpu-labels and --gpu-paths put an issue in the gpu lane.
+planner verbatim, and override the general rules where the two conflict.
+--gpu-labels and --gpu-paths put an issue in the gpu lane.
 Anyone can comment on a public issue: --trusted-commenters limits the comments
 the planner reads to those logins. All issue and repository text reaches the
 planner fenced as data, never as instructions.
