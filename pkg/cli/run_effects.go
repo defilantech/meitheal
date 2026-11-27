@@ -421,6 +421,7 @@ func (e *clusterEffects) Watch(
 		case meithealv1alpha1.WorkloadPhaseFailed:
 			res.WorkloadFailed = true
 			res.ReviewRejected = lastIsRejectedReview(tasks)
+			res.FailureReason, res.FailureEvidence = explainFailure(tasks, maxReviewIterations(w))
 			return res, nil
 		}
 		if claimed != nil {

@@ -95,6 +95,20 @@ func TestNextStage_WatchParkReasons(t *testing.T) {
 		t.Errorf("other failure = (%q,%q), want (escalate, the run failed before a review verdict)",
 			got.Park, got.Reason)
 	}
+	// The watcher's explanation of the failure wins over both.
+	explained := "review returned NO-GO in round 2 and the coder could not address it"
+	for _, f := range []Facts{
+		{WorkloadFailed: true, FailureReason: explained},
+		{WorkloadFailed: true, ReviewRejected: true, FailureReason: explained},
+	} {
+		if got = NextStage(StageWatch, f); got.Park != ParkEscalate || got.Reason != explained {
+			t.Errorf("explained failure %+v = (%q,%q), want (escalate,%q)", f, got.Park, got.Reason, explained)
+		}
+	}
+	// A reason with no failure parks nothing.
+	if got = NextStage(StageWatch, Facts{FailureReason: explained}); got.Next != StageVerify {
+		t.Errorf("reason without failure = %+v, want verify", got)
+	}
 	// A stall is the more specific fact and keeps its own reason.
 	got = NextStage(StageWatch, Facts{Stalled: true, WorkloadFailed: true, Concern: "x"})
 	if got.Park != ParkEscalate || got.Reason != "stalled" {

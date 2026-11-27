@@ -46,8 +46,11 @@ const (
 	ParkNeedsSplit    = "needs-split"
 )
 
-// The two reasons a failed Workload parks with. Both are public (the park
-// comment carries the reason), so neither names a task, a model or a log.
+// The reasons a failed Workload parks with when the watcher could not explain
+// it from the children's outcomes (Facts.FailureReason, explainFailure in
+// run_failure.go, which also produces RunFailedReason for a run that failed
+// before any review verdict). All are public (the park comment carries the
+// reason), so none names a task, a model or a log.
 const (
 	ReviewNotConvergedReason = "review did not converge"
 	RunFailedReason          = "the run failed before a review verdict"
@@ -79,6 +82,10 @@ type Facts struct {
 	// the run ended on a review that requested changes (see
 	// WatchResult.ReviewRejected).
 	ReviewRejected bool
+	// FailureReason, with WorkloadFailed, is the reason the children's
+	// outcomes give (see WatchResult.FailureReason). When set it is the park
+	// reason, ahead of ReviewRejected.
+	FailureReason string
 	// Concern is the first structured concern text from any child task.
 	Concern string
 	// GPUBusy reports that verify could not run the GPU gate because the GPU
@@ -119,6 +126,9 @@ func NextStage(cur Stage, f Facts) Transition {
 			return Transition{Next: StageParked, Park: ParkNeedsDecision, Reason: "a task raised a concern"}
 		}
 		if f.WorkloadFailed {
+			if f.FailureReason != "" {
+				return Transition{Next: StageParked, Park: ParkEscalate, Reason: f.FailureReason}
+			}
 			if f.ReviewRejected {
 				return Transition{Next: StageParked, Park: ParkEscalate, Reason: ReviewNotConvergedReason}
 			}
