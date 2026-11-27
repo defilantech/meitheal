@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/defilantech/meitheal/compare/v0.1.0...v0.1.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* build the meitheal cli for windows again ([#39](https://github.com/defilantech/meitheal/issues/39)) ([f779ff4](https://github.com/defilantech/meitheal/commit/f779ff4099f9615fbfe7069bb8f9534d04eae512))
+
 ## [0.1.0](https://github.com/defilantech/meitheal/compare/v0.1.0...v0.1.0) (2026-11-27)
 
 
