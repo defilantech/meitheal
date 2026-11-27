@@ -53,4 +53,11 @@ const (
 	// RailUnverifiedSummary names enforceReviewerUnverifiedSummary in
 	// pkg/agent/executor_native.go.
 	RailUnverifiedSummary = "unverified-summary"
+	// RailOutOfDiffFindings names enforceReviewerOutOfDiffFindings in
+	// pkg/agent/out_of_diff_findings_gate.go. Unlike the three rails above
+	// it never rewrites a verdict: it marks a NO-GO whose every blocking
+	// finding cites a file outside the branch diff as untrusted (#41), so
+	// verdictClaimed is NO-GO and the controller re-runs the review rather
+	// than handing the coder findings about files it never touched.
+	RailOutOfDiffFindings = "out-of-diff-findings"
 )

@@ -17,6 +17,8 @@ limitations under the License.
 package controller
 
 import (
+	"fmt"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -26,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -348,6 +351,183 @@ var _ = Describe("WorkloadReconciler review fix iteration (#946)", func() {
 		Expect(after).NotTo(BeNil())
 		Expect(after.LastTransitionTime).To(Equal(before.LastTransitionTime))
 		Expect(recorder.Events).NotTo(Receive())
+	})
+
+	// #41: a NO-GO the executor marked untrusted (here the issueAsk rail's
+	// non-GO path, carrying blockers about files the branch never touched)
+	// must not become the coder's task list. The review is re-run once on the
+	// same branch; its verdict then decides the round.
+	untrustedResult := func(summary string) string {
+		return string(reviewResultRaw(meithealv1alpha1.AgenticTaskVerdictNoGo, summary, map[string]any{
+			"issueAskVerified": false,
+			"verdictDemoted":   true,
+			"verdictDemotedBy": reviewer.RailIssueAsk,
+			"verdictClaimed":   string(meithealv1alpha1.AgenticTaskVerdictNoGo),
+			"demotionReason":   demotionReasonIssueAsk,
+			"findings": []any{map[string]any{
+				"severity": "blocker", "area": "scope", "message": "the reconciler drops the retry budget",
+				"file": "internal/controller/ghost.go", "line": 42,
+			}},
+		}).Raw)
+	}
+
+	untrustedSpec := func(issue int32) meithealv1alpha1.WorkloadSpec {
+		return meithealv1alpha1.WorkloadSpec{
+			Intent:           "untrusted review re-run",
+			Repo:             "defilantech/LLMKube",
+			Issues:           []int32{issue},
+			CoderAgentRef:    &corev1.LocalObjectReference{Name: "coder"},
+			VerifierAgentRef: &corev1.LocalObjectReference{Name: "gate"},
+			ReviewerAgentRefs: []corev1.LocalObjectReference{
+				{Name: "reviewer"},
+			},
+			MaxReviewIterations: ptr.To(int32(2)),
+		}
+	}
+
+	// startUntrusted plans the base round and drives it to an untrusted
+	// reviewer NO-GO, then reconciles once.
+	startUntrusted := func(name string, spec meithealv1alpha1.WorkloadSpec) *meithealv1alpha1.Workload {
+		wl := newWorkload(name, spec)
+		Expect(k8sClient.Create(ctx, wl)).To(Succeed())
+		DeferCleanup(func() {
+			cleanupChildren(wl)
+			_ = k8sClient.Delete(ctx, wl)
+		})
+		n := spec.Issues[0]
+		reconcile(wl)
+		markTerminal(fmt.Sprintf("%s-code-%d", name, n), meithealv1alpha1.AgenticTaskVerdictGo, "")
+		markTerminal(fmt.Sprintf("%s-verify-%d", name, n), meithealv1alpha1.AgenticTaskVerdictGatePass, "")
+		markTerminal(fmt.Sprintf("%s-review-%d-0", name, n), meithealv1alpha1.AgenticTaskVerdictNoGo,
+			untrustedResult("REQUEST-CHANGES: ghost.go drops the retry budget"))
+		reconcile(wl)
+		return wl
+	}
+
+	notFound := func(name string) {
+		var t meithealv1alpha1.AgenticTask
+		err := k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: name}, &t)
+		ExpectWithOffset(1, apierrors.IsNotFound(err)).To(BeTrue(), "%s must not exist", name)
+	}
+
+	It("re-reviews an untrusted NO-GO once instead of iterating, and completes when the re-review approves (#41)", func() {
+		wl := startUntrusted("untrusted-go", untrustedSpec(760))
+
+		notFound("untrusted-go-code-760-r1")
+		var rr meithealv1alpha1.AgenticTask
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "untrusted-go-review-760-0-rr"}, &rr)).
+			To(Succeed(), "the untrusted review must be re-run once")
+		Expect(rr.Spec.Kind).To(Equal(meithealv1alpha1.AgenticTaskKindReview))
+		Expect(rr.Spec.AgentRef.Name).To(Equal("reviewer"))
+		Expect(rr.Spec.Payload.Branch).To(Equal("meitheal/untrusted-go/issue-760"), "the SAME branch is re-reviewed")
+		Expect(rr.Spec.Payload.OpenPullRequest).To(BeTrue())
+		Expect(rr.Spec.DependsOn).To(ConsistOf("untrusted-go-verify-760"))
+		Expect(rr.Labels[labelStep]).To(Equal("review-760-0-rr"))
+
+		var fresh meithealv1alpha1.Workload
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseDispatched),
+			"the Workload waits on the re-review instead of failing on the untrusted NO-GO")
+		Expect(fresh.Status.ReviewIterations).To(Equal(int32(0)), "a re-review is not a fix iteration")
+		Expect(fresh.Status.Tasks).To(ContainElement(HaveField("Name", "untrusted-go-review-760-0-rr")))
+		Expect(findCondition(fresh.Status.Conditions, conditionTypeReviewIterationTriggered)).To(BeNil())
+		rerun := findCondition(fresh.Status.Conditions, conditionTypeReviewRerunTriggered)
+		Expect(rerun).NotTo(BeNil())
+		Expect(rerun.Status).To(Equal(metav1.ConditionTrue))
+		Expect(rerun.Reason).To(Equal("UntrustedReview"))
+		Expect(rerun.Message).To(ContainSubstring("review-760-0: " + demotionReasonIssueAsk))
+
+		// Idempotent: a further reconcile neither re-emits nor iterates.
+		reconcile(wl)
+		var tasks meithealv1alpha1.AgenticTaskList
+		Expect(k8sClient.List(ctx, &tasks, client.InNamespace("default"),
+			client.MatchingLabels{labelWorkload: "untrusted-go"})).To(Succeed())
+		Expect(tasks.Items).To(HaveLen(4))
+
+		markTerminal("untrusted-go-review-760-0-rr", meithealv1alpha1.AgenticTaskVerdictGo, "")
+		reconcile(wl)
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseCompleted),
+			"a trusted GO re-review completes the Workload; the untrusted NO-GO it replaced no longer counts")
+		Expect(fresh.Status.IncompleteTasks).To(Equal(int32(0)))
+		notFound("untrusted-go-code-760-r1")
+	})
+
+	It("iterates on a trusted re-review NO-GO with the re-review's feedback (#41)", func() {
+		wl := startUntrusted("untrusted-nogo", untrustedSpec(761))
+		markTerminal("untrusted-nogo-review-761-0-rr", meithealv1alpha1.AgenticTaskVerdictNoGo, noGoResult)
+		reconcile(wl)
+
+		var code meithealv1alpha1.AgenticTask
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "untrusted-nogo-code-761-r1"}, &code)).
+			To(Succeed(), "a trusted NO-GO re-review iterates as any review does")
+		Expect(code.Spec.Payload.Prompt).To(ContainSubstring("reduces ACCESS_TOKEN_EXPIRE_MINUTES from 10080 to 30"))
+		Expect(code.Spec.Payload.Prompt).NotTo(ContainSubstring("ghost.go"),
+			"the untrusted review's findings must never reach the coder")
+	})
+
+	It("ends the issue incomplete with ReviewUntrusted when the re-review is untrusted too (#41)", func() {
+		wl := startUntrusted("untrusted-twice", untrustedSpec(762))
+		markTerminal("untrusted-twice-review-762-0-rr", meithealv1alpha1.AgenticTaskVerdictNoGo,
+			untrustedResult("REQUEST-CHANGES: ghost.go still drops the retry budget"))
+		// Drain the events of the first pass before the one under test.
+		for len(recorder.Events) > 0 {
+			<-recorder.Events
+		}
+		reconcile(wl)
+
+		notFound("untrusted-twice-code-762-r1")
+		notFound("untrusted-twice-review-762-0-rr-rr")
+		var fresh meithealv1alpha1.Workload
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
+		Expect(fresh.Status.Phase).To(Equal(meithealv1alpha1.WorkloadPhaseFailed))
+		Expect(fresh.Status.ReviewIterations).To(Equal(int32(0)))
+		untrusted := findCondition(fresh.Status.Conditions, conditionTypeReviewUntrusted)
+		Expect(untrusted).NotTo(BeNil(), "the operator must be told the failure is the review's trustworthiness")
+		Expect(untrusted.Status).To(Equal(metav1.ConditionTrue))
+		Expect(untrusted.Reason).To(Equal("UntrustedAfterRereview"))
+		Expect(untrusted.Message).To(ContainSubstring("review-762-0-rr: " + demotionReasonIssueAsk))
+		Expect(untrusted.Message).To(ContainSubstring("untrusted"))
+		Expect(untrusted.Message).NotTo(ContainSubstring("escalation"))
+		Expect(recorder.Events).To(Receive(And(
+			ContainSubstring("Warning"),
+			ContainSubstring(conditionTypeReviewUntrusted),
+			ContainSubstring("review-762-0-rr"),
+		)))
+
+		before := *untrusted
+		reconcile(wl)
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
+		after := findCondition(fresh.Status.Conditions, conditionTypeReviewUntrusted)
+		Expect(after).NotTo(BeNil())
+		Expect(after.LastTransitionTime).To(Equal(before.LastTransitionTime))
+		Expect(recorder.Events).NotTo(Receive())
+	})
+
+	It("sends an untrusted re-review to the escalation reviewers when configured (#41)", func() {
+		spec := untrustedSpec(763)
+		spec.EscalationReviewerAgentRefs = []corev1.LocalObjectReference{{Name: "big-reviewer"}}
+		wl := startUntrusted("untrusted-esc", spec)
+
+		// The untrusted original must not fire escalation while its
+		// re-review is pending.
+		notFound("untrusted-esc-escalate-763-0")
+
+		markTerminal("untrusted-esc-review-763-0-rr", meithealv1alpha1.AgenticTaskVerdictNoGo,
+			untrustedResult("REQUEST-CHANGES: ghost.go still drops the retry budget"))
+		reconcile(wl)
+
+		var esc meithealv1alpha1.AgenticTask
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "untrusted-esc-escalate-763-0"}, &esc)).
+			To(Succeed(), "an untrusted re-review routes to escalation, as a demoted GO does")
+		Expect(esc.Spec.AgentRef.Name).To(Equal("big-reviewer"))
+		notFound("untrusted-esc-code-763-r1")
+
+		var fresh meithealv1alpha1.Workload
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(wl), &fresh)).To(Succeed())
+		untrusted := findCondition(fresh.Status.Conditions, conditionTypeReviewUntrusted)
+		Expect(untrusted).NotTo(BeNil())
+		Expect(untrusted.Message).To(ContainSubstring("escalation reviewers"))
 	})
 
 	It("does not iterate when the reviewer says GO", func() {
