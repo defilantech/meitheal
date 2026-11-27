@@ -108,6 +108,33 @@ reason: <one line>
 <child drafts>
 `
 
+// The headings and notes that tell the planner which files it has read.
+const (
+	relatedHeading = "Contents of the files most related to the issue (ranked by the words they share with it, " +
+		"not named by it; check that they are the right files before you rely on them):"
+	seenFullHeading = "Files whose full contents are in this message:"
+	seenHeadHeading = "Files of which this message holds only the head (cut at the contents cap):"
+	seenNote        = "Those are the only files whose contents you have read. Every other file you know by its name " +
+		"alone:\nname it as a file to start from, never as the only files the coder may use."
+	seenNoneNote = "This message holds no file's contents: you know every file by its name alone. Name files as " +
+		"ones to start from,\nnever as the only files the coder may use."
+)
+
+// readFiles lists the paths of the files whose contents the prompt holds:
+// those given in full, and those cut at a cap.
+func readFiles(groups ...[]namedFile) (full, head []string) {
+	for _, g := range groups {
+		for _, f := range g {
+			if f.Truncated {
+				head = append(head, oneLine(f.Path))
+			} else {
+				full = append(full, oneLine(f.Path))
+			}
+		}
+	}
+	return full, head
+}
+
 // truncatedMarker ends a named file cut off at the contents cap.
 const truncatedMarker = "[truncated: the contents cap was reached]"
 
@@ -138,6 +165,9 @@ type intentPromptInput struct {
 	// this issue, from the one login allowed to answer a park. It is placed
 	// after the data blocks, as settled, not fenced as untrusted text.
 	MaintainerDecision string
+	// Related are the tracked files ranked most related to the issue,
+	// besides the ones it names.
+	Related []namedFile
 }
 
 // repoRulesPrecedence settles a conflict between a repository rule and a
@@ -167,13 +197,16 @@ func newNonce() string {
 // untrustedText is every string the prompt fences, so a nonce that happens
 // to occur in one of them can be refused.
 func (in intentPromptInput) untrustedText() []string {
-	out := make([]string, 0, 2+2*len(in.Comments)+len(in.Files)+2*len(in.Named))
+	out := make([]string, 0, 2+2*len(in.Comments)+len(in.Files)+2*len(in.Named)+2*len(in.Related))
 	out = append(out, in.Title, in.Body)
 	for _, c := range in.Comments {
 		out = append(out, c.Author, c.Body)
 	}
 	out = append(out, in.Files...)
 	for _, f := range in.Named {
+		out = append(out, f.Path, f.Content)
+	}
+	for _, f := range in.Related {
 		out = append(out, f.Path, f.Content)
 	}
 	return out
@@ -238,9 +271,12 @@ func buildIntentPrompt(in intentPromptInput) string {
 	}
 	block(&b, "Files in the repository (git ls-files):", list)
 
-	if len(in.Named) > 0 {
-		b.WriteString("\nContents of the files the issue names:\n")
-		for _, f := range in.Named {
+	fileBlocks := func(heading string, files []namedFile) {
+		if len(files) == 0 {
+			return
+		}
+		b.WriteString("\n" + heading + "\n")
+		for _, f := range files {
 			content := f.Content
 			if f.Truncated {
 				if !strings.HasSuffix(content, "\n") {
@@ -250,6 +286,20 @@ func buildIntentPrompt(in intentPromptInput) string {
 			}
 			block(&b, "File "+oneLine(f.Path)+":", content)
 		}
+	}
+	fileBlocks("Contents of the files the issue names:", in.Named)
+	fileBlocks(relatedHeading, in.Related)
+	full, head := readFiles(in.Named, in.Related)
+	if len(full) > 0 {
+		block(&b, seenFullHeading, strings.Join(full, "\n"))
+	}
+	if len(head) > 0 {
+		block(&b, seenHeadHeading, strings.Join(head, "\n"))
+	}
+	if len(full)+len(head) > 0 {
+		b.WriteString("\n" + seenNote + "\n")
+	} else {
+		b.WriteString("\n" + seenNoneNote + "\n")
 	}
 
 	if d := strings.TrimSpace(in.MaintainerDecision); d != "" {

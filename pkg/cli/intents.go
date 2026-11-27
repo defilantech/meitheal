@@ -214,6 +214,12 @@ type PlanConfig struct {
 	// settled, and the decision label no longer parks the issue: the human
 	// it was waiting for has decided. Nil adds nothing.
 	MaintainerDecisions map[int32]string
+	// ContextBytes bounds the file contents in a prompt: the files the issue
+	// names come first, and the tracked files ranked most related to the
+	// issue fill what they leave. Zero adds no ranked files.
+	ContextBytes int
+	// ContextFiles caps how many ranked files a prompt holds. Zero adds none.
+	ContextFiles int
 }
 
 // PlanIssues asks the planner for an intent for each issue, writes each
@@ -305,6 +311,7 @@ func (p planner) planOne(ctx context.Context, issue int32) (*QueueItem, []string
 		return nil, nil, p.park(issue, ParkNeedsDecision, reason, nil)
 	}
 	comments, omitted := trustedComments(d.Comments, p.cfg.TrustedCommenters)
+	named := namedFileContents(p.listing.Root, p.listing.Files, d.Body)
 	prompt := buildIntentPrompt(intentPromptInput{
 		Issue:              issue,
 		Title:              d.Title,
@@ -312,7 +319,8 @@ func (p planner) planOne(ctx context.Context, issue int32) (*QueueItem, []string
 		Comments:           comments,
 		OmittedComments:    omitted,
 		Files:              p.listing.Files,
-		Named:              namedFileContents(p.listing.Root, p.listing.Files, d.Body),
+		Named:              named,
+		Related:            p.relatedFiles(d, named),
 		Rules:              p.cfg.Rules,
 		BashTimeoutSeconds: p.cfg.BashTimeoutSeconds,
 		MaintainerDecision: decided,
@@ -362,6 +370,18 @@ func (p planner) planOne(ctx context.Context, issue int32) (*QueueItem, []string
 	}
 	p.progress("issue %d: planned, lane %s, intent %s\n", issue, lane, intentPath)
 	return &QueueItem{Issue: issue, IntentPath: intentPath, Lane: lane}, v.Files, nil
+}
+
+// relatedFiles ranks the tracked files against the issue and returns the
+// most related ones the named files leave room for.
+func (p planner) relatedFiles(d IssueDetail, named []namedFile) []namedFile {
+	budget := p.cfg.ContextBytes
+	skip := make(map[string]bool, len(named))
+	for _, f := range named {
+		skip[f.Path] = true
+		budget -= len(f.Content)
+	}
+	return relatedFileContents(p.listing.Root, p.listing.Files, d.Title, d.Body, skip, budget, p.cfg.ContextFiles)
 }
 
 // trustedComments keeps the comments by a trusted login and counts the rest.
@@ -651,6 +671,8 @@ type intentsOptions struct {
 	trustedCommenters string
 	decisionLabel     string
 	bashTimeout       int
+	contextBytes      int
+	contextFiles      int
 }
 
 func newIntentsCommand() *cobra.Command {
@@ -662,7 +684,9 @@ func newIntentsCommand() *cobra.Command {
 intents and a queue for 'meitheal run'.
 
 For each issue the planner reads the title, body and comments, the files
-tracked in --repo-dir, and the contents of the files the issue names. It
+tracked in --repo-dir, the contents of the files the issue names, and the
+contents of the tracked files that share the most words with the issue
+(--context-files of them, within --context-bytes with the named files). It
 either writes an intent or hands the issue to a human: an issue it cannot
 plan, labelled --decision-label, or whose answer cannot be read is parked as
 a decision under --decisions-dir for 'meitheal decisions', and is never put
@@ -723,6 +747,12 @@ func addPlannerFlags(f *pflag.FlagSet, o *intentsOptions, need string) {
 		"Issue label that parks an issue for a human without calling the planner; empty disables")
 	f.IntVar(&o.bashTimeout, "bash-timeout-seconds", defaultBashTimeoutSeconds,
 		"The coder's bash time limit, stated to the planner")
+	f.IntVar(&o.contextBytes, "context-bytes", defaultContextBytes,
+		"Bytes of file contents given to the planner: the files the issue names, then the tracked files "+
+			"most related to it; 0 adds no related files")
+	f.IntVar(&o.contextFiles, "context-files", defaultContextFiles,
+		"Most related files (ranked against the issue, not named by it) whose contents the planner gets; "+
+			"0 adds none")
 }
 
 // plannerSetup checks the planner flags and builds the PlanConfig and the
@@ -741,10 +771,18 @@ func (o *intentsOptions) plannerSetup(progress io.Writer) (PlanConfig, PlannerCa
 	if o.plannerTimeout <= 0 {
 		return PlanConfig{}, nil, fmt.Errorf("--planner-timeout must be greater than 0, got %s", o.plannerTimeout)
 	}
+	if o.contextBytes < 0 {
+		return PlanConfig{}, nil, fmt.Errorf("--context-bytes must not be negative, got %d", o.contextBytes)
+	}
+	if o.contextFiles < 0 {
+		return PlanConfig{}, nil, fmt.Errorf("--context-files must not be negative, got %d", o.contextFiles)
+	}
 	cfg := PlanConfig{
 		DecisionLabel:      o.decisionLabel,
 		GPULabels:          splitList(o.gpuLabels),
 		GPUPaths:           splitList(o.gpuPaths),
+		ContextBytes:       o.contextBytes,
+		ContextFiles:       o.contextFiles,
 		TrustedCommenters:  splitList(o.trustedCommenters),
 		BashTimeoutSeconds: o.bashTimeout,
 		Progress:           progress,
