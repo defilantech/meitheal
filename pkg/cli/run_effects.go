@@ -26,6 +26,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -255,25 +256,64 @@ func (e *clusterEffects) Kill(ctx context.Context, workload string) error {
 // reads.
 type runTaskResult struct {
 	Extra struct {
-		Concerns []struct {
-			Kind  string   `json:"kind"`
-			Text  string   `json:"text"`
-			Files []string `json:"files"`
-		} `json:"concerns"`
-		PullRequestURL string         `json:"pullRequestURL"`
-		ModelExtra     map[string]any `json:"modelExtra"`
-	} `json:"extra"`
+		// Concerns is kept raw: it can come from the model, and concernOf
+		// reads it fail closed instead of letting a bad shape fail the
+		// whole decode.
+		Concerns       json.RawMessage
+		PullRequestURL string
+		ModelExtra     map[string]any
+	}
 }
 
+// parseTaskResult decodes each field of status.result.extra on its own, so a
+// value of the wrong type in one (the model writes into extra) cannot hide
+// the others: the PR URL is still read next to an unreadable concern.
 func parseTaskResult(t *meithealv1alpha1.AgenticTask) (runTaskResult, bool) {
 	var r runTaskResult
 	if t.Status.Result == nil || len(t.Status.Result.Raw) == 0 {
 		return r, false
 	}
-	if err := json.Unmarshal(t.Status.Result.Raw, &r); err != nil {
+	var top struct {
+		Extra map[string]json.RawMessage `json:"extra"`
+	}
+	if err := json.Unmarshal(t.Status.Result.Raw, &top); err != nil {
 		return r, false
 	}
+	r.Extra.Concerns = top.Extra["concerns"]
+	_ = json.Unmarshal(top.Extra["pullRequestURL"], &r.Extra.PullRequestURL)
+	_ = json.Unmarshal(top.Extra["modelExtra"], &r.Extra.ModelExtra)
 	return r, true
+}
+
+// concernNoText stands in for a concern the loop cannot read the text of.
+const concernNoText = "a concern with no text"
+
+// concernOf reads extra.concerns fail closed: absent, null or an empty list
+// is no concern; a list returns its first concern's text; anything else (a
+// string, an object, a list entry that is not an object or has no text) is
+// still a concern, reported as concernNoText. A concern parks the item, so
+// a shape the loop does not expect must never read as none.
+func concernOf(raw json.RawMessage) string {
+	raw = json.RawMessage(strings.TrimSpace(string(raw)))
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var list []json.RawMessage
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return concernNoText
+	}
+	if len(list) == 0 {
+		return ""
+	}
+	for _, el := range list {
+		var c struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(el, &c); err == nil && strings.TrimSpace(c.Text) != "" {
+			return c.Text
+		}
+	}
+	return concernNoText
 }
 
 // workloadTasks lists the Workload's AgenticTasks in name order, so "the
@@ -312,12 +352,7 @@ func observe(tasks []meithealv1alpha1.AgenticTask) (WatchResult, *time.Time) {
 			continue
 		}
 		if res.Concern == "" {
-			for _, c := range r.Extra.Concerns {
-				if c.Text != "" {
-					res.Concern = c.Text
-					break
-				}
-			}
+			res.Concern = concernOf(r.Extra.Concerns)
 		}
 		if res.PRURL == "" {
 			res.PRURL = r.Extra.PullRequestURL

@@ -94,3 +94,62 @@ func TestSubmitResult_SchemaMentionsNovelty(t *testing.T) {
 		t.Fatalf("schema lacks novelty description: %s", s)
 	}
 }
+
+// extra is free-form, so a model can send extra.concerns in any shape. One a
+// run loop cannot read is replaced by a single novelty concern, never dropped,
+// and the model's value is kept as evidence.
+func TestSubmitResult_MalformedExtraConcernsFailClosed(t *testing.T) {
+	for name, extra := range map[string]string{
+		"string":       `"copies a kernel"`,
+		"object":       `{"kind":"novelty","text":"t"}`,
+		"wrong kind":   `[{"kind":"style","text":"t"}]`,
+		"unknown keys": `[{"kind":"novelty","text":"t","severity":"high"}]`,
+		"bad files":    `[{"kind":"novelty","text":"t","files":"src/a.rs"}]`,
+		"number list":  `[1,2]`,
+	} {
+		res, err := SubmitResultTool{}.Execute(context.Background(), json.RawMessage(
+			`{"verdict":"GO","summary":"s","commit_message":"c","extra":{"prBody":"x","concerns":`+extra+`}}`))
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", name, err)
+		}
+		got, ok := res.Extra["concerns"].([]Concern)
+		if !ok || len(got) != 1 || got[0].Kind != "novelty" || got[0].Text != MalformedConcernText {
+			t.Errorf("%s: extra[concerns] = %#v, want one malformed-concern entry", name, res.Extra["concerns"])
+		}
+		if _, kept := res.Extra["malformedConcerns"]; !kept {
+			t.Errorf("%s: the model's value was not kept as evidence: %v", name, res.Extra)
+		}
+		if res.Extra["prBody"] != "x" {
+			t.Errorf("%s: other extra keys lost: %v", name, res.Extra)
+		}
+	}
+}
+
+// A well-formed extra.concerns list is kept, and the top-level concerns are
+// added after it; an empty or null one is no concern at all.
+func TestSubmitResult_ExtraConcernsListKeptAndMerged(t *testing.T) {
+	res, err := SubmitResultTool{}.Execute(context.Background(), json.RawMessage(
+		`{"verdict":"GO","summary":"s","commit_message":"c",`+
+			`"extra":{"concerns":[{"kind":"novelty","text":"from extra","files":["a.rs"]}]},`+
+			`"concerns":[{"kind":"novelty","text":"top level"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := res.Extra["concerns"].([]Concern)
+	if len(got) != 2 || got[0].Text != "from extra" || got[1].Text != "top level" {
+		t.Fatalf("extra[concerns] = %#v", res.Extra["concerns"])
+	}
+	if _, present := res.Extra["malformedConcerns"]; present {
+		t.Fatalf("a readable list was marked malformed: %v", res.Extra)
+	}
+	for _, empty := range []string{`[]`, `null`} {
+		res, err := SubmitResultTool{}.Execute(context.Background(), json.RawMessage(
+			`{"verdict":"GO","summary":"s","commit_message":"c","extra":{"concerns":`+empty+`}}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, present := res.Extra["concerns"]; present {
+			t.Errorf("extra.concerns %s: kept as %#v, want none", empty, res.Extra["concerns"])
+		}
+	}
+}

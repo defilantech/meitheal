@@ -3247,7 +3247,9 @@ func (e *NativeAgentLoopExecutor) modelDecidedResult(
 // promoteTerminalConcerns lifts submit_result's structured concerns from the
 // terminal's Extra (nested under "modelExtra") to the Result's top-level
 // Extra["concerns"], i.e. status.result.extra.concerns, where a run loop
-// reads them. Nothing is added when none were raised.
+// reads them. Nothing is added when none were raised. submit_result has
+// already turned a model-supplied extra.concerns of the wrong shape into a
+// malformed-concern entry, so what is lifted here is always a list.
 func promoteTerminalConcerns(extra, terminalExtra map[string]any) {
 	if c, ok := terminalExtra["concerns"]; ok && c != nil {
 		extra["concerns"] = c

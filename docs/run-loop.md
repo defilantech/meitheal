@@ -99,7 +99,7 @@ by `meitheal decisions`.
 | Kind | When |
 |---|---|
 | `escalate` | The coder stalled; review did not converge; the gate failed again after the feedback pass; the GPU node stayed busy. |
-| `needs-decision` | A task raised a concern; the planner found a decision only a maintainer can make, its answer was unreadable, or its call failed; the issue carries the `--decision-label` label. |
+| `needs-decision` | A task raised a concern (one the loop cannot read, or with no text, counts); the planner found a decision only a maintainer can make, its answer was unreadable, or its call failed; the issue carries the `--decision-label` label. |
 | `needs-split` | The planner judged the issue too big for one run. |
 
 Every park is announced once: a one-line comment on the issue (the reason,

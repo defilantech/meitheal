@@ -777,6 +777,50 @@ func TestWatch_ReportsConcernAndFailure(t *testing.T) {
 	}
 }
 
+// extra.concerns is written by the model, so its shape is not trusted: a
+// string, an object or a text-less entry is still a concern and parks the
+// item, and a concerns value that cannot be read does not cost the rest of
+// the task result (the PR URL beside it).
+func TestWatch_MalformedConcernsFailClosed(t *testing.T) {
+	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	name := plannedWorkloadName(effIssue)
+	const pr = "https://github.com/example/widgets/pull/7"
+	for label, tc := range map[string]struct{ concerns, want string }{
+		"string":      {`"copies a kernel"`, concernNoText},
+		"object":      {`{"kind":"novelty"}`, concernNoText},
+		"empty text":  {`[{"kind":"novelty","text":""}]`, concernNoText},
+		"no text":     {`[{"kind":"novelty","files":["a.rs"]}]`, concernNoText},
+		"not objects": {`[1]`, concernNoText},
+		"later text":  {`[{"kind":"novelty","text":" "},{"kind":"novelty","text":"second"}]`, "second"},
+		"empty list":  {`[]`, ""},
+		"null":        {`null`, ""},
+		"well-formed": {`[{"kind":"novelty","text":"mirrors a layout"}]`, "mirrors a layout"},
+		"bool":        {`false`, concernNoText},
+	} {
+		review := taskWithResult(name, fmt.Sprintf("review-%d-0", effIssue), meithealv1alpha1.AgenticTaskKindReview,
+			`{"verdict":"GO","extra":{"concerns":`+tc.concerns+`,"pullRequestURL":"`+pr+`"}}`)
+		c := newEffectsClient(t, nil,
+			watchWorkload(name, now.Add(-time.Hour), meithealv1alpha1.WorkloadPhaseCompleted), review)
+		o := fastOpts()
+		o.Now = func() time.Time { return now }
+		e := NewClusterEffects(c, effNS, newFakeRunForge(), testTemplate(), &fakeGateRunner{}, o)
+		res, err := e.Watch(context.Background(), name, 20*time.Minute, 2.5)
+		if err != nil {
+			t.Fatalf("%s: Watch: %v", label, err)
+		}
+		if res.Concern != tc.want {
+			t.Errorf("%s: Concern = %q, want %q", label, res.Concern, tc.want)
+		}
+		if res.PRURL != pr {
+			t.Errorf("%s: PRURL = %q, want it read beside the concerns", label, res.PRURL)
+		}
+		parked := NextStage(StageWatch, Facts{Concern: res.Concern}).Next == StageParked
+		if parked != (tc.want != "") {
+			t.Errorf("%s: parked = %v, want %v", label, parked, tc.want != "")
+		}
+	}
+}
+
 func TestWatch_CompletedIsCleanAndMissingWorkloadErrors(t *testing.T) {
 	name := plannedWorkloadName(effIssue)
 	c := newEffectsClient(t, nil, watchWorkload(name, time.Now(), meithealv1alpha1.WorkloadPhaseCompleted))

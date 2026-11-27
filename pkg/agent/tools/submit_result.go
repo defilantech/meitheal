@@ -17,6 +17,7 @@ limitations under the License.
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -111,6 +112,42 @@ type Concern struct {
 // from another inference engine or kernel library.
 const concernKindNovelty = "novelty"
 
+// MalformedConcernText is the text of the concern that replaces an
+// extra.concerns value the model sent in a shape a run loop cannot read.
+const MalformedConcernText = "malformed concern from the model"
+
+// malformedConcernsKey keeps the model's unreadable extra.concerns value as
+// evidence once it has been replaced.
+const malformedConcernsKey = "malformedConcerns"
+
+// normalizeExtraConcerns reads a model-supplied extra.concerns value. A list
+// of {kind: novelty, text, files} objects is returned as is (an empty list or
+// null as none); anything else is a concern too, only an unreadable one, so
+// it becomes one novelty concern with MalformedConcernText and ok is false.
+// A run loop parks on any concern, so a malformed one must never read as
+// none (fail closed).
+func normalizeExtraConcerns(v any) (list []Concern, ok bool) {
+	if v == nil {
+		return nil, true
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return []Concern{{Kind: concernKindNovelty, Text: MalformedConcernText}}, false
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var cs []Concern
+	if err := dec.Decode(&cs); err != nil {
+		return []Concern{{Kind: concernKindNovelty, Text: MalformedConcernText}}, false
+	}
+	for _, c := range cs {
+		if c.Kind != concernKindNovelty {
+			return []Concern{{Kind: concernKindNovelty, Text: MalformedConcernText}}, false
+		}
+	}
+	return cs, true
+}
+
 type submitResultArgs struct {
 	Verdict       string         `json:"verdict"`
 	Summary       string         `json:"summary"`
@@ -189,8 +226,22 @@ func (SubmitResultTool) Execute(_ context.Context, args json.RawMessage) (*agent
 			return nil, fmt.Errorf("submit_result: invalid concern kind %q (must be %q)", c.Kind, concernKindNovelty)
 		}
 	}
-	if len(a.Concerns) > 0 {
-		a.Extra["concerns"] = a.Concerns
+	// extra is free-form, so the model can put concerns there too, in any
+	// shape. extra.concerns is what a run loop reads: it always leaves here
+	// as a list of Concern, the model's own list first.
+	var concerns []Concern
+	if v, present := a.Extra["concerns"]; present {
+		list, ok := normalizeExtraConcerns(v)
+		if !ok {
+			a.Extra[malformedConcernsKey] = v
+		}
+		concerns = list
+	}
+	concerns = append(concerns, a.Concerns...)
+	if len(concerns) > 0 {
+		a.Extra["concerns"] = concerns
+	} else {
+		delete(a.Extra, "concerns")
 	}
 	return &agent.ToolResult{
 		Terminal:      true,
