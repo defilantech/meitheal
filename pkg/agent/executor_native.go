@@ -1134,6 +1134,15 @@ func (e *NativeAgentLoopExecutor) runLLMPath(
 				log.Info("reviewer scope: ground-truth diff unavailable; skipping scope check",
 					"err", reviewDiffErr.Error())
 			}
+			// Out-of-diff rail (#41): a NO-GO whose every blocking finding
+			// cites a file the diff does not touch is marked untrusted (the
+			// verdict stands) so the controller re-runs the review instead of
+			// sending the coder after files it never changed. Runs after
+			// scope-overlap, whose scopeRefs exempt a finding naming a file the
+			// issue asks about, and before issueAsk, so verdictClaimed archives
+			// the reviewer's own NO-GO first.
+			verdict = enforceReviewerOutOfDiffFindings(log, loopRes.Terminal.Extra, verdict,
+				reviewDiff, reviewDiffErr)
 			// Enforce the verification result (#644): an unverifiable
 			// issueAsk demotes a GO to NO-GO so it routes to escalation
 			// instead of approving a branch on fabricated understanding.

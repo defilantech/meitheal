@@ -36,7 +36,11 @@ const (
 	// rail's demotion, this is a statement about verification confidence,
 	// not about the change: re-running the coder cannot make an unverifiable
 	// environment verifiable.
-	railUnverifiedSummary   = reviewer.RailUnverifiedSummary
+	railUnverifiedSummary = reviewer.RailUnverifiedSummary
+	// railOutOfDiffFindings aliases the shared rail name for the same reason
+	// (#41): the controller reads it back from verdictDemotedBy to tell an
+	// untrusted NO-GO from one the coder can act on.
+	railOutOfDiffFindings   = reviewer.RailOutOfDiffFindings
 	railVerdictFromFindings = "verdict-from-findings"
 	railEmptyClaim          = "empty-claim"
 	railGroundedFinding     = "grounded-finding"

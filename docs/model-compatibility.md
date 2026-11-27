@@ -151,6 +151,20 @@ verification result is *enforced*, not just recorded:
   escalation model instead of being green-lit.
 - An unverified `issueAsk` on any other verdict keeps the verdict
   but marks it untrusted.
+- A NO-GO whose every blocking finding cites a file the branch diff
+  does not touch (and that the issue does not name) is marked
+  untrusted the same way (`verdictDemotedBy: out-of-diff-findings`,
+  with the files under `outOfDiffFindingFiles`). The grounded-finding
+  rail already demotes most such reviews to GO; this covers a REJECT,
+  which that rail exempts.
+- The Workload controller does not hand an untrusted NO-GO to the
+  coder as a fix iteration. It re-runs the review once on the same
+  branch (step `review-<n>-<i>-rr`, or `review-<n>-<i>-r<k>-rr` in fix
+  iteration k) and records `ReviewRerunTriggered`. A trusted re-review
+  decides the round as any review does. An untrusted one ends it: the
+  issue stays incomplete, the `ReviewUntrusted` condition names the
+  review and the rails' reasons, and escalation reviewers, when
+  configured, judge the branch.
 - In both cases the result extra carries `verdictDemoted: true`,
   `verdictClaimed` (the model's original verdict), and a
   `demotionReason`, mirroring the `issueAskClaimed` convention.
