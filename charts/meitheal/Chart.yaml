@@ -9,8 +9,8 @@ description: |
   first; the meitheal-operator's RBAC reads the inference.llmkube.dev
   CRDs that chart installs. The two charts share no Helm relationship.
 type: application
-version: 0.1.0
-appVersion: 0.1.0
+version: 0.1.1
+appVersion: 0.1.1
 keywords:
   - meitheal
   - agentic
