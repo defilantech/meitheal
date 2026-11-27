@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.2](https://github.com/defilantech/meitheal/compare/v0.1.1...v0.1.2) (2026-11-27)
+
+
+### Features
+
+* give the intent planner the contents of the files most related to the issue ([#52](https://github.com/defilantech/meitheal/issues/52)) ([873d483](https://github.com/defilantech/meitheal/commit/873d4830eb7b2baa27dab30a8d38d6c20271dd1c))
+* lint planned intents against the repository before queueing them ([#50](https://github.com/defilantech/meitheal/issues/50)) ([92d6d58](https://github.com/defilantech/meitheal/commit/92d6d5884fc42263333e685807196373e07f3d5f))
+
+
+### Bug Fixes
+
+* derive a failed run's park reason from its tasks' verdicts ([#49](https://github.com/defilantech/meitheal/issues/49)) ([a95dbe6](https://github.com/defilantech/meitheal/commit/a95dbe607fd3d8924cd0b434d7053c3b1f919916))
+* pull gate Job images with the chart's imagePullSecrets ([#48](https://github.com/defilantech/meitheal/issues/48)) ([4b03ba7](https://github.com/defilantech/meitheal/commit/4b03ba7352a93bee3d14f403e98c9825891780ed))
+* re-review an untrusted reviewer NO-GO instead of opening a fix iteration ([#51](https://github.com/defilantech/meitheal/issues/51)) ([01f5c9f](https://github.com/defilantech/meitheal/commit/01f5c9fa7450e8e8357820d38f8c160f9a403b89))
+* scope the planner's test rule to behaviour changes and state rule precedence ([#47](https://github.com/defilantech/meitheal/issues/47)) ([a35a458](https://github.com/defilantech/meitheal/commit/a35a458ab908e24f1c263b34bc095c3e7352561a))
+
 ## [0.1.1](https://github.com/defilantech/meitheal/compare/v0.1.0...v0.1.1) (2026-11-27)
 
 
