@@ -122,6 +122,15 @@ type runLoop struct {
 	// stale holds answered files a new round consumed but could not remove,
 	// by path; the answer cycle retries them and never acts on them again.
 	stale map[string]int32
+	// consumed is, per issue, when the latest answer comment this process
+	// read was made; no later park takes that comment again.
+	consumed map[int32]time.Time
+	// errCount counts each item's drives in a row that ended in an error
+	// (this process only); maxDriveErrors of them park the item.
+	errCount map[int32]int
+	// workloads holds the Workload each item's last drive dispatched, for a
+	// park the loop writes itself. Guarded by mu.
+	workloads map[int32]string
 }
 
 func newRunLoop(cfg runLoopConfig) *runLoop {
@@ -145,6 +154,9 @@ func newRunLoop(cfg runLoopConfig) *runLoop {
 		restarts:   map[int32]string{},
 		skips:      map[int32]string{},
 		stale:      map[string]int32{},
+		consumed:   map[int32]time.Time{},
+		errCount:   map[int32]int{},
+		workloads:  map[int32]string{},
 	}
 	l.sched = newLaneScheduler(cfg.Limits, l.drive)
 	return l
@@ -323,9 +335,14 @@ func (l *runLoop) finish(ctx context.Context, r laneResult) {
 	case r.err != nil && ctx.Err() != nil:
 		// Stopped by the signal: not a failure, and nothing was recorded.
 		l.state[issue] = statePending
+		return
 	case r.err != nil:
-		l.state[issue] = stateFailed
-		l.logf("issue %d stopped at %s: %v (a restart tries it again)", issue, r.stage, r.err)
+		l.driveFailed(ctx, r)
+		return
+	}
+	// A drive that got to an outcome ends the run of errors.
+	delete(l.errCount, issue)
+	switch {
 	case r.stage == StageParked:
 		l.state[issue] = stateParked
 		l.logf("issue %d parked", issue)
@@ -351,15 +368,17 @@ func (l *runLoop) finish(ctx context.Context, r laneResult) {
 
 // drive runs one item through DriveItem (or RestartItem, for a round a
 // maintainer's answer started) on a lane goroutine and records how it ended.
-// A drive stopped by the context records nothing.
+// A drive stopped by the context records nothing. The new-round marker stays
+// until the round has started (roundStarted), so a drive that fails before
+// then is retried as the new round.
 func (l *runLoop) drive(ctx context.Context, item QueueItem) (Stage, error) {
 	l.mu.Lock()
 	answered, restart := l.restarts[item.Issue]
-	delete(l.restarts, item.Issue)
 	l.mu.Unlock()
 	rec := &recordingEffects{
 		Effects: l.cfg.Effects, dir: l.cfg.DecisionsDir, now: l.cfg.Now, logf: l.cfg.Logf,
 		answered: answered, stale: l.markStale,
+		started: func() { l.roundStarted(item.Issue) },
 	}
 	started := l.cfg.Now()
 	stage := StagePreflight
@@ -374,6 +393,9 @@ func (l *runLoop) drive(ctx context.Context, item QueueItem) (Stage, error) {
 	if err != nil && ctx.Err() != nil {
 		return stage, err
 	}
+	l.mu.Lock()
+	l.workloads[item.Issue] = rec.workload
+	l.mu.Unlock()
 	r := LedgerRecord{
 		Repo: item.Repo, Issue: item.Issue, Lane: laneOf(item), Workload: rec.workload, Attempts: rec.attempts,
 		PRURL: rec.prURL, Started: started.UTC(), Ended: l.cfg.Now().UTC(),
@@ -415,14 +437,21 @@ type recordingEffects struct {
 	// skip). stale is told when that removal fails, for a retry.
 	answered string
 	stale    func(path string, issue int32)
+	// started is told, once, that the round has an outcome past its start.
+	started func()
 
 	skip, workload, prURL string
 	attempts              int
 	parked                *Decision
 }
 
-// consume removes the answer this round was started by, once.
+// consume removes the answer this round was started by, once, and tells
+// the loop the round has started.
 func (r *recordingEffects) consume(issue int32) {
+	if r.started != nil {
+		r.started()
+		r.started = nil
+	}
 	if r.answered == "" {
 		return
 	}
@@ -521,11 +550,18 @@ func (l *runLoop) answerCycle(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
+	l.retryFailed()
 	l.retryStale()
 	if l.cfg.Answerer != "" && l.cfg.Forge != nil {
-		_, rejected, err := pollAnswers(ctx, l.cfg.Forge, l.cfg.DecisionsDir, l.cfg.Repo, l.cfg.Answerer, l.owns)
+		answered, rejected, err := pollAnswers(ctx, l.cfg.Forge, l.cfg.DecisionsDir, l.cfg.Repo, l.cfg.Answerer,
+			l.owns, l.consumed)
 		if err != nil {
 			l.logf("reading answers: %v", err)
+		}
+		for _, d := range answered {
+			if d.answeredBy.After(l.consumed[d.Issue]) {
+				l.consumed[d.Issue] = d.answeredBy
+			}
 		}
 		for _, r := range rejected {
 			key := fmt.Sprintf("rejected %d/%s/%s/%s", r.Issue, r.Kind, r.Command, r.Created.UTC().Format(time.RFC3339Nano))

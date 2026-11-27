@@ -62,7 +62,8 @@ type RejectedAnswer struct {
 }
 
 // PollAnswers reads the issue comments of every unanswered decision and
-// records the first valid command from answerer made at or after the park.
+// records the first valid command from answerer made at or after the park
+// (allowing parkCommentSkew of clock skew).
 // A command the decision rejects is not valid for it: it is skipped, reported
 // in rejected, and later comments are still tried. It returns the decisions it
 // newly answered and never posts to the forge. err is reserved for forge and
@@ -77,11 +78,17 @@ type RejectedAnswer struct {
 func PollAnswers(
 	ctx context.Context, f RunForge, dir, repo, answerer string,
 ) (answered []Decision, rejected []RejectedAnswer, err error) {
-	return pollAnswers(ctx, f, dir, repo, answerer, func(d Decision) bool { return d.Repo == "" || d.Repo == repo })
+	return pollAnswers(ctx, f, dir, repo, answerer, func(d Decision) bool { return d.Repo == "" || d.Repo == repo }, nil)
 }
 
+// pollAnswers is PollAnswers for the run loop: owns narrows the decisions
+// polled, and a comment made at or before consumed[issue] (the answer the
+// loop last acted on for the issue) is never taken again. Without it the
+// clock-skew allowance would let a park opened within parkCommentSkew of
+// that answer take it a second time.
 func pollAnswers(
 	ctx context.Context, f RunForge, dir, repo, answerer string, owns func(Decision) bool,
+	consumed map[int32]time.Time,
 ) (answered []Decision, rejected []RejectedAnswer, err error) {
 	decisions, listErr := ListDecisions(dir)
 	errs := []error{listErr}
@@ -94,7 +101,11 @@ func pollAnswers(
 		if d.Answer != "" || d.Opened.IsZero() || !owns(d) {
 			continue
 		}
-		comments, cerr := f.CommentsSince(ctx, repo, d.Issue, d.Opened)
+		// The park's open time is this host's clock and a comment's is the
+		// forge's, so an answer is looked for from parkCommentSkew before
+		// it, as park comments are.
+		since := d.Opened.Add(-parkCommentSkew)
+		comments, cerr := f.CommentsSince(ctx, repo, d.Issue, since)
 		if cerr != nil {
 			errs = append(errs, fmt.Errorf("comments for issue %d: %w", d.Issue, cerr))
 			continue
@@ -103,7 +114,10 @@ func pollAnswers(
 		for _, c := range comments {
 			// CommentsSince is inclusive, so this only guards a forge that
 			// ignores since.
-			if c.Author == "" || !strings.EqualFold(c.Author, answerer) || c.Created.Before(d.Opened) {
+			if c.Author == "" || !strings.EqualFold(c.Author, answerer) || c.Created.Before(since) {
+				continue
+			}
+			if last, ok := consumed[d.Issue]; ok && !c.Created.After(last) {
 				continue
 			}
 			cmd, text, ok := ParseAnswer(c.Body)
@@ -126,6 +140,7 @@ func pollAnswers(
 				break
 			}
 			d.Answer = answer
+			d.answeredBy = c.Created
 			answered = append(answered, d)
 			break
 		}

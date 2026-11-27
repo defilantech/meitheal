@@ -107,7 +107,9 @@ by the CPU gate and then the GPU gate.
 Preflight skips a closed issue, which then counts as finished for the items
 after it. An issue whose own task branch exists with no Workload of the
 loop's behind it parks escalate ("the loop lost track of this issue's run")
-until answered.
+until answered. A drive that fails is tried again on the next answer cycle,
+and the third failure in a row parks escalate ("the loop kept failing on
+this issue").
 
 Every park is announced: a one-line comment on the issue, a label on the
 draft PR, and a POST of the full decision to --notify-url (or $%s).

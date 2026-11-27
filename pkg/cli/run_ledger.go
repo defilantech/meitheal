@@ -42,7 +42,8 @@ const (
 	ledgerParked = "parked"
 	// ledgerDropped: the maintainer answered drop.
 	ledgerDropped = "dropped"
-	// ledgerError: the drive stopped on an error; a restart retries it.
+	// ledgerError: the drive stopped on an error; the next answer cycle (or
+	// a restart) retries it.
 	ledgerError = "error"
 )
 

@@ -57,6 +57,10 @@ type Decision struct {
 	// field existed have none; the run loop then acts on one only when its
 	// issue is in the run's queue.
 	Repo string `json:"repo,omitempty"`
+	// answeredBy is when the comment PollAnswers took the answer from was
+	// made. Never written to the file; the run loop uses it so a park opened
+	// soon after must not take the same comment again.
+	answeredBy time.Time
 }
 
 // ParkNotices is when each notice of a park succeeded; nil is not yet.

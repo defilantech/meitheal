@@ -50,8 +50,8 @@ const (
 // (a clean verify, then finalize), "park" (a stall), "skip" (preflight finds
 // an open PR), "closed" (preflight finds the issue closed), "lost" (preflight
 // finds the issue's own branch with no Workload), "block" (watch waits for
-// the context) or "error" (watch fails). The last outcome repeats; no script
-// means "done". A drive starts at
+// the context), "error" (watch fails) or "restartfail" (a new round's
+// Restart fails). The last outcome repeats; no script means "done". A drive starts at
 // Preflight, or at Restart for a new round. Safe for the lanes' goroutines.
 type scriptEffects struct {
 	mu        sync.Mutex
@@ -120,7 +120,11 @@ func (s *scriptEffects) Restart(ctx context.Context, item QueueItem, intent stri
 	s.mu.Lock()
 	s.restarted = append(s.restarted, item.Issue)
 	s.drives[item.Issue]++
+	fail := s.outcome(item.Issue) == "restartfail"
 	s.mu.Unlock()
+	if fail {
+		return "", 0, errors.New("restart refused")
+	}
 	return s.Dispatch(ctx, item, intent)
 }
 

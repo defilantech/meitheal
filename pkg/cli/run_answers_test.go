@@ -182,14 +182,51 @@ func TestPollAnswers_CommentsBeforeParkIgnored(t *testing.T) {
 	if err != nil || len(got) != 0 {
 		t.Fatalf("got %v, %v, want the pre-park comment ignored", got, err)
 	}
-	if !f.since[7].Equal(answersT0) {
-		t.Errorf("asked since %v, want the park time %v", f.since[7], answersT0)
+	if want := answersT0.Add(-parkCommentSkew); !f.since[7].Equal(want) {
+		t.Errorf("asked since %v, want the park time less the clock-skew allowance, %v", f.since[7], want)
 	}
 	// A forge that ignores since must not leak old comments either.
 	g := &sinceBlindForge{answersForge: f}
 	got, _, _ = PollAnswers(context.Background(), g, dir, "o/r", "Defilan")
 	if len(got) != 0 {
 		t.Fatalf("got %v from a forge that ignores since", got)
+	}
+}
+
+// The park's open time is this host's clock and a comment's the forge's: an
+// answer stamped up to parkCommentSkew before the park still counts, as a
+// park comment does.
+func TestPollAnswers_AllowsClockSkewBeforeThePark(t *testing.T) {
+	dir := t.TempDir()
+	parkForAnswers(t, dir, answersT0)
+	f := newAnswersForge(map[int32][]IssueComment{7: {
+		{Author: "Defilan", Body: "/meitheal requeue", Created: at(-1)},
+	}})
+	got, _, err := PollAnswers(context.Background(), f, dir, "o/r", "Defilan")
+	if err != nil || len(got) != 1 || got[0].Answer != "requeue" {
+		t.Fatalf("got %v, %v; want the answer from a minute before the park counted", got, err)
+	}
+}
+
+// The skew allowance must not hand a park the answer the loop already acted
+// on for the issue: a park opened within parkCommentSkew of that answer (a
+// re-plan that parks again at once) waits for a new command.
+func TestPollAnswers_ConsumedAnswerIsNotTakenAgain(t *testing.T) {
+	dir := t.TempDir()
+	parkForAnswers(t, dir, answersT0)
+	f := newAnswersForge(map[int32][]IssueComment{7: {
+		{Author: "Defilan", Body: "/meitheal requeue", Created: at(-1)},
+	}})
+	got, _, err := pollAnswers(context.Background(), f, dir, "o/r", "Defilan",
+		func(Decision) bool { return true }, map[int32]time.Time{7: at(-1)})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("got %v, %v; want the consumed answer ignored", got, err)
+	}
+	f.byIssue[7] = append(f.byIssue[7], IssueComment{Author: "Defilan", Body: "/meitheal drop", Created: at(1)})
+	got, _, err = pollAnswers(context.Background(), f, dir, "o/r", "Defilan",
+		func(Decision) bool { return true }, map[int32]time.Time{7: at(-1)})
+	if err != nil || len(got) != 1 || got[0].Answer != "drop" || !got[0].answeredBy.Equal(at(1)) {
+		t.Fatalf("got %+v, %v; want the newer command taken", got, err)
 	}
 }
 

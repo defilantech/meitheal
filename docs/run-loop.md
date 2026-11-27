@@ -109,7 +109,7 @@ by `meitheal decisions`.
 
 | Kind | When |
 |---|---|
-| `escalate` | The coder stalled; review did not converge (the run ended on a review requesting changes); the run failed before a review verdict (any other failed Workload); the gate failed again after the feedback pass; the GPU node stayed busy; the loop lost track of the issue's run. |
+| `escalate` | The coder stalled; review did not converge (the run ended on a review requesting changes); the run failed before a review verdict (any other failed Workload); the gate failed again after the feedback pass; the GPU node stayed busy; the loop lost track of the issue's run; the loop kept failing on the issue. |
 | `needs-decision` | A task raised a concern (one the loop cannot read, or with no text, counts); the planner found a decision only a maintainer can make, its answer was unreadable, or its call failed; the issue carries the `--decision-label` label. |
 | `needs-split` | The planner judged the issue too big for one run. |
 
@@ -134,9 +134,10 @@ Comment on the issue, from the login given as `--answerer`, with one line:
 | `/meitheal decide <text>` | Plans the issue again with your text given to the planner as a settled maintainer decision, then starts a new round with the new intent. One the planner parks again is announced as a new park. |
 | `/meitheal drop` | Comments "Meitheal dropped this issue at the maintainer's request." once and stops working on the issue. The branch, the PR and the decision file stay. |
 
-Only the first valid command from `--answerer` after the park counts;
-comments from anyone else are ignored, and a command the decision does not
-offer is skipped and logged once. The loop reads answers every 5 minutes,
+Only the first valid command from `--answerer` after the park counts (from
+up to two minutes before it, for clock skew, but never the command the loop
+last acted on for that issue); comments from anyone else are ignored, and a
+command the decision does not offer is skipped and logged once. The loop reads answers every 5 minutes,
 and at start.
 
 `meitheal decisions answer ISSUE KIND ANSWER` answers from the command
@@ -163,7 +164,10 @@ the loop's own. Without one, as for a planner park that was never
 dispatched, preflight runs as usual: an open PR someone else made skips the
 issue, recorded as `skipped`. The answered decision is removed once the
 round has a Workload or a preflight skip, so a restart in between acts on
-the answer again.
+the answer again, and a drive that fails before then is retried as the new
+round. When that drive fails a third time, the answer is used up and the
+issue parks `escalate` ("the loop kept failing on this issue") for a fresh
+answer.
 
 ## The ledger
 
@@ -176,7 +180,7 @@ in `--ledger` (default `.meitheal/ledger.jsonl`):
 
 `finalStage` is `done` (finalized or hand-fixed), `skipped` (preflight
 found an open PR, or the issue closed; the reason says which), `parked`,
-`dropped` or `error`. A last line cut short by a crash is ignored, and
+`dropped` or `error` (the drive stopped on an error; it is tried again). A last line cut short by a crash is ignored, and
 dropped by the next append.
 
 ## Restarts and signals
@@ -199,8 +203,13 @@ and the queue file, so it can be stopped and started at any point:
   created, or after a Workload was deleted by hand. `/meitheal requeue`
   starts a new round on the branch and its draft PR.
 - An item whose issue is closed is skipped at preflight.
-- An item that stopped on an `error`, or was `skipped`, goes through
-  preflight again.
+- An item that was `skipped` goes through preflight again.
+- A drive that stops on an `error` is tried again on the next answer cycle
+  (every 5 minutes, or straight away with `--once`); a drive that gets to
+  an outcome resets the count, and the third error in a row parks the item
+  `escalate` with "the loop kept failing on this issue" (the error is in the
+  decision's evidence, never on the issue). The count is kept per process,
+  so a restart starts it again.
 
 SIGINT or SIGTERM stops the loop: in-flight items stop at their next poll,
 nothing is parked, the stop deletes no Workload, and the next start resumes
