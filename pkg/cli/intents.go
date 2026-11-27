@@ -209,6 +209,9 @@ type PlanConfig struct {
 	BashTimeoutSeconds int
 	// Progress, when set, gets one line per issue.
 	Progress io.Writer
+	// ShowLint adds each planned intent's lint result to its progress line,
+	// and prints a failed lint's report before the park line.
+	ShowLint bool
 	// MaintainerDecisions maps an issue to a decision its maintainer made
 	// (a '/meitheal decide' answer). It reaches that issue's prompt as
 	// settled, and the decision label no longer parks the issue: the human
@@ -266,8 +269,8 @@ func planIssuesTo(ctx context.Context, f RunForge, call PlannerCaller, repo, rep
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return plannedQueue{}, fmt.Errorf("create --out: %w", err)
 	}
-	p := planner{f: f, call: call, repo: repo, listing: listing, outDir: outDir, decisionsDir: decisionsDir,
-		cfg: cfg}
+	p := planner{f: f, call: call, repo: repo, listing: listing, paths: newRepoPaths(listing.Files),
+		outDir: outDir, decisionsDir: decisionsDir, cfg: cfg}
 	q := Queue{Repo: repo}
 	planned := map[int32][]string{}
 	for _, issue := range issues {
@@ -294,6 +297,7 @@ type planner struct {
 	call         PlannerCaller
 	repo         string
 	listing      repoListing
+	paths        repoPaths
 	outDir       string
 	decisionsDir string
 	cfg          PlanConfig
@@ -357,6 +361,20 @@ func (p planner) planOne(ctx context.Context, issue int32) (*QueueItem, []string
 		return nil, nil, p.park(issue, ParkNeedsSplit, reasonNeedsSplit, ev)
 	}
 
+	// A planned intent that names a path the repository does not have, or
+	// whose header disagrees with its body, is parked before a coder run is
+	// spent on it.
+	lint := lintIntent(v, p.paths)
+	if !lint.ok() {
+		if p.cfg.ShowLint {
+			p.progress("issue %d: intent failed lint:\n%s", issue, indentLines(lint.report()))
+		}
+		return nil, nil, p.park(issue, ParkNeedsDecision, lint.reason(), map[string]string{
+			"lint":   lint.report(),
+			"intent": capString(v.Intent, unreadableEvidenceCap),
+		})
+	}
+
 	intentPath := filepath.Join(p.outDir, fmt.Sprintf("%d.intent.md", issue))
 	if err := os.WriteFile(intentPath, []byte(v.Intent+"\n"), 0o644); err != nil {
 		return nil, nil, fmt.Errorf("write intent for issue %d: %w", issue, err)
@@ -368,7 +386,12 @@ func (p planner) planOne(ctx context.Context, issue int32) (*QueueItem, []string
 	if p.forcesGPU(d.Labels, v.Files) {
 		lane = "gpu"
 	}
-	p.progress("issue %d: planned, lane %s, intent %s\n", issue, lane, intentPath)
+	if p.cfg.ShowLint {
+		p.progress("issue %d: planned, lane %s, intent %s, lint passed (%d repository paths checked)\n",
+			issue, lane, intentPath, lint.Checked)
+	} else {
+		p.progress("issue %d: planned, lane %s, intent %s\n", issue, lane, intentPath)
+	}
 	return &QueueItem{Issue: issue, IntentPath: intentPath, Lane: lane}, v.Files, nil
 }
 
@@ -470,6 +493,11 @@ func sharesFile(a, b []string) bool {
 		}
 	}
 	return false
+}
+
+// indentLines indents every line of a report under its progress line.
+func indentLines(s string) string {
+	return "  " + strings.ReplaceAll(strings.TrimSuffix(s, "\n"), "\n", "\n  ") + "\n"
 }
 
 func capString(s string, n int) string {
@@ -692,6 +720,11 @@ plan, labelled --decision-label, or whose answer cannot be read is parked as
 a decision under --decisions-dir for 'meitheal decisions', and is never put
 in the queue.
 
+A planned intent is linted against --repo-dir before it is queued, and parked
+when it names a path under a tracked directory that the repository does not
+have and its files list does not create, or when its files list holds an
+existing file the intent never mentions. --hold prints each lint result.
+
 Rules that belong to one repository go in --rules-file; they reach the
 planner verbatim, and override the general rules where the two conflict.
 --gpu-labels and --gpu-paths put an issue in the gpu lane.
@@ -714,7 +747,7 @@ Example:
 	}
 	f := cmd.Flags()
 	addPlannerFlags(f, o, " (required)")
-	f.BoolVar(&o.hold, "hold", false, "Write the intents and queue, then stop for review")
+	f.BoolVar(&o.hold, "hold", false, "Write the intents and queue, print each intent's lint result, then stop for review")
 	f.StringVar(&o.decisionsDir, "decisions-dir", defaultDecisionsDir, "Where parked decisions are written")
 	for _, name := range []string{"repo", "issues", "repo-dir", "planner-url"} {
 		_ = cmd.MarkFlagRequired(name)
@@ -786,6 +819,7 @@ func (o *intentsOptions) plannerSetup(progress io.Writer) (PlanConfig, PlannerCa
 		TrustedCommenters:  splitList(o.trustedCommenters),
 		BashTimeoutSeconds: o.bashTimeout,
 		Progress:           progress,
+		ShowLint:           o.hold,
 	}
 	if o.rulesFile != "" {
 		b, err := os.ReadFile(o.rulesFile)
@@ -821,6 +855,13 @@ func runIntents(ctx context.Context, w io.Writer, o *intentsOptions) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	return planAndReport(ctx, w, o, forge, call, cfg, issues)
+}
+
+// planAndReport plans the issues and prints the summary 'meitheal intents'
+// ends with.
+func planAndReport(ctx context.Context, w io.Writer, o *intentsOptions, forge RunForge, call PlannerCaller,
+	cfg PlanConfig, issues []int32) error {
 	q, err := PlanIssues(ctx, forge, call, o.repo, o.repoDir, issues, o.out, o.decisionsDir, cfg)
 	if err != nil {
 		return err
